@@ -23,7 +23,7 @@
 - **响应式（Web）**：`useBreakpoint()`（`@simple-notes/shared`）是全项目唯一的断点来源，禁止 UA / 设备类型判断；同一路由与逻辑只有一份，只在展示层按断点分叉
 - **Markdown**：遵守 `docs/markdown-dialect.md` 白名单；新增语法必须先在 fixture 中完成三端验收；admin 与 blog 的 md-editor-v3 全局 `config()` 必须一致（共享配置模块）
 - **API 契约**：后端 OpenAPI 为单一来源，Web / 桌面端一律使用生成客户端，禁止手写接口类型
-- **数据**：后端 PostgreSQL + Flyway（迁移只追加、不改历史）；桌面端本地优先（离线可用 + 后台同步）
+- **数据**：后端 PostgreSQL + Flyway（迁移只追加、不改历史；已在任一环境执行过的脚本不可修改 / 删除，回退只能新增更高版本补偿）；桌面端本地优先（离线可用 + 后台同步）
 
 ## 常用命令速查
 
