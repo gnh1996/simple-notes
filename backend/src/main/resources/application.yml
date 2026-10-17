@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: simple-notes-backend
+  config:
+    # 本地值来源（不入库，模板见 application-local.yml.example）；缺失时静默跳过，
+    # 此时由同名环境变量提供值（部署方式，优先级高于文件）
+    import: optional:classpath:application-local.yml
+  datasource:
+    # 占位符在整个 Environment 中按名解析：命令行参数 > 环境变量 > 配置文件
+    # 本地值由 application-local.yml 提供，部署时用同名环境变量（DB_URL / DB_USERNAME / DB_PASSWORD）
+    # 注意：配置绑定不会因占位符未解析而失败，而是按字面量传入（详见 application-local.yml.example 注释）
+    url: "${DB_URL:jdbc:postgresql://localhost:5432/simple_notes}"
+    username: "${DB_USERNAME:simple_notes}"
+    password: "${DB_PASSWORD}"
+
+# Cloudflare R2 对象存储（S3 兼容）
+# 键形暂定，随附件 / 图片功能设计定稿调整；占位符在存储配置类实现后才被解析
+simple-notes:
+  storage:
+    r2:
+      endpoint: "${R2_ENDPOINT}"
+      bucket: "${R2_BUCKET:simple-notes}"
+      access-key: "${R2_ACCESS_KEY_ID}"
+      secret-key: "${R2_SECRET_ACCESS_KEY}"

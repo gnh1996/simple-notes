@@ -1,0 +1,32 @@
+# 本地机密配置模板（可入库，只含占位值）
+#
+# 用法：复制为同目录的 application-local.yml 并填入真实值。
+#   cp src/main/resources/application-local.yml.example src/main/resources/application-local.yml
+# 该文件已被 .gitignore 忽略；由 application.yml 的
+# spring.config.import=optional:classpath:application-local.yml 自动加载。
+#
+# 本文件只提供"值"，键名与 application.yml 中 ${} 占位符一一对应。
+# 部署环境可完全不使用本文件，改由同名环境变量提供，不需要改任何代码或配置：
+#   DB_PASSWORD=xxx java -jar app.jar
+#
+# 已实测的行为（重要）：
+#   - 未提供值的占位符不会导致启动失败：配置绑定（@ConfigurationProperties，spring.datasource.* 走这条）
+#     会把字面量 "${DB_PASSWORD}" 原样保留，直到连接时才表现为认证失败 / URL 错误。
+#     需要 fail-fast 的话自行加显式校验（@Value 方式会直接抛 "Could not resolve placeholder"）
+#   - 优先级：命令行参数（--DB_PASSWORD=x）> 环境变量 > 本文件
+#   - 生效范围：IDE / ./mvnw spring-boot:run 即时生效，改完不用重新打包；
+#     java -jar 的 classpath 取自构建产物，新建或改动本文件后需重新 package，
+#     不想重打包（也避免机密进 jar）时改用外部文件：
+#       java -jar app.jar --spring.config.additional-location=optional:file:/abs/path/application-local.yml
+
+# PostgreSQL 连接
+DB_URL: jdbc:postgresql://localhost:5432/simple_notes
+DB_USERNAME: simple_notes
+DB_PASSWORD: <your-password>
+
+# Cloudflare R2 对象存储（S3 兼容）
+# 若实现时改用 AWS SDK 默认凭据链，access-key / secret-key 可省略，由环境变量或 ~/.aws/credentials 提供
+R2_ENDPOINT: https://<account-id>.r2.cloudflarestorage.com
+R2_BUCKET: simple-notes
+R2_ACCESS_KEY_ID: <r2-access-key-id>
+R2_SECRET_ACCESS_KEY: <r2-secret-access-key>

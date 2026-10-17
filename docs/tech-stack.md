@@ -11,6 +11,8 @@
 | 构建 | Maven（wrapper）；依赖版本走 `spring-boot-dependencies` BOM 导入，不继承 `spring-boot-starter-parent` |
 | 坐标 / 包名 | groupId `cc.naihao`；基础包 `cc.naihao.simplenotes`，启动类 `SimpleNotesApplication` |
 | 数据层 | PostgreSQL + JPA（QueryDSL 类型安全 / 动态查询）+ Flyway 迁移 |
+| 对象存储 | Cloudflare R2（S3 兼容；上传 / 访问链路随附件功能设计定） |
+| 本地配置 | 非机密在 `application.yml`；机密在 `application-local.yml`（不入库，模板入库）；部署用环境变量覆盖 |
 | 安全 | Spring Security（认证机制属设计范畴） |
 | API 契约 | OpenAPI 导出 → 生成 Web(TS) / 桌面(C#) 客户端（工具随契约设计定） |
 
@@ -46,11 +48,11 @@
 ## 待定清单（选型性质，随设计 / 实现推进确定）
 
 1. **认证机制**：Session/Cookie vs JWT；桌面端 token 存储（libsecret / DPAPI / Keychain）
-2. **附件 / 图片存储**：本地磁盘 vs MinIO / OSS（随图片功能设计定）
+2. **附件 / 图片访问链路**：公开桶 + CDN vs 预签名 URL、直传 vs 服务端中转（存储后端已定 Cloudflare R2，随图片功能设计定）
 3. **部署形态**：admin 挂 `/admin` 子路径 vs 子域（影响 vite `base`）
 4. **桌面本地存储实现**：Microsoft.Data.Sqlite 手写 SQL vs EF Core
 5. **API 客户端生成工具**：Web 端 openapi-typescript/openapi-fetch vs orval；C# 端 Kiota vs openapi-generator
-6. **工程化**：Vitest、ESLint/Prettier、后端 Testcontainers 等（随实现补）
+6. **工程化**：Vitest、ESLint/Prettier、后端 Testcontainers、机密防泄漏扫描（gitleaks 等）随实现补
 7. **桌面 Markdown 编辑库正式确认**（AvaloniaEdit 为默认候选）
 8. **logback CVE-2026-19880 复查**：1.5.x 线无修复版，待 Spring Boot 升级至 logback 1.6.x 或 1.5.x 发布修复版后复核（详见变更记录）
 
@@ -61,6 +63,20 @@
 - 已发生的变更记录可追加到本文件文末
 
 ## 变更记录
+
+### 2026-10-18 · 后端机密配置策略（${} 占位符 + 外部值源）与对象存储选型 Cloudflare R2
+
+- **变更**：
+  - `application.properties` → `application.yml`（同一位置两种格式并存时 `.properties` 优先，故不能保留旧文件）
+  - `application.yml` 中全部连接类配置改为 `${}` 占位符（`${DB_URL}` / `${DB_USERNAME}` / `${DB_PASSWORD}` / `${R2_*}`），只保留非机密默认值（URL、用户名、bucket 有默认，密码/密钥无默认）
+  - 值来源：本地 `application-local.yml`（`.gitignore` 按路径忽略，模板 `application-local.yml.example` 入库）；部署用同名环境变量，无需改动配置或代码
+- **选型**：对象存储定为 **Cloudflare R2**（S3 兼容）。配置键暂用 `simple-notes.storage.r2.*` 占位；若最终采用 spring-cloud-aws，则改用 `spring.cloud.aws.*` 标准键，随附件 / 图片功能设计定稿
+- **实现注意（实测）**：
+  - 占位符按名在 Environment 中解析，优先级：命令行参数 > 环境变量 > 配置文件（已实测环境变量覆盖文件值生效）
+  - **占位符未提供值不会 fail-fast**：配置绑定（`@ConfigurationProperties`，`spring.datasource.*` 即此路径）会把字面量 `${DB_PASSWORD}` 原样传给 pgjdbc，表现为连接期认证失败；`@Value` 方式则会直接抛 `Could not resolve placeholder`（已验证）。需要快速失败须自行加显式校验
+  - IDE / `mvn spring-boot:run` 下改动值文件即时生效；`java -jar` 的 classpath 取自构建产物，需重新 `package`，或改用 `--spring.config.additional-location=optional:file:...`（已验证）
+  - 值文件位于 `src/main/resources`，本地 `mvn package` 会将其打进 fat jar；本地自用可接受，将来若要分发 jar / 推镜像需改为外部文件方案
+- **后续可选加固**：gitleaks 之类的 pre-commit 机密扫描（见待定清单第 6 条）；如需配置缺失快速失败，可加显式启动校验
 
 ### 2026-10-18 · 后端依赖安全覆盖（CVE 告警收口）与 logback 已接受风险
 

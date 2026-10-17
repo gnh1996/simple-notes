@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# 本地机密配置（模板见 src/main/resources/application-local.yml.example）
+src/main/resources/application-local.yml
+src/main/resources/application-local.yaml
+src/main/resources/application-local.properties
