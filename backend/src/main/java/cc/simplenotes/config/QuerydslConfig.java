@@ -1,4 +1,4 @@
-package naihao.cc.simplenotes.config;
+package cc.naihao.simplenotes.config;
 
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;

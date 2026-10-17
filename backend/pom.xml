@@ -2,34 +2,91 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.1</version>
-        <relativePath/> <!-- lookup parent from repository -->
-    </parent>
-    <groupId>naihao.cc</groupId>
+
+    <groupId>cc.naihao</groupId>
     <artifactId>simple-notes</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>backend</name>
-    <description>backend</description>
-    <url/>
-    <licenses>
-        <license/>
-    </licenses>
-    <developers>
-        <developer/>
-    </developers>
-    <scm>
-        <connection/>
-        <developerConnection/>
-        <tag/>
-        <url/>
-    </scm>
+    <name>simple-notes-backend</name>
+    <description>随手记（Simple Notes）后端服务</description>
+
+    <!--
+      不继承 spring-boot-starter-parent：
+      - 依赖版本由 spring-boot-dependencies BOM 统一管理
+      - 插件版本、编译器参数等原先由 parent 提供的默认值在此显式声明（保持 pom 自描述）
+    -->
     <properties>
         <java.version>25</java.version>
+        <maven.compiler.release>${java.version}</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <spring-boot.version>4.1.1</spring-boot.version>
+        <!-- 注解处理器路径不参与 BOM 版本解析，需与 BOM 内 lombok.version 保持一致 -->
+        <lombok.version>1.18.46</lombok.version>
+        <!-- 与 Spring Boot BOM 内 querydsl.version 属性区分，避免同名歧义 -->
         <openfeign-querydsl.version>7.7</openfeign-querydsl.version>
+
+        <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!--
+              依赖安全覆盖（CVE 修复）。
+              注意：BOM 导入方式下无法通过属性（如 tomcat.version）覆盖版本，必须在此显式声明条目。
+              待 spring-boot-dependencies 补丁版抬升到不低于以下版本后可整段移除；核实记录见 docs/tech-stack.md。
+            -->
+            <dependency>
+                <!-- CVE-2026-107314 / CVE-2026-107315，修复版本 42.7.14 -->
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>42.7.14</version>
+            </dependency>
+            <!-- Tomcat 11.0.25 修复 8 个 CVE，11.0.26 修复 CVE-2026-86350 / CVE-2026-77762，统一取 11.0.27 -->
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-core</artifactId>
+                <version>11.0.27</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-el</artifactId>
+                <version>11.0.27</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-websocket</artifactId>
+                <version>11.0.27</version>
+            </dependency>
+            <!-- jackson-databind 3.1.6 / 3.1.7、jackson-core 3.1.7 为各 CVE 的修复版本 -->
+            <dependency>
+                <groupId>tools.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>3.1.7</version>
+            </dependency>
+            <dependency>
+                <groupId>tools.jackson.core</groupId>
+                <artifactId>jackson-core</artifactId>
+                <version>3.1.7</version>
+            </dependency>
+            <dependency>
+                <!-- 6 个 CVE 统一在 9.11 修复；仅测试域 -->
+                <groupId>org.ow2.asm</groupId>
+                <artifactId>asm</artifactId>
+                <version>9.11</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -100,56 +157,45 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring-boot.version}</version>
+                <executions>
+                    <!-- 原先由 spring-boot-starter-parent 绑定：打包可执行 fat jar -->
+                    <execution>
+                        <id>repackage</id>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>default-compile</id>
-                        <phase>compile</phase>
-                        <goals>
-                            <goal>compile</goal>
-                        </goals>
-                        <configuration>
-                            <proc>full</proc>
-                            <annotationProcessorPaths>
-                                <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
-                                </path>
-                                <path>
-                                    <groupId>io.github.openfeign.querydsl</groupId>
-                                    <artifactId>querydsl-apt</artifactId>
-                                    <version>${openfeign-querydsl.version}</version>
-                                    <classifier>jpa</classifier>
-                                </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>default-testCompile</id>
-                        <phase>test-compile</phase>
-                        <goals>
-                            <goal>testCompile</goal>
-                        </goals>
-                        <configuration>
-                            <proc>full</proc>
-                            <annotationProcessorPaths>
-                                <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
-                                </path>
-                                <path>
-                                    <groupId>io.github.openfeign.querydsl</groupId>
-                                    <artifactId>querydsl-apt</artifactId>
-                                    <version>${openfeign-querydsl.version}</version>
-                                    <classifier>jpa</classifier>
-                                </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                </executions>
+                <version>${maven-compiler-plugin.version}</version>
+                <configuration>
+                    <!-- Spring Framework 6.1+ 依赖 -parameters 做参数名解析 -->
+                    <parameters>true</parameters>
+                    <!-- Java 23+ 须显式 proc=full，否则注解处理器（Lombok / QueryDSL APT）静默不执行 -->
+                    <proc>full</proc>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                        <path>
+                            <groupId>io.github.openfeign.querydsl</groupId>
+                            <artifactId>querydsl-apt</artifactId>
+                            <version>${openfeign-querydsl.version}</version>
+                            <classifier>jpa</classifier>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
             </plugin>
         </plugins>
     </build>
