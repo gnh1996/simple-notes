@@ -1,0 +1,34 @@
+# frontend 工作区规则
+
+pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客前台）+ `packages/*`（共享）。结构、命令与选型见 `README.md` 与 `docs/tech-stack.md`。
+
+## 依赖与包管理
+
+- **版本统一**：所有依赖版本写在根 `pnpm-workspace.yaml` 的 `catalog`，子包一律用 `"xxx": "catalog:"` 引用；禁止在子包写死版本
+- **包边界**：`apps/*` 之间互不依赖；共享代码下沉 `packages/*`，用 `"workspace:*"` 引用（内部包直接导出 TS 源码，无构建步骤）
+- 新增依赖前：确认与 Vue 3.5 / Vite 8 兼容、许可证可自由使用、维护活跃
+
+## Markdown（与内容方言强相关，详见 `docs/markdown-dialect.md`）
+
+- 编辑器：md-editor-v3 7（admin）；博客前台渲染复用其 `MdPreview`（一致性优先于自建管线）
+- 全局 `config()` 必须 admin / blog 共享同一配置模块（模块级设置，两端独立应用各自生效）：
+  - `breaks: false`（对齐 CommonMark 软换行）
+  - 追加 `markdown-it-github-alerts`；禁用内置 `!!!` admonition
+  - 过滤 katex / sub / sup / echarts 等未收扩展（`noKatex` / `noEcharts`）
+  - hljs 自托管（生产不依赖 CDN）
+- 代码块语言集与方言白名单一致；新增 Markdown 语法前必须先在 `docs/markdown-dialect-fixture.md` 加样本并完成三端验收
+
+## 响应式
+
+- `useBreakpoint()`（`@simple-notes/shared`）是唯一的断点判断来源，禁止 UA / 设备类型判断
+- 路由与业务逻辑只有一份；只在展示层按断点分叉（如表格 vs 卡片列表），示例见 `apps/admin/src/views/DashboardView.vue`
+
+## 命令
+
+```bash
+pnpm install
+pnpm dev:admin            # 5173
+pnpm dev:blog             # 5174
+pnpm typecheck            # 全仓类型检查
+pnpm build:admin          # 单应用构建
+```

@@ -1,0 +1,22 @@
+{
+  "name": "simple-notes-frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "pnpm@11.14.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev:admin": "pnpm --filter @simple-notes/admin dev",
+    "dev:blog": "pnpm --filter @simple-notes/blog dev",
+    "build": "pnpm -r --if-present build",
+    "build:admin": "pnpm --filter @simple-notes/admin build",
+    "build:blog": "pnpm --filter @simple-notes/blog build",
+    "typecheck": "pnpm -r --if-present typecheck"
+  },
+  "devDependencies": {
+    "@vue/tsconfig": "catalog:",
+    "typescript": "catalog:"
+  }
+}

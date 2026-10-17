@@ -1,0 +1,24 @@
+/*
+ * @simple-notes/ui —— 跨端共享的设计 token（Tailwind v4 @theme）。
+ *
+ * 应用侧在 CSS 入口引入：
+ *   @import 'tailwindcss';
+ *   @import '@simple-notes/ui/tokens.css';
+ *
+ * 之后即可使用 text-brand-600 / bg-brand-500 等工具类。
+ */
+@theme {
+  --font-sans:
+    'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+
+  --color-brand-50: oklch(0.971 0.014 264);
+  --color-brand-100: oklch(0.934 0.03 264);
+  --color-brand-200: oklch(0.87 0.062 264);
+  --color-brand-300: oklch(0.785 0.105 264);
+  --color-brand-400: oklch(0.69 0.155 264);
+  --color-brand-500: oklch(0.6 0.19 264);
+  --color-brand-600: oklch(0.53 0.19 264);
+  --color-brand-700: oklch(0.46 0.17 264);
+  --color-brand-800: oklch(0.4 0.14 264);
+  --color-brand-900: oklch(0.35 0.11 264);
+}
