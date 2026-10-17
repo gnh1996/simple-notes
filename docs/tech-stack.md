@@ -1,7 +1,7 @@
 # 技术选型总览
 
 > **冻结日期：2026-10-18**（第一阶段选型收口）
-> 变更机制见文末。相关文档：`docs/markdown-dialect.md`、各端 README 选型表。
+> 变更机制见文末。相关文档：`docs/auth-rbac.md`、`docs/markdown-dialect.md`、各端 README 选型表。
 
 ## 后端
 
@@ -13,7 +13,7 @@
 | 数据层 | PostgreSQL + JPA（QueryDSL 类型安全 / 动态查询）+ Flyway 迁移 |
 | 对象存储 | Cloudflare R2（S3 兼容；上传 / 访问链路随附件功能设计定） |
 | 本地配置 | 非机密在 `application.yml`；机密在 `application-local.yml`（不入库，模板入库）；部署用环境变量覆盖 |
-| 安全 | Spring Security（认证机制属设计范畴） |
+| 安全 | Spring Security；认证机制已定：JWT + 服务端会话（三端统一 Bearer；`docs/auth-rbac.md`） |
 | API 契约 | OpenAPI 导出 → 生成 Web(TS) / 桌面(C#) 客户端（工具随契约设计定） |
 
 ## Web（`frontend/`，pnpm workspace）
@@ -47,9 +47,9 @@
 
 ## 待定清单（选型性质，随设计 / 实现推进确定）
 
-1. **认证机制**：Session/Cookie vs JWT；桌面端 token 存储（libsecret / DPAPI / Keychain）
+1. **认证机制**（已定，2026-10-18）：JWT + 服务端会话记录（存数据库）；桌面端令牌存本地 SQLite（不采用系统钥匙串）——详见 `docs/auth-rbac.md`
 2. **附件 / 图片访问链路**：公开桶 + CDN vs 预签名 URL、直传 vs 服务端中转（存储后端已定 Cloudflare R2，随图片功能设计定）
-3. **部署形态**：admin 挂 `/admin` 子路径 vs 子域（影响 vite `base`）
+3. **部署形态**：admin 挂 `/admin` 子路径 vs 子域（影响 vite `base` 与资源 / 代理配置；认证已不依赖 Cookie，无跨域 Cookie 约束）
 4. **桌面本地存储实现**：Microsoft.Data.Sqlite 手写 SQL vs EF Core
 5. **API 客户端生成工具**：Web 端 openapi-typescript/openapi-fetch vs orval；C# 端 Kiota vs openapi-generator
 6. **工程化**：Vitest、ESLint/Prettier、后端 Testcontainers、机密防泄漏扫描（gitleaks 等）随实现补
@@ -63,6 +63,23 @@
 - 已发生的变更记录可追加到本文件文末
 
 ## 变更记录
+
+### 2026-10-18 · RBAC 设计评审修订（v1.1；详见 `docs/auth-rbac.md` §13）
+
+- **认证传输**：取消 Cookie 与 CSRF 方案，三端统一 `Authorization: Bearer`（登录响应体统一返回 JWT；Web 凭证存 localStorage、按应用独立 key）——原 `sn_session` Cookie / 双提交 CSRF 作废；待定 #3 的 Cookie 作用域约束随之消解
+- **超管**：root 用户 + `SUPER_ADMIN` 角色 + 绑定关系由初始迁移预置（固定 UUID；root 初始密码固定 `admin@123456`，首登应改密）；授权短路唯一依据 = 持有超管角色（`ROOT_USERNAME` / `ROOT_PASSWORD` 配置取消、`sys_user.builtin` 列取消）
+- **会话回收**：禁用 / 删除 = 写路径撤销全部会话行；入口失效（停用 `entry:*` / 角色被收走 entry）= 请求链路校验并即时撤销会话
+- **权限码**：新增 `admin:user:assign-role`（角色分配独立按钮 / 接口，含 `/api/admin/roles/assignable`）；`me` 的 `menus` 仅 ADMIN 端返回
+- **实现约定**：授权快照先读版本再查库、菜单树不进快照、对账附带结构校验、V1 迁移口径（建表 + 初始节点 + 预置数据）、登录限流用户名 + IP 双维度、`sys_user_session` 增 `expire_time` 索引
+
+### 2026-10-18 · 认证与权限体系设计定稿（RBAC；详见 `docs/auth-rbac.md`）
+
+- **认证机制收口（待定 #1）**：**JWT + 服务端会话记录** —— JWT（HS256；claims = `sub` / `jti` / `iat` / `exp`，**不嵌权限**）+ `sys_user_session` 会话表（键 = `jti`，**存数据库而非纯内存**，重启不丢会话与撤销记录）；Web 走 HttpOnly Cookie（`sn_session`），桌面走 Bearer；授权用服务端快照缓存（全局版本失效 + 10 分钟 TTL 兜底），角色 / 权限变更**下一次请求即生效**，不做"权限变更踢线"
+- **桌面端 token 存储（待定 #1 后半）**：不采用系统钥匙串（Linux 侧依赖 D-Bus / keyring、.NET 生态与 AOT 兼容不确定、防不住同用户态进程）——令牌存**本地 SQLite**（用户级文件权限；`ITokenStore` 抽象留平台加密扩展；认证数据永不参与内容同步 / 导出 / 备份）
+- **RBAC 模型**：用户 → 多角色（权限并集）→ 权限码集合；三端入口（`entry:*`）+ 菜单（MENU = 页面可见 + 读接口）+ 按钮 / 接口（ACTION = 按钮显隐 + 写接口，同码）；"没有页面就是目录"
+- **目录与对账**：目录存 `sys_menu`（迁移只 INSERT 节点，改名 / 调序 / 启停走 admin 端）；代码侧 `Perms` 常量 + **启动对账 fail-fast**；内置 root 用户 + `SUPER_ADMIN` 判定短路（不受权限限制）
+- **admin 端加载**：服务端菜单列表驱动（`me` 返回已过滤菜单树）；前端页面注册表（权限码 → 路径 / 组件）按列表注册路由，无路由级权限判断
+- **联动**：待定 #3 部署形态补注 Cookie 影响（admin 子域时 Cookie Domain / CSRF 需相应配置）
 
 ### 2026-10-18 · 后端机密配置策略（${} 占位符 + 外部值源）与对象存储选型 Cloudflare R2
 
