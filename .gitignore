@@ -2,6 +2,8 @@
 /.mvn
 *.iml
 
+opencode.json
+
 # OS 垃圾文件（跨平台）
 .DS_Store
 Thumbs.db

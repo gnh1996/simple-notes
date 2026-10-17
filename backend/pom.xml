@@ -28,6 +28,7 @@
     </scm>
     <properties>
         <java.version>25</java.version>
+        <openfeign-querydsl.version>7.7</openfeign-querydsl.version>
     </properties>
     <dependencies>
         <dependency>
@@ -49,6 +50,11 @@
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.openfeign.querydsl</groupId>
+            <artifactId>querydsl-jpa</artifactId>
+            <version>${openfeign-querydsl.version}</version>
         </dependency>
 
         <dependency>
@@ -106,10 +112,17 @@
                             <goal>compile</goal>
                         </goals>
                         <configuration>
+                            <proc>full</proc>
                             <annotationProcessorPaths>
                                 <path>
                                     <groupId>org.projectlombok</groupId>
                                     <artifactId>lombok</artifactId>
+                                </path>
+                                <path>
+                                    <groupId>io.github.openfeign.querydsl</groupId>
+                                    <artifactId>querydsl-apt</artifactId>
+                                    <version>${openfeign-querydsl.version}</version>
+                                    <classifier>jpa</classifier>
                                 </path>
                             </annotationProcessorPaths>
                         </configuration>
@@ -121,10 +134,17 @@
                             <goal>testCompile</goal>
                         </goals>
                         <configuration>
+                            <proc>full</proc>
                             <annotationProcessorPaths>
                                 <path>
                                     <groupId>org.projectlombok</groupId>
                                     <artifactId>lombok</artifactId>
+                                </path>
+                                <path>
+                                    <groupId>io.github.openfeign.querydsl</groupId>
+                                    <artifactId>querydsl-apt</artifactId>
+                                    <version>${openfeign-querydsl.version}</version>
+                                    <classifier>jpa</classifier>
                                 </path>
                             </annotationProcessorPaths>
                         </configuration>

@@ -9,7 +9,7 @@
 | --- | --- |
 | 语言 / 框架 | Java 25 + Spring Boot 4.1.1（WebMVC） |
 | 构建 | Maven（wrapper） |
-| 数据层 | PostgreSQL + JPA + Flyway 迁移 |
+| 数据层 | PostgreSQL + JPA（QueryDSL 类型安全 / 动态查询）+ Flyway 迁移 |
 | 安全 | Spring Security（认证机制属设计范畴） |
 | API 契约 | OpenAPI 导出 → 生成 Web(TS) / 桌面(C#) 客户端（工具随契约设计定） |
 
@@ -57,3 +57,11 @@
 - "冻结"= 默认不再回头讨论，除非有新信息（许可证变化、兼容性问题、维护停更等）
 - 变更流程：更新本文件 + 记录理由；相关细节文档（方言、README）同步更新
 - 已发生的变更记录可追加到本文件文末
+
+## 变更记录
+
+### 2026-10-18 · 后端数据层引入 QueryDSL
+
+- **变更**：后端在 Spring Data JPA 之上引入 QueryDSL（类型安全 / 动态条件查询）。依赖 `io.github.openfeign.querydsl:querydsl-jpa:7.7`（Apache-2.0），编译期由 `querydsl-apt`（classifier `jpa`）生成 Q 类型
+- **理由**：官方 `com.querydsl` 坐标最后发版 5.1.0（2024-01，面向 Hibernate 6.x），未适配 Spring Boot 4.1 所用 Hibernate ORM 7；OpenFeign 维护分支为事实上游续作，7.7 对齐 Hibernate 7.4 / Jakarta Persistence 3.2，并保留 `com.querydsl` 包名与 API（Spring Data 的 `QuerydslPredicateExecutor` 可直接配合）
+- **实现注意**：Java 23+（本项目 Java 25）须在 maven-compiler-plugin 显式 `<proc>full</proc>`，否则 Q 类型静默不生成；`querydsl.version` 属性名与 Spring Boot BOM 冲突，项目内改用 `openfeign-querydsl.version`
