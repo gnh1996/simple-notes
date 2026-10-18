@@ -24,6 +24,9 @@ DB_URL: jdbc:postgresql://localhost:5432/simple_notes
 DB_USERNAME: simple_notes
 DB_PASSWORD: <your-password>
 
+# JWT 签名密钥（HS256）：32+ 字节随机值，如 openssl rand -base64 48
+JWT_SECRET: <32+ bytes random secret>
+
 # Cloudflare R2 对象存储（S3 兼容）
 # 若实现时改用 AWS SDK 默认凭据链，access-key / secret-key 可省略，由环境变量或 ~/.aws/credentials 提供
 R2_ENDPOINT: https://<account-id>.r2.cloudflarestorage.com

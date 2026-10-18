@@ -52,7 +52,7 @@
 3. **部署形态**：admin 挂 `/admin` 子路径 vs 子域（影响 vite `base` 与资源 / 代理配置；认证已不依赖 Cookie，无跨域 Cookie 约束）
 4. **桌面本地存储实现**：Microsoft.Data.Sqlite 手写 SQL vs EF Core
 5. **API 客户端生成工具**：Web 端 openapi-typescript/openapi-fetch vs orval；C# 端 Kiota vs openapi-generator
-6. **工程化**：Vitest、ESLint/Prettier、后端 Testcontainers、机密防泄漏扫描（gitleaks 等）随实现补
+6. **工程化**：Vitest、ESLint/Prettier、后端 Testcontainers、机密防泄漏扫描（gitleaks 等）随实现补 —— **后端 Testcontainers 已补**（2026-10-18，随 RBAC 集成测试起用：`spring-boot-testcontainers` + `testcontainers-postgresql`，`@ServiceConnection` 注入）；其余待补
 7. **桌面 Markdown 编辑库正式确认**（AvaloniaEdit 为默认候选）
 8. **logback CVE-2026-19880 复查**：1.5.x 线无修复版，待 Spring Boot 升级至 logback 1.6.x 或 1.5.x 发布修复版后复核（详见变更记录）
 
@@ -63,6 +63,13 @@
 - 已发生的变更记录可追加到本文件文末
 
 ## 变更记录
+
+### 2026-10-18 · RBAC 后端实现落地（详见 `docs/auth-rbac.md` §13）
+
+- **范围**：`docs/auth-rbac.md` §10 的**后端落点全部完成**（JWT + 会话、授权快照缓存、`SessionJwtFilter`、路径域规则、方法级权限与超管短路、启动对账 fail-fast、`V1` 迁移六表 + 初始权限目录 + 预置超管），接口与 §8 契约一致；admin / blog / desktop 三端实现随后进行
+- **工程化（待定 #6 部分收口）**：后端集成测试引入 **Testcontainers**（`spring-boot-testcontainers` + `testcontainers-postgresql`，`@ServiceConnection`，镜像 `postgres:17-alpine`）——测试不再连本地 / 远程开发库；并新增 `spring-boot-starter-validation`、Caffeine（BOM 管理）、`spring-security-oauth2-jose`（BOM 管理）
+- **配置**：新增 `simple-notes.auth.jwt-secret: ${JWT_SECRET}`（32+ 字节，缺失 / 过短启动失败）；本地值来源模板 `application-local.yml.example` 已补 `JWT_SECRET` 条目
+- **注意**：`V1__init_auth_rbac.sql` 已在测试环境执行，按"脚本只追加"纪律冻结，后续修正如需走新迁移
 
 ### 2026-10-18 · RBAC 设计评审修订（v1.1；详见 `docs/auth-rbac.md` §13）
 

@@ -1,6 +1,7 @@
 # 认证与权限设计（RBAC）
 
 > **状态：v1.1 · 2026-10-18**（v1.1 = 设计评审修订：三端统一 Bearer / 超管角色化 / 入口即时回收等，见 §13）
+> **实现进度（2026-10-18）**：**后端已落地**（§10 后端落点全部完成 + 集成测试；实现方式与两处细节澄清见 §13）；admin / blog / desktop 三端待实现
 > 范围：认证机制（登录 / 会话 / 注销）、RBAC 权限模型（权限目录 / 角色 / 授权）、三端（admin / blog / desktop）准入与落地要点、数据模型、接口草案
 > 定稿同步（已完成）：`docs/tech-stack.md`（待定清单 #1 收口 + 变更记录）、根 `AGENTS.md`（文档索引 + 跨端约定）；v1.1 已再次同步 `docs/tech-stack.md`（待定 #3 注记 + 变更记录）
 > 关联：`docs/tech-stack.md`（待定：#3 部署形态）、各端 README
@@ -134,11 +135,16 @@
 - 会话记录存**数据库而非纯内存**：部署重启不丢会话（桌面端 30 天空闲会话尤其）、可运维查询与留痕、未来多实例天然一致；本项目规模下每请求一次主键查询成本可忽略
 - **权限不嵌入 JWT**：角色 / 权限变更**不失效 token**——服务端以用户为单位缓存授权快照、写路径主动失效（§5.3），变更下一次请求即生效；避免"改一次角色配置，相关用户被批量踢下线"
 - 评估记录（为什么 JWT 而不是随机串）：会话记录必须存服务端的前提下，两者效果等同（JWT 只是更"标准"的会话句柄）；选 JWT 的收益是格式标准化、可解析调试、多端统一认知；代价是密钥管理（`JWT_SECRET`，32+ 字节随机值，配置提供、缺失启动失败）
+- **认证校验组件（2026-10-18 变更决策，补齐选型记录）：采用 Spring Security 标准认证链**——`DbUserDetailsService`（从 `sys_user` 加载；用户名归一化、`status != 1` → 账号禁用）+ `DaoAuthenticationProvider`（bcrypt 比对、账号状态检查、时序攻击缓解）+ `AuthenticationManager`（登录端点调用 `authenticate()`）；失败语义映射：`DisabledException` → `LOGIN_USER_DISABLED`，其余 `AuthenticationException`（含用户名不存在，不泄露存在性）→ `LOGIN_CREDENTIALS_INVALID`
+  - 收益：复用框架的密码比对 / 账号状态语义 / 时序攻击缓解（对不存在的用户执行等价比对）/ 认证失败事件；避免自研校验在细节上的持续维护
+  - 边界不变：**框架承担"验凭证"（加载用户 / 账号状态 / 密码比对）；会话行 / 撤销 / 端类型 / 入口校验 / 授权快照 / 限流仍为自研**（§5.2 / §5.3）——标准件不提供这些语义，故不迁移
+  - 附带效果：定义 `UserDetailsService` 后，Spring Boot 默认内存用户自动配置（`UserDetailsServiceAutoConfiguration`，启动打印随机密码）自动失效——不存在幽灵账号（无需显式排除配置）
+  - 已知行为差异（测试覆盖）：禁用账号在密码校验前被拒——"禁用 + 错误密码"由变更前的 `LOGIN_CREDENTIALS_INVALID` 变为 `LOGIN_USER_DISABLED`（标准链 `preAuthenticationChecks` 先于密码比对）
 
 ### 5.2 登录流程
 
 1. `POST /api/auth/login`，请求体 `{ username, password, client }`
-2. 校验顺序：限流 → 用户名归一化（小写）与密码（bcrypt 比对）→ 账号启用且未删除 → 该端入口（权限码集合含 `entry:{client}`；超管直通）
+2. 校验顺序：限流 → `AuthenticationManager.authenticate()`（标准链 §5.1：加载用户（归一化小写）→ 账号状态检查（禁用即拒）→ bcrypt 比对）→ 该端入口（权限码集合含 `entry:{client}`；超管直通）
 3. 创建会话：生成 `jti`，落会话行（签发时间 / 绝对上限），签发 JWT —— **三端统一：响应体返回 JWT + 身份信息**（不再使用 Cookie）
    - Web（`ADMIN` / `BLOG`）：JWT 由前端持有（localStorage，按应用独立 key，见 §6.2 / §6.3），后续请求以 `Authorization: Bearer` 携带
    - 桌面（`DESKTOP`）：JWT 存入本地凭证存储（§6.4）
@@ -340,6 +346,7 @@
 ## 9. 安全要点
 
 - 密码：BCrypt（Spring Security 内置，无需额外依赖；cost 采用默认）；策略 ≥ 8 位（自用场景不求复杂度）；全链路不落日志；root 初始密码为固定值（迁移内置，首启后应立即改密，§4）
+- 认证链：登录凭据校验走 Spring Security 标准链（`DbUserDetailsService` + `DaoAuthenticationProvider`，§5.1）——账号禁用检查先于密码比对、用户名不存在与密码错误同码不泄露存在性（含对不存在用户的等价比对缓解时序探测）；应用无任何默认 / 内置账号（默认内存用户自动配置已被自定义 `UserDetailsService` 顶替，启动不再输出随机密码）
 - JWT：HS256，密钥 `simple-notes.auth.jwt-secret: "${JWT_SECRET:}"`（32+ 字节随机；无默认、缺失启动失败）；claims 最小化（不嵌权限 / 角色）；JWT 明文不落库不落日志
 - 凭证持有：三端统一 Bearer，不再使用 Cookie（无 CSRF 面，登录请求同样无需反 CSRF token）；Web 端 token 存 localStorage——**XSS 暴露面为已接受代价**（缓解：严格 CSP / 无第三方脚本 / 服务端可撤销 + 会话绝对上限）
 - 超管面收窄：`SUPER_ADMIN` 不可分配 / 编辑 / 删除；持有超管角色的用户不可删除 / 禁用 / 改角色集合 / 重置密码；用户删除默认软删
@@ -349,7 +356,7 @@
 
 ## 10. 实现落点（进入实现时展开）
 
-- **后端**：`spring-boot-starter-security` + `spring-security-oauth2-jose`（JWT 签发 / 校验，Nimbus；坐标随 Spring Security BOM 7.1.1，无需手写版本）+ Caffeine（BOM 管理）；`SessionJwtFilter`（Bearer 验签 → 查会话 → 入口校验 → 授权快照；撤销路径集中收口）；`AuthzCache`（Caffeine；**先读全局版本再查库**；全局版本 bump + TTL 兜底；菜单树不进快照，`me` 每次实时查询）；路径域规则（会话端一致性）；方法级权限校验（`@PreAuthorize` + `Perms` 常量，超管角色短路）；**启动对账扫描器**（扫描 `Perms` 常量核对 `sys_menu`：缺失 fail-fast + 结构校验（§3.4））；Flyway V1（建表 + 初始节点 + 预置 root / 超管角色 / 绑定，§7.6）
+- **后端**：`spring-boot-starter-security` + `spring-security-oauth2-jose`（JWT 签发 / 校验，Nimbus；坐标随 Spring Security BOM 7.1.1，无需手写版本）+ Caffeine（BOM 管理）；`DbUserDetailsService` + `DaoAuthenticationProvider` / `AuthenticationManager`（登录凭据校验标准链，§5.1）；`SessionJwtFilter`（Bearer 验签 → 查会话 → 入口校验 → 授权快照；撤销路径集中收口）；`AuthzCache`（Caffeine；**先读全局版本再查库**；全局版本 bump + TTL 兜底；菜单树不进快照，`me` 每次实时查询）；路径域规则（会话端一致性）；方法级权限校验（`@PreAuthorize` + `Perms` 常量，超管角色短路）；**启动对账扫描器**（扫描 `Perms` 常量核对 `sys_menu`：缺失 fail-fast + 结构校验（§3.4））；Flyway V1（建表 + 初始节点 + 预置 root / 超管角色 / 绑定，§7.6）
 - **admin**：`stores/auth`（me + 菜单树缓存；凭证存 localStorage `sn.auth.admin`，请求带 Bearer，无 CSRF 逻辑）；页面注册表（权限码 → 路径 / 组件）与动态路由注册（按菜单列表 `addRoute`；先菜单后放行的初始化顺序）；`v-perm` 指令；登录页；用户管理（含「分配角色」独立按钮）、角色管理（菜单树勾选组件）、菜单管理（改名 / 调序 / 启停）
 - **blog**：登录 / 退出（v1 最小能力集；凭证 `sn.auth.blog`）；**desktop**：登录窗 + 本地凭证存取（`ITokenStore`）+ 401/403 处理
 - 三端 API 调用一律走生成客户端（契约定稿后；本轮不涉及）
@@ -397,3 +404,12 @@ v1.1 评审修订同步：`docs/tech-stack.md`（待定 #3 注记改写 + 变更
   - 角色分配独立为 `admin:user:assign-role`（新增 `PUT /api/admin/users/{id}/roles`、`GET /api/admin/roles/assignable`；创建用户不含角色）；角色分配提权记录为**已知风险并接受**
   - 新增 `PUT /api/auth/profile`；`me` 契约明确 `menus` 仅 ADMIN 端返回（超管返回全量菜单，不做过滤）
   - 实现约定：快照先读版本再查库、过滤停用角色与停用节点；菜单树不进快照；对账加结构校验；角色删除占用判断 join 活跃用户；V1 = 建表 + 初始节点 + 预置数据；限流用户名 + IP 双维度；`expire_time` 索引 + 空闲驳回顺带撤销会话
+- **2026-10-18** **后端实现落地**（实现与本文档无冲突；实现选择见下）：
+  - 完成 §10 后端落点全部：`spring-security-oauth2-jose`（HS256）+ Caffeine；`SessionJwtFilter`（验签 → 会话行 → 空闲 / 绝对超时 → 端一致性 → 快照 → 入口回收）；`AuthzCache`（先读版本再查库 + 事务提交后 bump + 10 分钟 TTL）；路径域规则；方法级 `@PreAuthorize` + `Perms` 常量 + 超管短路；启动对账（Perms 缺失 / 结构校验 / 注解引用的码未声明 → fail-fast）；`V1__init_auth_rbac.sql`（六表 + 初始节点 + 预置 root / `SUPER_ADMIN` / 绑定，root 初始密码 `admin@123456`）
+  - 落地接口与 §8 契约一致：`/api/auth/*`（login / logout / logout-all / me / password / profile）+ admin 用户 / 角色 / 菜单管理与 `roles/assignable`；错误体 `{code, message}`，语义码在 §8 之外增补 `VALIDATION_FAILED` / `NOT_FOUND` / `CONFLICT` / `METHOD_NOT_ALLOWED` / `INTERNAL_ERROR`
+  - 实现选择 ①：接口注解的权限码写成字符串字面量（SpEL 内引用 Java 常量需 `T(全限定名)`，可读性差），启动对账**额外扫描 `@PreAuthorize`** 校验其已在 `Perms` 声明——原子写偏差同样 fail-fast，与"注解统一引用常量"目标等价
+  - 实现选择 ②：无效 / 已撤销凭证按**匿名**处理（受保护接口仍 401；公开接口不受陈旧凭证影响），跨端凭证（blog 会话调 admin 接口）在本域视同无效——"拒绝"语义通过与匿名一致的 401 实现
+  - 实现选择 ③：仓储层零手写 JPQL（派生查询 + QueryDSL；关联表用 `@IdClass` 扁平主键；集合全量替换 = `deleteAll` + `flush` + `saveAll`；会话撤销 / 续期为实体态 + 脏检查）——约定已写入 `backend/AGENTS.md`「查询约定」
+  - 验证：Testcontainers（postgres:17-alpine）+ MockMvc 集成测试 34 例（登录语义 / 限流 / 入口即时回收 / 授权变更即时生效 / 会话超时与撤销 / 内置角色与超管保护 / 启动对账 fail-fast）
+  - **冻结提醒**：`V1__init_auth_rbac.sql` 已在测试环境执行——此后按"脚本只追加"纪律，任何修正走新迁移
+- **2026-10-18** 变更决策：**认证校验由自研改为 Spring Security 标准认证链**（`DbUserDetailsService` + `DaoAuthenticationProvider` + `AuthenticationManager`，登录端点调用 `authenticate()`）——补齐 §5.1"验凭证为何不用框架标准件"的选型记录（原 §5 只论证了 JWT / 会话存储 / 权限不嵌 token，认证校验组件属隐式选择）；边界不变（会话 / 撤销 / 端类型 / 入口 / 快照 / 限流仍自研）；默认内存用户自动配置随自定义 `UserDetailsService` 失效；已知行为差异：禁用账号在密码比对前被拒（§5.1）
