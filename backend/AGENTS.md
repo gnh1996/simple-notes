@@ -36,6 +36,14 @@
 - 例外表：`sys_user_role` / `sys_role_permission` 物理删除（全量替换式更新，仅 `create_by` / `create_time`）；`sys_user_session` 为运行数据（无软删与完整审计，过期 / 撤销行保留留痕）
 - JWT 密钥 `simple-notes.auth.jwt-secret`（环境变量 `JWT_SECRET`）无默认值，缺失 / 不足 32 字节启动失败；JWT 明文与密码不落库、不落日志
 
+## API 契约（OpenAPI，设计见 docs/tech-stack.md）
+
+- **契约单一来源 = 运行中的应用**：springdoc 暴露 `GET /v3/api-docs`（`config/OpenApiConfig` 声明元信息与 Bearer 方案；`SecurityConfig` 对该路径匿名放行）；Web / 桌面端一律据此生成客户端（Web：`frontend/packages/api`，`pnpm gen:api`）
+- 改完接口后跑一次 `pnpm gen:api`（`frontend/` 下），生成物 `packages/api/src/generated/schema.d.ts` 随仓库提交；**禁止在客户端手写接口类型**
+- 请求 DTO（record + jakarta validation 注解）：必填字段必须有校验注解（springdoc 据此标记 `required`）
+- 响应 DTO（record）：类级 `@Schema(requiredProperties = {...})` 列出**恒存在的 key**（Jackson 默认连 null 值一并输出，故可空字段也属于恒存在）；「值可能为 null」的字段（如 `email` / `lastLoginTime` / `description` / `parentId` / `menus`）不列入该清单，生成端 TS 类型保持可选，客户端需自行兜底
+- `AuthPrincipal` 等框架注入参数不出现在契约中（springdoc 忽略）；新增非 JSON 出参 / 特殊参数时先核对生成结果
+
 ## 数据库迁移约定
 
 - 建表 / 改表只走 Flyway：脚本放 `src/main/resources/db/migration`，命名 `V<版本>__<描述>.sql`
@@ -46,7 +54,6 @@
 - **迁移内 INSERT 的新行 id 一律随机生成**（`gen_random_uuid()`，PostgreSQL 13+ 内置，无需 pgcrypto）：不手挑 / 不复制 UUID，不维护"编号式"id 序列（如 `0000…0010 / 0020` 递增编号）——手编号在后续迁移里极易误撞主键；行间引用按业务码子查询（如 `(select id from sys_menu where code = 'admin:user')`），不硬编码具体 id（同一迁移内先插入的行对后续语句可见）。V1 预置超管的固定 UUID 为设计文档 §4 的规定，属既成事实
 
 ## 查询约定
-
 - 列表查询未显式指定排序规则时，默认按创建时间降序（`create_time DESC`）
 - 需要其他排序的场景（如按更新时间、置顶加权）须在对应设计 / 接口契约中显式说明
 - **不写手写 JPQL**（`@Query` / `@Modifying` 一律不用），查询实现方式固定为：

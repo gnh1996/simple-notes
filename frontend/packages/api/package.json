@@ -7,9 +7,11 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "gen:api": "openapi-typescript \"${OPENAPI_URL:-http://localhost:8080/v3/api-docs}\" -o src/generated/schema.d.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "openapi-typescript": "catalog:",
     "typescript": "catalog:"
   }
 }

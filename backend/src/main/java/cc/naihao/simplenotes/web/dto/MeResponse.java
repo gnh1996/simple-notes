@@ -1,6 +1,7 @@
 package cc.naihao.simplenotes.web.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 /**
@@ -8,6 +9,7 @@ import java.util.List;
  * {@code menus} 仅 ADMIN 端返回（可见菜单树，已按权限过滤；超管返回全量）。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(requiredProperties = { "user", "root", "entries", "codes", "roles" })
 public record MeResponse(
         UserSummary user,
         boolean root,

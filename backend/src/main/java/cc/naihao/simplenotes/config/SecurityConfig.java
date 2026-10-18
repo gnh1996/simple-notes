@@ -82,6 +82,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Spring Boot 错误分发路径：保证异常响应不被授权规则二次拦截
                         .requestMatchers("/error").permitAll()
+                        // OpenAPI 契约（docs/tech-stack.md：契约单一来源，前端 / 桌面端生成客户端用）
+                        .requestMatchers(HttpMethod.GET, "/v3/api-docs", "/v3/api-docs/**").permitAll()
                         // 登录匿名可访问；其余认证接口（logout / me / password / profile）要求会话
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                         // blog 公开读接口匿名可访问；写操作要求会话（blog:* 权限码随 blog 功能设计补充）

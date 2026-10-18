@@ -1,2 +1,126 @@
+/*
+ * 样式入口：Tailwind v4 + 共享设计 token + Element Plus。
+ *
+ * 层序（先声明再导入）：theme → base → components → element-plus → utilities
+ * - Element Plus 位于 Tailwind 的 base（Preflight 重置：button 去边框 / 去圆角等）之后，
+ *   组件样式不被重置压过；
+ * - 位于 utilities 之前，Tailwind 工具类（如 el-input 上的 w-64）可覆盖组件样式；
+ * - 本文件末尾的未分层覆盖优先级最高，用于应用级定制。
+ */
+@layer theme, base, components, element-plus, utilities;
 @import 'tailwindcss';
 @import '@simple-notes/ui/tokens.css';
+@import 'element-plus/dist/index.css' layer(element-plus);
+@import 'element-plus/theme-chalk/dark/css-vars.css' layer(element-plus);
+
+/*
+ * Element Plus 主题：主色对齐共享设计 token（packages/ui 的 brand 色板）。
+ * light-N / dark-2 派生变量与 Element Plus 官方公式一致（向白 / 黑混合），仅替换基色。
+ */
+:root {
+  --el-color-primary: var(--color-brand-500);
+  --el-color-primary-light-3: color-mix(in oklab, var(--color-brand-500) 70%, #ffffff);
+  --el-color-primary-light-5: color-mix(in oklab, var(--color-brand-500) 50%, #ffffff);
+  --el-color-primary-light-7: color-mix(in oklab, var(--color-brand-500) 30%, #ffffff);
+  --el-color-primary-light-8: color-mix(in oklab, var(--color-brand-500) 20%, #ffffff);
+  --el-color-primary-light-9: color-mix(in oklab, var(--color-brand-500) 10%, #ffffff);
+  --el-color-primary-dark-2: color-mix(in oklab, var(--color-brand-500) 80%, #000000);
+}
+
+html.dark {
+  /* 暗色下取更亮的品牌阶，保证对比度 */
+  --el-color-primary: var(--color-brand-400);
+  --el-color-primary-light-3: color-mix(in oklab, var(--color-brand-400) 70%, #141414);
+  --el-color-primary-light-5: color-mix(in oklab, var(--color-brand-400) 50%, #141414);
+  --el-color-primary-light-7: color-mix(in oklab, var(--color-brand-400) 30%, #141414);
+  --el-color-primary-light-8: color-mix(in oklab, var(--color-brand-400) 20%, #141414);
+  --el-color-primary-light-9: color-mix(in oklab, var(--color-brand-400) 10%, #141414);
+  --el-color-primary-dark-2: color-mix(in oklab, var(--color-brand-400) 80%, #ffffff);
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+}
+
+/* 卡片视觉（vben 风格：浅边框 + 圆角 + 无重阴影） */
+.el-card {
+  border-radius: 8px;
+}
+
+.el-card .el-card__header {
+  padding: 14px 16px;
+  font-weight: 600;
+}
+
+/* 侧边栏菜单：紧凑高度 + 选中态高亮块 */
+.app-sidebar-menu {
+  border-right: none;
+}
+
+.app-sidebar-menu:not(.el-menu--collapse) {
+  width: 100%;
+}
+
+.app-sidebar-menu .el-menu-item,
+.app-sidebar-menu .el-sub-menu__title {
+  height: 42px;
+  margin: 2px 8px;
+  border-radius: 6px;
+  line-height: 42px;
+}
+
+.app-sidebar-menu .el-menu-item.is-active {
+  background-color: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+
+.app-sidebar-menu.el-menu--collapse .el-menu-item,
+.app-sidebar-menu.el-menu--collapse .el-sub-menu__title {
+  margin: 2px 6px;
+}
+
+/* 页签栏：不可见内容区、紧凑卡片页签 */
+.app-tabs > .el-tabs__header {
+  margin: 0;
+  border-bottom: none;
+}
+
+.app-tabs > .el-tabs__content {
+  display: none;
+}
+
+.app-tabs .el-tabs__nav {
+  border: none;
+}
+
+.app-tabs .el-tabs__item {
+  height: 34px;
+  margin-right: 4px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 34px;
+}
+
+.app-tabs .el-tabs__item.is-active {
+  background-color: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+
+/* 移动端抽屉承载侧边栏：去掉内边距 */
+.app-menu-drawer .el-drawer__body {
+  padding: 0;
+}
+
+/* 表格：浅色表头（vben 风格） */
+.el-table th.el-table__cell {
+  background-color: var(--el-fill-color-light);
+  font-weight: 600;
+}

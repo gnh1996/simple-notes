@@ -13,6 +13,7 @@
     "build": "pnpm -r --if-present build",
     "build:admin": "pnpm --filter @simple-notes/admin build",
     "build:blog": "pnpm --filter @simple-notes/blog build",
+    "gen:api": "pnpm --filter @simple-notes/api gen:api",
     "typecheck": "pnpm -r --if-present typecheck"
   },
   "devDependencies": {

@@ -21,7 +21,15 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客前台）+ `pa
 ## 响应式
 
 - `useBreakpoint()`（`@simple-notes/shared`）是唯一的断点判断来源，禁止 UA / 设备类型判断
-- 路由与业务逻辑只有一份；只在展示层按断点分叉（如表格 vs 卡片列表），示例见 `apps/admin/src/views/DashboardView.vue`
+- 路由与业务逻辑只有一份；只在展示层按断点分叉（如桌面端侧边栏 vs 移动端抽屉，见 `apps/admin/src/layouts/AdminLayout.vue`）
+
+## 管理端（apps/admin）
+
+- **服务端菜单驱动**：侧边栏渲染 `me.menus`；路由由页面注册表（`src/router/page-registry.ts`，权限码 → 路径 / 组件 / 图标）映射后 `addRoute`；注册表未命中按目录递归；前端无路由级权限判断（`docs/auth-rbac.md` §6.2）
+- **权限**：按钮用 `v-perm="'admin:xxx:yyy'"`（无码移除 DOM；超管自动放行）；接口 401 → 清凭证回登录页，403 `PERMISSION_DENIED` → 刷新 `me` 并重建菜单 / 路由
+- **API 调用**：只用 `src/api` 的实例（自动注入 Bearer 与统一错误处理），禁止在页面里裸调 fetch
+- **样式**：Element Plus 经 `@layer element-plus` 导入（层序 `theme, base, components, element-plus, utilities`）；Tailwind 工具类可直接覆盖组件样式；应用级覆盖写在 `styles/main.css` 末尾
+- **主题 / 布局**：暗色主题由 `useTheme`（模块级单例 + `html.dark`）驱动，首屏由 `index.html` 内联脚本防闪白；多标签页状态在 `stores/tabs`（内存态，不做持久化）
 
 ## 命令
 
@@ -31,4 +39,5 @@ pnpm dev:admin            # 5173
 pnpm dev:blog             # 5174
 pnpm typecheck            # 全仓类型检查
 pnpm build:admin          # 单应用构建
+pnpm gen:api              # 依后端 OpenAPI 重新生成 packages/api 类型（需后端已启动）
 ```

@@ -21,8 +21,9 @@
 | 项 | 结论 |
 | --- | --- |
 | 基础栈 | Vue 3.5 + Vite 8 + TypeScript 6 + vue-router 5 + pinia 4 |
-| 样式 | Tailwind CSS v4 + 共享设计 token（`packages/ui`） |
+| 样式 | Tailwind CSS v4 + 共享设计 token（`packages/ui`）；Element Plus 样式按 CSS 层导入（见 `frontend/AGENTS.md`） |
 | 管理端 UI | Element Plus 2.14 |
+| API 客户端 | 后端 springdoc 导出 OpenAPI → `packages/api` 用 **openapi-typescript** 生成类型（`pnpm gen:api`）+ 自建轻量 fetch 封装（传输层与 Bearer 注入在应用侧） |
 | Markdown 编辑器 | md-editor-v3 7（管理端） |
 | Markdown 渲染 | 博客前台复用 md-editor-v3 `MdPreview`（与编辑器同源；备选自建 shiki 管线未采用） |
 | 响应式 | `useBreakpoint()` 单一断点来源，展示层分叉 |
@@ -51,7 +52,7 @@
 2. **附件 / 图片访问链路**：公开桶 + CDN vs 预签名 URL、直传 vs 服务端中转（存储后端已定 Cloudflare R2，随图片功能设计定）
 3. **部署形态**：admin 挂 `/admin` 子路径 vs 子域（影响 vite `base` 与资源 / 代理配置；认证已不依赖 Cookie，无跨域 Cookie 约束）
 4. **桌面本地存储实现**：Microsoft.Data.Sqlite 手写 SQL vs EF Core
-5. **API 客户端生成工具**：Web 端 openapi-typescript/openapi-fetch vs orval；C# 端 Kiota vs openapi-generator
+5. **API 客户端生成工具**（Web 端已定，2026-10-18）：**openapi-typescript**（仅生成类型到 `packages/api/src/generated`，请求侧沿用 `packages/api` 的轻量 fetch 封装）；契约来自后端 springdoc 的 `/v3/api-docs`（`pnpm gen:api` 拉取生成）。C# 端 Kiota vs openapi-generator 待定
 6. **工程化**：Vitest、ESLint/Prettier、后端 Testcontainers、机密防泄漏扫描（gitleaks 等）随实现补 —— **后端 Testcontainers 已补**（2026-10-18，随 RBAC 集成测试起用：`spring-boot-testcontainers` + `testcontainers-postgresql`，`@ServiceConnection` 注入）；其余待补
 7. **桌面 Markdown 编辑库正式确认**（AvaloniaEdit 为默认候选）
 8. **logback CVE-2026-19880 复查**：1.5.x 线无修复版，待 Spring Boot 升级至 logback 1.6.x 或 1.5.x 发布修复版后复核（详见变更记录）
@@ -63,6 +64,14 @@
 - 已发生的变更记录可追加到本文件文末
 
 ## 变更记录
+
+### 2026-10-18 · admin 端实现落地（后端接 springdoc；Web 端 API 客户端生成链路收口）
+
+- **后端 API 契约**：接入 `springdoc-openapi-starter-webmvc-api` 3.1.1（v3 线对应 Spring Boot 4；只含 JSON 端点，无 Swagger UI）；`/v3/api-docs` 匿名放行（`SecurityConfig`），`OpenApiConfig` 声明契约元信息与 Bearer 方案；响应 DTO（record）补 `@Schema(requiredProperties = ...)`，使契约中"恒存在的 key"为 required、可空字段保持可选（生成端 TS 类型更贴近实际）
+- **API 客户端生成（待定 #5 的 Web 端收口）**：类型用 **openapi-typescript** 生成到 `frontend/packages/api/src/generated/schema.d.ts`（`pnpm gen:api`，默认拉 `http://localhost:8080/v3/api-docs`，可用 `OPENAPI_URL` 覆盖）；端点封装手写在 `packages/api/src/endpoints.ts`，传输层沿用手写轻量 fetch 封装——不引入 openapi-fetch / orval
+- **admin 端落地**（设计依据 `docs/auth-rbac.md` §6.2）：服务端菜单驱动动态路由 + 页面注册表、`v-perm` 指令、401 清凭证回登录页 / 403 刷新 me 重建菜单、多标签页、暗色主题（跟随系统 + 手动覆盖）、移动端抽屉侧边栏；页面：登录、首页、用户管理、角色管理（含按端分 Tab 的权限树授权）、菜单管理、个人中心
+- **样式优先级约定**：Element Plus 样式经 `@layer element-plus` 导入（层序 `theme, base, components, element-plus, utilities`）——避免 Tailwind Preflight 重置组件样式，同时保证工具类可覆盖组件样式（详见 `frontend/AGENTS.md`）
+- **验证**：`pnpm typecheck` / `pnpm build:admin` 通过；浏览器端到端走查（登录 / 深链刷新 / 各页面 CRUD / 授权勾选与半选态 / v-perm 隐藏 / 403 自动刷新菜单 / 主题与页签）通过
 
 ### 2026-10-18 · RBAC 后端实现落地（详见 `docs/auth-rbac.md` §13）
 

@@ -1,5 +1,6 @@
 package cc.naihao.simplenotes.web.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 /**
@@ -7,5 +8,6 @@ import java.util.List;
  *
  * <p>{@code code} 供前端页面注册表映射路径与组件；名称 / 顺序 / 层级均以 sys_menu 为准。
  */
+@Schema(requiredProperties = { "id", "code", "name", "sort", "children" })
 public record MenuNode(String id, String code, String name, int sort, List<MenuNode> children) {
 }

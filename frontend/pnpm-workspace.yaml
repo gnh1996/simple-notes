@@ -11,6 +11,7 @@ catalog:
   '@vue/devtools-api': ^8.2.1
   '@vue/tsconfig': ^0.9.1
   element-plus: ^2.14.7
+  openapi-typescript: ^7.13.0
   pinia: ^4.1.0
   tailwindcss: ^4.3.3
   typescript: ~6.0.3
