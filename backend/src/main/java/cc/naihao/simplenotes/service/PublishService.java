@@ -4,7 +4,6 @@ import cc.naihao.simplenotes.common.ApiException;
 import cc.naihao.simplenotes.domain.Note;
 import cc.naihao.simplenotes.domain.NoteKind;
 import cc.naihao.simplenotes.domain.NoteRevision;
-import cc.naihao.simplenotes.domain.NoteStatus;
 import cc.naihao.simplenotes.domain.PublishStatus;
 import cc.naihao.simplenotes.repository.NoteRepository;
 import cc.naihao.simplenotes.repository.NoteRevisionRepository;
@@ -41,9 +40,6 @@ public class PublishService {
     public Note publish(String id, long version) {
         Note note = requirePost(id);
         requireVersion(note, version);
-        if (note.getStatus() != NoteStatus.ACTIVE) {
-            throw ApiException.invalidState("已归档 / 停用的文章不能发布");
-        }
 
         NoteRevision lastRevision = note.getPublishedRevisionId() == null ? null
                 : revisionRepository.findById(note.getPublishedRevisionId()).orElse(null);

@@ -837,8 +837,6 @@ export interface components {
             folderId?: string;
             tags?: string[];
             pinned?: boolean;
-            /** @enum {string} */
-            status?: "ACTIVE" | "ARCHIVED";
         };
         NoteDetail: {
             id: string;
@@ -848,8 +846,6 @@ export interface components {
             folderName?: string;
             tags: components["schemas"]["TagBrief"][];
             pinned: boolean;
-            /** @enum {string} */
-            status: "ACTIVE" | "ARCHIVED";
             /** Format: date-time */
             createTime?: string;
             /** Format: date-time */
@@ -1051,8 +1047,6 @@ export interface components {
             kind: "NOTE" | "POST";
             title: string;
             /** @enum {string} */
-            status: "ACTIVE" | "ARCHIVED";
-            /** @enum {string} */
             publishStatus?: "DRAFT" | "PUBLISHED" | "UNPUBLISHED";
             hasUnpublishedChanges: boolean;
             draftTagged: boolean;
@@ -1074,8 +1068,6 @@ export interface components {
             /** @enum {string} */
             kind: "NOTE" | "POST";
             title: string;
-            /** @enum {string} */
-            status: "ACTIVE" | "ARCHIVED";
             /** @enum {string} */
             publishStatus?: "DRAFT" | "PUBLISHED" | "UNPUBLISHED";
             hasUnpublishedChanges: boolean;
@@ -1128,8 +1120,6 @@ export interface components {
             folderName?: string;
             tags: components["schemas"]["TagBrief"][];
             pinned: boolean;
-            /** @enum {string} */
-            status: "ACTIVE" | "ARCHIVED";
             /** Format: date-time */
             createTime?: string;
             /** Format: date-time */
@@ -2002,7 +1992,6 @@ export interface operations {
                 keyword?: string;
                 folderId?: string;
                 tagId?: string;
-                status?: "ACTIVE" | "ARCHIVED";
                 pinnedOnly?: boolean;
             };
             header?: never;

@@ -36,7 +36,6 @@ const form = reactive({
   folderId: '',
   tags: [] as string[],
   pinned: false,
-  status: 'ACTIVE' as 'ACTIVE' | 'ARCHIVED',
   version: 0,
 })
 
@@ -79,7 +78,6 @@ function resetForm(): void {
   form.folderId = ''
   form.tags = []
   form.pinned = false
-  form.status = 'ACTIVE'
   form.version = 0
   dirty.value = false
   lastSavedAt.value = null
@@ -93,7 +91,6 @@ function applyNote(note: NoteDetail): void {
   form.folderId = note.folderId ?? ''
   form.tags = tagNames(note.tags)
   form.pinned = note.pinned
-  form.status = note.status
   form.version = note.version
   lastSavedAt.value = formatDateTime(note.updateTime || note.createTime)
   dirty.value = false
@@ -118,7 +115,6 @@ watch(
     folderId: form.folderId,
     tags: [...form.tags],
     pinned: form.pinned,
-    status: form.status,
   }),
   scheduleAutoSave,
 )
@@ -143,7 +139,6 @@ async function save(silent = false): Promise<NoteDetail | null> {
       folderId: form.folderId || undefined,
       tags: form.tags,
       pinned: form.pinned,
-      status: form.status,
       version: form.version,
     }
     const note = isNew.value
@@ -195,10 +190,6 @@ async function promote(): Promise<void> {
   } catch (error) {
     notifyError(error, '转换失败')
   }
-}
-
-function setArchived(value: string | number | boolean): void {
-  form.status = value ? 'ARCHIVED' : 'ACTIVE'
 }
 
 const uploadImages: UploadImgEvent = async (files, callback) => {
@@ -282,14 +273,6 @@ onBeforeUnmount(() => {
           </el-form-item>
           <el-form-item label="置顶">
             <el-switch v-model="form.pinned" />
-          </el-form-item>
-          <el-form-item label="归档">
-            <el-switch
-              :model-value="form.status === 'ARCHIVED'"
-              active-text="已归档"
-              inactive-text="使用中"
-              @update:model-value="setArchived"
-            />
           </el-form-item>
           <el-form-item label="更新时间">
             <span class="text-sm text-[var(--el-text-color-secondary)]">{{ lastSavedAt || '—' }}</span>

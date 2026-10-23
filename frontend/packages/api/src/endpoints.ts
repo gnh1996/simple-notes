@@ -86,7 +86,6 @@ export interface NoteListQuery {
   keyword?: string
   folderId?: string
   tagId?: string
-  status?: 'ACTIVE' | 'ARCHIVED'
   pinnedOnly?: boolean
 }
 

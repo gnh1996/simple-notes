@@ -4,7 +4,6 @@ import cc.naihao.simplenotes.common.ApiException;
 import cc.naihao.simplenotes.domain.Note;
 import cc.naihao.simplenotes.domain.NoteFolder;
 import cc.naihao.simplenotes.domain.NoteKind;
-import cc.naihao.simplenotes.domain.NoteStatus;
 import cc.naihao.simplenotes.domain.QNote;
 import cc.naihao.simplenotes.domain.QNoteTag;
 import cc.naihao.simplenotes.repository.NoteFolderRepository;
@@ -46,7 +45,7 @@ public class NoteService {
 
     @Transactional(readOnly = true)
     public PageResponse<NoteSummary> list(int page, int size, String keyword, String folderId,
-            String tagId, NoteStatus status, boolean pinnedOnly) {
+            String tagId, boolean pinnedOnly) {
         int safePage = Math.max(page, 1);
         int safeSize = Math.clamp(size, 1, 100);
         AuthPrincipal principal = SecurityUtils.requirePrincipal();
@@ -70,9 +69,6 @@ public class NoteService {
                     .from(link)
                     .where(link.noteId.eq(note.id), link.tagId.eq(tagId))
                     .exists());
-        }
-        if (status != null) {
-            predicate = predicate.and(note.status.eq(status));
         }
         if (pinnedOnly) {
             predicate = predicate.and(note.pinned.eq((short) 1));
@@ -116,7 +112,6 @@ public class NoteService {
         note.setOwnerId(principal.userId());
         note.setFolderId(folder == null ? null : folder.getId());
         note.setPinned(shortFlag(request.pinned()));
-        note.setStatus(NoteStatus.ACTIVE);
         note.setCreateBy(principal.userId());
         noteRepository.saveAndFlush(note);
 
@@ -138,9 +133,6 @@ public class NoteService {
         note.setFolderId(folder == null ? null : folder.getId());
         if (request.pinned() != null) {
             note.setPinned(shortFlag(request.pinned()));
-        }
-        if (request.status() != null) {
-            note.setStatus(request.status());
         }
         note.setUpdateBy(principal.userId());
         // 即使只改标签，也让 note 行产生 update_time / version 变化
@@ -186,7 +178,6 @@ public class NoteService {
                 folder == null ? null : folder.getName(),
                 tagService.tagsOfNote(note.getId()),
                 note.getPinned() == 1,
-                note.getStatus(),
                 note.getCreateTime(),
                 note.getUpdateTime(),
                 note.getVersion());
@@ -200,7 +191,6 @@ public class NoteService {
                 folder == null ? null : folder.getName(),
                 tags,
                 note.getPinned() == 1,
-                note.getStatus(),
                 note.getCreateTime(),
                 note.getUpdateTime(),
                 note.getVersion());

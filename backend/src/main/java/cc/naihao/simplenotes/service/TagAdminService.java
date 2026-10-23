@@ -339,13 +339,13 @@ public class TagAdminService {
     }
 
     private TagContentResponse toContent(Note note, boolean draftTagged, boolean publishedTagged) {
-        return new TagContentResponse(note.getId(), note.getKind(), note.getTitle(), note.getStatus(),
+        return new TagContentResponse(note.getId(), note.getKind(), note.getTitle(),
                 note.getPublishStatus(), hasChanges(note), draftTagged, publishedTagged,
                 note.getUpdateTime());
     }
 
     private TagContentCandidate toCandidate(Note note) {
-        return new TagContentCandidate(note.getId(), note.getKind(), note.getTitle(), note.getStatus(),
+        return new TagContentCandidate(note.getId(), note.getKind(), note.getTitle(),
                 note.getPublishStatus(), hasChanges(note), note.getUpdateTime());
     }
 

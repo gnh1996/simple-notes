@@ -49,10 +49,6 @@ public class Note extends BaseEntity {
     @Column(name = "pinned", nullable = false)
     private short pinned = 0;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", length = 16, nullable = false)
-    private NoteStatus status = NoteStatus.ACTIVE;
-
     /** 仅 POST：公开 URL 标识；首次发布后不可修改 */
     @Column(name = "slug", length = 200)
     private String slug;

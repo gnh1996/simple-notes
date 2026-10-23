@@ -141,9 +141,6 @@ async function removeContent(content: TagContentResponse): Promise<void> {
 }
 
 function statusText(content: TagContentResponse): string {
-  if (content.kind === 'NOTE') {
-    return content.status === 'ACTIVE' ? '使用中' : '已归档'
-  }
   if (content.publishStatus === 'PUBLISHED') return '已发布'
   if (content.publishStatus === 'UNPUBLISHED') return '已下架'
   return '草稿'
@@ -210,8 +207,13 @@ function reload(): void {
       </el-table-column>
       <el-table-column label="状态" width="120">
         <template #default="{ row }">
+          <span
+            v-if="row.kind === 'NOTE'"
+            class="text-xs text-[var(--el-text-color-secondary)]"
+          >—</span>
           <el-tag
-            :type="row.kind === 'POST' && row.publishStatus === 'PUBLISHED' ? 'success' : 'info'"
+            v-else
+            :type="row.publishStatus === 'PUBLISHED' ? 'success' : 'info'"
             size="small"
             effect="plain"
           >

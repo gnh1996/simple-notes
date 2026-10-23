@@ -53,8 +53,7 @@ class ContentApiIntegrationTest extends IntegrationTestBase {
                 "title", title + "-改",
                 "content", "# 正文\n\n改过",
                 "tags", List.of("测试"),
-                "pinned", false,
-                "status", "ACTIVE")).andExpect(status().isOk()));
+                "pinned", false)).andExpect(status().isOk()));
         assertThat(updated.path("version").asLong()).isGreaterThan(version);
 
         var post = body(authedPost("/api/admin/notes/" + noteId + "/promote", token, null)

@@ -1,6 +1,5 @@
 package cc.naihao.simplenotes.web.dto;
 
-import cc.naihao.simplenotes.domain.NoteStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -22,7 +21,5 @@ public record UpdateNoteRequest(
 
         List<@Size(max = 32, message = "标签最长 32 个字符") String> tags,
 
-        Boolean pinned,
-
-        NoteStatus status) {
+        Boolean pinned) {
 }

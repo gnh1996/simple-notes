@@ -19,7 +19,6 @@ const query = reactive({
   size: 20,
   keyword: '',
   folderId: '',
-  status: '' as '' | 'ACTIVE' | 'ARCHIVED',
   pinnedOnly: false,
 })
 
@@ -33,7 +32,6 @@ async function load(): Promise<void> {
       size: query.size,
       keyword: query.keyword || undefined,
       folderId: query.folderId || undefined,
-      status: query.status || undefined,
       pinnedOnly: query.pinnedOnly || undefined,
     })
     rows.value = page.items ?? []
@@ -70,7 +68,6 @@ function selectFolder(folderId?: string): void {
 function reset(): void {
   query.keyword = ''
   query.folderId = ''
-  query.status = ''
   query.pinnedOnly = false
   query.page = 1
   void load()
@@ -196,10 +193,6 @@ function handlePageChange(page: number): void {
         <el-select v-model="query.folderId" placeholder="全部文件夹" clearable class="w-40" @change="search">
           <el-option v-for="folder in folders" :key="folder.id" :label="folder.name" :value="folder.id" />
         </el-select>
-        <el-select v-model="query.status" placeholder="全部状态" clearable class="w-32" @change="search">
-          <el-option label="使用中" value="ACTIVE" />
-          <el-option label="已归档" value="ARCHIVED" />
-        </el-select>
         <el-checkbox v-model="query.pinnedOnly" @change="search">仅置顶</el-checkbox>
         <el-button type="primary" :icon="Search" @click="search">搜索</el-button>
         <el-button @click="reset">重置</el-button>
@@ -277,13 +270,6 @@ function handlePageChange(page: number): void {
                 <el-tag v-for="tag in row.tags" :key="tag.id" size="small" effect="plain">{{ tag.name }}</el-tag>
                 <span v-if="!row.tags?.length" class="text-xs text-[var(--el-text-color-secondary)]">—</span>
               </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="90" align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" size="small" effect="light">
-                {{ row.status === 'ACTIVE' ? '使用中' : '已归档' }}
-              </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="更新时间" width="170">

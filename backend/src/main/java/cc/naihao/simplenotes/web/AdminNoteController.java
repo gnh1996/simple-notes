@@ -1,6 +1,5 @@
 package cc.naihao.simplenotes.web;
 
-import cc.naihao.simplenotes.domain.NoteStatus;
 import cc.naihao.simplenotes.service.NoteService;
 import cc.naihao.simplenotes.service.PostService;
 import cc.naihao.simplenotes.web.dto.CreateNoteRequest;
@@ -43,9 +42,8 @@ public class AdminNoteController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String folderId,
             @RequestParam(required = false) String tagId,
-            @RequestParam(required = false) NoteStatus status,
             @RequestParam(defaultValue = "false") boolean pinnedOnly) {
-        return noteService.list(page, size, keyword, folderId, tagId, status, pinnedOnly);
+        return noteService.list(page, size, keyword, folderId, tagId, pinnedOnly);
     }
 
     @GetMapping("/{id}")

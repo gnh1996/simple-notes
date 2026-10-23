@@ -105,7 +105,6 @@ POST / UNPUBLISHED（后台保留，公开不可见）
 | `owner_id` | `varchar(36)` NOT NULL | FK `sys_user`；作者 / 所有者 |
 | `folder_id` | `varchar(36)` NULL | FK `note_folder`；仅 `NOTE` 使用，转文章时清空 |
 | `pinned` | `smallint` NOT NULL DEFAULT 0 | 置顶；公开首页的置顶属于运营字段，立即生效 |
-| `status` | `varchar(16)` NOT NULL DEFAULT `ACTIVE` | `ACTIVE` / `ARCHIVED`；仅笔记可归档，文章始终 `ACTIVE` |
 | `slug` | `varchar(200)` NULL | 仅 `POST`；首次发布后不可修改，公开 URL 使用 |
 | `cover_attachment_id` | `varchar(36)` NULL | FK `attachment`；文章封面，记事本必须为 NULL |
 | `publish_status` | `varchar(16)` NULL | `DRAFT` / `PUBLISHED` / `UNPUBLISHED`；记事本必须为 NULL |
@@ -121,7 +120,7 @@ POST / UNPUBLISHED（后台保留，公开不可见）
 - `content` 只存 Markdown，不存渲染后的 HTML，保持 `docs/markdown-dialect.md` 的约定。
 - `slug` 在首次发布时生成，之后不可修改；不引入 slug 历史 / 301（后续需要再设计）。
 - `pinned` 不参与发布快照：置顶是首页运营行为，允许立即生效。
-- `status` 只服务笔记的归档；文章下架用 `publish_status = UNPUBLISHED`，避免两个状态互相冲突。
+- 不提供“归档”：随手记定位云端记事本，修改内容是常态；收纳需求由软删除 + 回收站覆盖。文章下架仍用 `publish_status = UNPUBLISHED`。
 - `version` 用于 Web 多标签页并发编辑和未来桌面同步；BaseEntity 目前没有，需在 `Note` 实体上单独声明。
 
 ### 3.2 发布快照 `note_revision`
@@ -224,7 +223,6 @@ create table note (
     owner_id              varchar(36)  not null references sys_user (id),
     folder_id             varchar(36)  references note_folder (id),
     pinned                smallint     not null default 0,
-    status                varchar(16)  not null default 'ACTIVE',
     slug                  varchar(200),
     cover_attachment_id   varchar(36)  references attachment (id),
     publish_status        varchar(16),
@@ -241,7 +239,6 @@ create table note (
     delete_by             varchar(36),
     delete_flag           smallint     not null default 0,
     constraint ck_note_kind check (kind in ('NOTE', 'POST')),
-    constraint ck_note_status check (status in ('ACTIVE', 'ARCHIVED')),
     constraint ck_note_publish_status check (
         publish_status is null
         or publish_status in ('DRAFT', 'PUBLISHED', 'UNPUBLISHED')
@@ -249,8 +246,7 @@ create table note (
     constraint ck_note_note_only check (
         kind = 'POST'
         or (
-            status in ('ACTIVE', 'ARCHIVED')
-            and summary is null
+            summary is null
             and slug is null
             and cover_attachment_id is null
             and publish_status is null
@@ -263,8 +259,7 @@ create table note (
     constraint ck_note_post_only check (
         kind = 'NOTE'
         or (
-            status = 'ACTIVE'
-            and folder_id is null
+            folder_id is null
             and publish_status is not null
         )
     ),
@@ -371,9 +366,7 @@ create index idx_note_revision_note
 
 ```text
 NOTE:
-  ACTIVE ⇄ ARCHIVED
-      │
-      └── delete ──> TRASH ── restore ──> 原状态
+  未删除 ⇄ TRASH（delete / restore）
 
 POST:
   DRAFT ── publish ──> PUBLISHED
@@ -385,7 +378,7 @@ POST:
     │                                              │
     └────────────── 无快照时恢复为 DRAFT ◄─────────┘
 
-  任意状态 ── delete ──> TRASH
+  POST 任意状态 ── delete ──> TRASH
   TRASH ── restore ──> DRAFT（从未发布） / UNPUBLISHED（已发布过）
 ```
 
@@ -394,7 +387,7 @@ POST:
 | 操作 | 前置状态 | 结果 |
 | --- | --- | --- |
 | 新建 | — | `kind=NOTE`，私有 |
-| `promote` | `NOTE`，且未删除 | `kind=POST`、`publish_status=DRAFT`、`status=ACTIVE`；清空 `folder_id`；更新 `draft_modified_at`；保留标题 / 正文 / 标签；slug / 摘要 / 封面由用户后续填写 |
+| `promote` | `NOTE`，且未删除 | `kind=POST`、`publish_status=DRAFT`；清空 `folder_id`；更新 `draft_modified_at`；保留标题 / 正文 / 标签；slug / 摘要 / 封面由用户后续填写 |
 | 保存草稿 | `NOTE` / `POST` 任意 | 更新草稿字段；文章额外更新 `draft_modified_at=now`；`version++` |
 | 首次发布 | `POST / DRAFT` | 生成 slug（如为空）；创建 revision；`PUBLISHED`；设置首次 / 最近发布时间 |
 | 更新发布 | `POST / PUBLISHED` 且有未发布更改 | 创建新 revision；移动指针；更新最近发布时间 |
@@ -403,14 +396,14 @@ POST:
 | 重新发布（无更改） | `POST / UNPUBLISHED` 且已有快照 | 复用快照指针；`PUBLISHED`；更新最近发布时间 |
 | 重新发布（有更改） | `POST / UNPUBLISHED` 且有未发布更改 | 创建新 revision；`PUBLISHED` |
 | 删除 | 任意未删除内容 | 软删除；文章若已发布先置 `UNPUBLISHED` |
-| 恢复 | 回收站 | 笔记恢复原状态；文章恢复为 `UNPUBLISHED` |
+| 恢复 | 回收站 | 笔记恢复未删除；文章恢复为 `UNPUBLISHED` |
 | 转回笔记 | — | **不提供** |
 
 ### 4.4 发布事务
 
 `PublishService.publish(postId, version)`：
 
-1. 加载 `note`，校验 `kind=POST`、未删除、`status=ACTIVE`；校验 `version` 与请求一致（乐观锁）。
+1. 加载 `note`，校验 `kind=POST`、未删除；校验 `version` 与请求一致（乐观锁）。
 2. 校验状态转换：`DRAFT` / `PUBLISHED` / `UNPUBLISHED` 可发布；`PUBLISHED` 无更改则拒绝。
 3. 校验发布字段：
    - `title` 非空；
@@ -507,17 +500,17 @@ note.delete_flag = 0
 
 | 方法 / 路径 | 权限 | 说明 |
 | --- | --- | --- |
-| `GET /api/admin/notes` | `admin:note` | 列表；参数 `keyword` / `folderId` / `tagId` / `status` / `page` / `size`；默认按置顶、更新时间降序 |
+| `GET /api/admin/notes` | `admin:note` | 列表；参数 `keyword` / `folderId` / `tagId` / `page` / `size`；默认按置顶、更新时间降序 |
 | `POST /api/admin/notes` | `admin:note:create` | 新建笔记，强制 `kind=NOTE` |
 | `GET /api/admin/notes/{id}` | `admin:note` | 详情；只允许本人 / 超管 |
-| `PUT /api/admin/notes/{id}` | `admin:note:update` | 更新标题 / 正文 / 文件夹 / 标签 / 置顶 / 归档状态；请求带 `version`；不接受 `kind` |
+| `PUT /api/admin/notes/{id}` | `admin:note:update` | 更新标题 / 正文 / 文件夹 / 标签 / 置顶；请求带 `version`；不接受 `kind` |
 | `DELETE /api/admin/notes/{id}` | `admin:note:delete` | 软删除 |
 | `POST /api/admin/notes/{id}/promote` | `admin:post:create` | 转为博客草稿；原笔记不再出现在笔记列表 |
 | `GET /api/admin/notes/trash` | `admin:note:delete` | 笔记回收站列表 |
 | `POST /api/admin/notes/{id}/restore` | `admin:note:delete` | 恢复笔记 |
 | `DELETE /api/admin/notes/{id}/purge` | `admin:note:delete` | 永久删除（P1，可先不实现） |
 
-笔记列表响应建议：`id`、`title`、`folder`、`tags`、`pinned`、`status`、`updatedAt`。不在列表返回完整正文。
+笔记列表响应建议：`id`、`title`、`folder`、`tags`、`pinned`、`updatedAt`。不在列表返回完整正文。
 
 ### 6.2 admin：博客文章
 
@@ -600,7 +593,7 @@ note.delete_flag = 0
 | --- | --- | --- |
 | `admin:note` | MENU | 随手记页面 + 读接口 |
 | `admin:note:create` | ACTION | 新建笔记 |
-| `admin:note:update` | ACTION | 编辑笔记 / 文件夹 / 归档 |
+| `admin:note:update` | ACTION | 编辑笔记 / 文件夹 |
 | `admin:note:delete` | ACTION | 删除 / 回收站 / 恢复 |
 | `admin:post` | MENU | 博客管理页面 + 读接口 |
 | `admin:post:create` | ACTION | 新建文章 / 笔记转博客 |
@@ -665,7 +658,7 @@ note.delete_flag = 0
 **共享内容能力**
 
 - Markdown 编辑 / 预览 / 自动保存；
-- 标题、正文、标签、文件夹、置顶、归档、回收站；
+- 标题、正文、标签、文件夹、置顶、回收站；
 - 列表、搜索（标题 / 正文 / 标签）、筛选、排序、分页；
 - 标签联想复用、标签管理（改名 / 删除 / 使用量 / 内容分配）；
 - 图片上传、封面、正文插图、媒体库；
@@ -674,7 +667,7 @@ note.delete_flag = 0
 **随手记**
 
 - 默认新建为笔记；
-- 文件夹、标签、置顶、归档；
+- 文件夹、标签、置顶；
 - 私有，不进入任何公开接口；
 - 回收站 / 恢复；
 - 一键转为博客草稿（不可逆）。
@@ -797,20 +790,21 @@ note.delete_flag = 0
 
 ### 12.1 Flyway
 
-- **实现状态**：V2 / V3 / V4 已落地并通过 Testcontainers 集成测试；后续结构变更走新迁移。
+- **实现状态**：V2–V5 已落地并通过 Testcontainers 集成测试；后续结构变更走新迁移。
 - `V1__init_auth_rbac.sql` 已冻结，不改。
 - `V2__init_content.sql`：`note_folder`、`tag`、`attachment`、`note`、`note_revision`、`note_tag`、`note_revision_tag`、索引、约束、`published_revision_id` 外键。
 - `V3__add_content_permissions.sql`：内容域 `sys_menu` 节点；id 用 `gen_random_uuid()`，父节点按 code 子查询，不手填 UUID。
 - `V4__add_tag_permissions.sql`：标签管理 `admin:tag` 菜单与动作节点。
+- `V5__drop_note_status.sql`：移除笔记归档字段 `note.status`，重建不依赖它的 `ck_note_note_only` / `ck_note_post_only` 约束。
 - 建表顺序：`note_folder` / `tag` / `attachment` → `note` → `note_revision` → 关联表 → `alter table note add constraint fk_note_published_revision`。
 
 ### 12.2 后端
 
-- 实体：`Note`、`NoteRevision`、`NoteFolder`、`Tag`、`NoteTag`、`NoteRevisionTag`、`Attachment`；枚举 `NoteKind`、`NoteStatus`、`PublishStatus`。
+- 实体：`Note`、`NoteRevision`、`NoteFolder`、`Tag`、`NoteTag`、`NoteRevisionTag`、`Attachment`；枚举 `NoteKind`、`PublishStatus`。
 - `Note` 增加 `@Version` 的 `version` 字段；BaseEntity 不变。
 - Repository：派生查询 + QueryDSL；笔记 / 文章查询必须显式带 `kind`。
 - Service：
-  - `NoteService`：笔记 CRUD、文件夹、归档、回收站、promote；
+  - `NoteService`：笔记 CRUD、文件夹、回收站、promote；
   - `PostService`：文章草稿 CRUD、详情、状态；
   - `PublishService`：发布、更新发布、下架、revision 创建、slug 校验；
   - `TagService`：标签解析 / 查找 / 快照；
@@ -876,3 +870,4 @@ note.delete_flag = 0
 | 2026-10-23 | v1 草案 | 初稿：单表 `note` + `kind`；发布快照 `note_revision`；不提供文章转笔记；评论 / 桌面端 / SEO 延后；权限码、API、功能清单落定 |
 | 2026-10-23 | v1 实现 | Web 端首版落地：V2/V3 迁移、`Note` / `NoteRevision` / 标签 / 附件实体、发布快照 API、admin 随手记 / 博客 / 媒体 / 回收站、blog 前台；媒体先接本地存储适配器；评论 / 桌面端 / SSR 保持非目标 |
 | 2026-10-23 | v1.1 标签管理 | V4 权限；标签管理页（改名 / 删除 / 三层使用量 / 内容分配）；编辑器全局标签联想；已发布文章分配标签只改草稿，需更新发布；删除有使用量时 force 二次确认 |
+| 2026-10-23 | v1.2 移除归档 | 随手记定位云端记事本，修改内容是常态；归档此前仅是状态标签，既不影响列表 / 搜索，也未形成独立入口，收纳需求由软删除 + 回收站覆盖。删除 `note.status` / `NoteStatus` / 相关 DTO 字段与前端开关（V5 迁移），文章下架继续用 `publish_status` |

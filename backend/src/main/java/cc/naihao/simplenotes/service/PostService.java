@@ -4,7 +4,6 @@ import cc.naihao.simplenotes.common.ApiException;
 import cc.naihao.simplenotes.domain.Note;
 import cc.naihao.simplenotes.domain.NoteKind;
 import cc.naihao.simplenotes.domain.NoteRevision;
-import cc.naihao.simplenotes.domain.NoteStatus;
 import cc.naihao.simplenotes.domain.PublishStatus;
 import cc.naihao.simplenotes.domain.QNote;
 import cc.naihao.simplenotes.repository.NoteRepository;
@@ -108,7 +107,6 @@ public class PostService {
         note.setCoverAttachmentId(coverId);
         note.setOwnerId(principal.userId());
         note.setPinned(shortFlag(request.pinned()));
-        note.setStatus(NoteStatus.ACTIVE);
         note.setPublishStatus(PublishStatus.DRAFT);
         note.setDraftModifiedAt(Instant.now());
         note.setCreateBy(principal.userId());
@@ -195,7 +193,6 @@ public class PostService {
             throw ApiException.notFound("笔记不存在");
         }
         note.setKind(NoteKind.POST);
-        note.setStatus(NoteStatus.ACTIVE);
         note.setFolderId(null);
         note.setPublishStatus(PublishStatus.DRAFT);
         note.setDraftModifiedAt(Instant.now());
