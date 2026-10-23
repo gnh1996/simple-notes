@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Simple Notes">
+  <!-- 纸页 = 随手记；书签 = 博客 / 阅读。色值来自 @simple-notes/ui brand tokens。 -->
+  <defs>
+    <linearGradient id="tile" x1="10" y1="6" x2="55" y2="59" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4f86f7"/>
+      <stop offset="1" stop-color="#2d5bd0"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#tile)"/>
+  <path d="M22 11h20a5 5 0 0 1 5 5v32a5 5 0 0 1-5 5H22a5 5 0 0 1-5-5V16a5 5 0 0 1 5-5Z" fill="#fff"/>
+  <path d="M31 11h8v19l-4-4.6-4 4.6V11Z" fill="#4377f0"/>
+  <path d="M23 37h18" stroke="#4377f0" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M23 44.5h11" stroke="#6997fb" stroke-width="2.4" stroke-linecap="round"/>
+</svg>

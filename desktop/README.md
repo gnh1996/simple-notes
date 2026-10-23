@@ -31,6 +31,7 @@ desktop/
 └── src/SimpleNotes.Desktop/
     ├── Program.cs           入口
     ├── App.axaml(.cs)       应用样式 + DI 组合根
+    ├── Assets/              品牌图标（窗口 PNG / Windows ICO）
     ├── ViewModels/          ViewModelBase、MainWindowViewModel（占位）
     └── Views/               MainWindow（占位壳）
 ```
