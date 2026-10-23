@@ -2,6 +2,9 @@
 /.mvn
 *.iml
 
+# Maven / IDE 构建产物
+/target/
+
 opencode.json
 
 # OS 垃圾文件（跨平台）
