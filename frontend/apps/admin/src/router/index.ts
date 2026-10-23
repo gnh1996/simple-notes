@@ -50,6 +50,24 @@ const baseRoutes: RouteRecordRaw[] = [
         meta: { title: '个人中心', hidden: true },
       },
       {
+        path: 'notes/:id',
+        name: 'NoteEditor',
+        component: () => import('@/views/notes/NoteEditorView.vue'),
+        meta: { title: '编辑笔记', hidden: true },
+      },
+      {
+        path: 'posts/:id',
+        name: 'PostEditor',
+        component: () => import('@/views/posts/PostEditorView.vue'),
+        meta: { title: '编辑文章', hidden: true },
+      },
+      {
+        path: 'trash',
+        name: 'Trash',
+        component: () => import('@/views/trash/TrashView.vue'),
+        meta: { title: '回收站', hidden: true },
+      },
+      {
         path: ':pathMatch(.*)*',
         name: 'NotFound',
         component: () => import('@/views/fallback/NotFoundView.vue'),

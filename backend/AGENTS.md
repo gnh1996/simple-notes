@@ -26,6 +26,7 @@
 - 删除默认软删除：置 `delete_flag = 1` 并记录删除时间 / 删除人；查询默认排除已删除数据
 - 例外表（无需审计或确需物理删除）须在对应设计文档中说明
 - 已落地的实体基类：`domain/BaseEntity`（UUID 主键预生成 + `Persistable` 新实体判定 + 审计回调 + 软删辅助）；查询侧排除已删除数据用实体级 `@SQLRestriction("delete_flag = 0")`，不再逐查询手写条件
+- **内容模块例外**（设计见 `docs/content-model.md` §3.8）：`note_revision` 为不可变发布快照，仅 `create_by` / `create_time`，无软删除；`note_tag` / `note_revision_tag` 为关联表，物理删除；`note.slug` 唯一索引不带 `delete_flag = 0`（公开 URL 永久保留）
 
 ## 认证与权限（RBAC，设计见 docs/auth-rbac.md）
 
@@ -61,3 +62,4 @@
   - 跨表 join / distinct / 聚合 / 动态条件 → QueryDSL（`JPAQueryFactory`，见 `QuerydslConfig`）
   - 写操作一律实体态（加载 → 改状态 → 提交时脏检查落库）；集合全量替换 = `deleteAll` + **显式 `flush`** + `saveAll`（Hibernate 的 flush 顺序为先 insert 后 delete，同 PK"删除 + 重插"不 flush 会撞主键）
   - 确需手写 JPQL 的例外（如超大表批量 DML、数据库方言特性）：在代码注释说明理由，并回到本文件补记
+- **软删除数据的例外读取**：回收站、未来桌面同步墓碑需要读取 `delete_flag = 1` 的行，不能移除实体级 `@SQLRestriction`；在专用 Repository 中用原生 SQL / `JdbcTemplate` 实现，并在代码注释与对应设计文档说明理由

@@ -9,6 +9,11 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "highlight.js": "catalog:",
+    "markdown-it-github-alerts": "catalog:",
+    "md-editor-v3": "catalog:"
+  },
   "peerDependencies": {
     "vue": "^3.5.0"
   },

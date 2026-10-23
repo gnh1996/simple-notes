@@ -31,7 +31,7 @@ frontend/
 | `pnpm gen:api` | 按后端 OpenAPI 契约重新生成 `packages/api` 类型（需后端已启动；默认 `http://localhost:8080/v3/api-docs`，可用 `OPENAPI_URL` 覆盖） |
 | `pnpm typecheck` | 全仓类型检查 |
 
-开发期 `/api` 请求由 Vite proxy 转发到后端 `http://localhost:8080`（见各应用 `vite.config.ts`）。
+开发期 `/api` 请求由 Vite proxy 转发到后端 `http://localhost:8080`（见各应用 `vite.config.ts`）；需要连其他后端端口时用 `VITE_API_PROXY=http://localhost:8081 pnpm dev:admin` 覆盖。
 
 ## 管理端（apps/admin）结构
 

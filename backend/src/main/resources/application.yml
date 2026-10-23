@@ -21,15 +21,21 @@ spring:
     # 迁移脚本唯一来源；关闭 / 改路径都属于变更决策，需同步更新文档
     enabled: true
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      # 图片上传上限；与 AttachmentService 的校验保持一致
+      max-file-size: 10MB
+      max-request-size: 12MB
 
 simple-notes:
   auth:
     # JWT 签名密钥（HS256，32+ 字节随机值，值来源：本地 application-local.yml / 部署环境变量）。
     # 无默认值：缺失或不满足长度时由 AuthProperties 校验在启动时失败（fail-fast，见 docs/auth-rbac.md §9）
     jwt-secret: "${JWT_SECRET}"
-  # Cloudflare R2 对象存储（S3 兼容）
-  # 键形暂定，随附件 / 图片功能设计定稿调整；占位符在存储配置类实现后才被解析
+  # 附件存储：v1 先接本地开发适配器，生产仍按 docs/tech-stack.md 使用 Cloudflare R2。
+  # local-root 仅用于开发 / 单机验证；后续接 R2 时替换 AttachmentStorage 实现即可。
   storage:
+    local-root: "${MEDIA_LOCAL_ROOT:${java.io.tmpdir}/simple-notes-media}"
     r2:
       endpoint: "${R2_ENDPOINT}"
       bucket: "${R2_BUCKET:simple-notes}"

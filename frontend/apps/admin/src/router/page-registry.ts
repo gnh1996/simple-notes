@@ -1,4 +1,4 @@
-import { Avatar, Menu as MenuIcon, User } from '@element-plus/icons-vue'
+import { Avatar, Document, Menu as MenuIcon, Notebook, Picture, User } from '@element-plus/icons-vue'
 import type { Component } from 'vue'
 
 /**
@@ -6,7 +6,7 @@ import type { Component } from 'vue'
  *
  * - 服务端菜单树（`me.menus`）只携带 名称 / 排序 / 层级，不含路径；
  * - 注册表命中 = 页面型菜单（注册路由）；未命中 = 目录（仅递归子节点）；
- * - `hidden` 页面（详情 / 编辑类）后续在此登记并可标 `hidden: true`。
+ * - 详情 / 编辑页在 baseRoutes 中登记为 hidden 路由，由后端权限终审。
  */
 export interface PageRegistryItem {
   /** 应用内绝对路径（路由路径的唯一来源） */
@@ -22,6 +22,30 @@ export interface PageRegistryItem {
 }
 
 export const PAGE_REGISTRY: Record<string, PageRegistryItem> = {
+  'admin:note': {
+    path: '/notes',
+    name: 'NoteList',
+    title: '随手记',
+    description: '默认记事本，支持标签、文件夹与转为博客',
+    icon: Notebook,
+    component: () => import('@/views/notes/NoteListView.vue'),
+  },
+  'admin:post': {
+    path: '/posts',
+    name: 'PostList',
+    title: '博客管理',
+    description: '草稿、发布快照与下架',
+    icon: Document,
+    component: () => import('@/views/posts/PostListView.vue'),
+  },
+  'admin:media': {
+    path: '/media',
+    name: 'MediaList',
+    title: '媒体库',
+    description: '图片上传与站内稳定 URL',
+    icon: Picture,
+    component: () => import('@/views/media/MediaListView.vue'),
+  },
   'admin:user': {
     path: '/system/user',
     name: 'UserList',

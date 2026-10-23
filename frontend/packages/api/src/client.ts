@@ -49,7 +49,8 @@ export function createApiClient({ baseUrl = '/api', prepareRequest, onError }: A
 
     const headers = new Headers(finalInit.headers)
     headers.set('Accept', 'application/json')
-    if (finalInit.body != null && !headers.has('Content-Type')) {
+    // FormData 由浏览器自动生成 multipart boundary，不能手动设 Content-Type
+    if (finalInit.body != null && !(finalInit.body instanceof FormData) && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json')
     }
 

@@ -54,6 +54,28 @@ public final class Perms {
     public static final String ADMIN_MENU = "admin:menu";
     public static final String ADMIN_MENU_UPDATE = "admin:menu:update";
 
+    // ---- admin：随手记 ----
+
+    public static final String ADMIN_NOTE = "admin:note";
+    public static final String ADMIN_NOTE_CREATE = "admin:note:create";
+    public static final String ADMIN_NOTE_UPDATE = "admin:note:update";
+    public static final String ADMIN_NOTE_DELETE = "admin:note:delete";
+
+    // ---- admin：博客管理 ----
+
+    public static final String ADMIN_POST = "admin:post";
+    public static final String ADMIN_POST_CREATE = "admin:post:create";
+    public static final String ADMIN_POST_UPDATE = "admin:post:update";
+    public static final String ADMIN_POST_PUBLISH = "admin:post:publish";
+    public static final String ADMIN_POST_UNPUBLISH = "admin:post:unpublish";
+    public static final String ADMIN_POST_DELETE = "admin:post:delete";
+
+    // ---- admin：媒体库 ----
+
+    public static final String ADMIN_MEDIA = "admin:media";
+    public static final String ADMIN_MEDIA_UPLOAD = "admin:media:upload";
+    public static final String ADMIN_MEDIA_DELETE = "admin:media:delete";
+
     private static final Set<String> ALL = collectAll();
 
     private Perms() {

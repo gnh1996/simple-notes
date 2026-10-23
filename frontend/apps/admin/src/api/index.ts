@@ -93,5 +93,16 @@ export const api: SimpleNotesApi = createSimpleNotesApi(
   }),
 )
 
-export const { auth: authApi, users: userApi, roles: roleApi, menus: menuApi } = api
+export const {
+  auth: authApi,
+  users: userApi,
+  roles: roleApi,
+  menus: menuApi,
+  noteFolders: noteFolderApi,
+  notes: noteApi,
+  posts: postApi,
+  trash: trashApi,
+  media: mediaApi,
+  blog: blogApi,
+} = api
 export { ApiError }

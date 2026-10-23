@@ -102,7 +102,7 @@
 
 ## 8. 未决事项
 
-- [ ] md-editor-v3 追加 `markdown-it-github-alerts` 的兼容性验证（v7 管线与插件共存）；`noKatex` / `noEcharts` 关闭配置确认；`breaks: false` 生效确认
+- [x] Web 端（admin / blog）已接入 `markdown-it-github-alerts`，确认 v7 管线共存、Alerts 渲染正常；`noKatex` / `noEcharts` 关闭、`breaks: false` 配置已落地（2026-10-23；桌面端随桌面端实现验收）
 - [ ] LiveMarkdown.Avalonia 用于静态内容渲染的用法确认（`DocumentUpdate` / builder 模式）
 - [x] ~~博客前台渲染管线选型~~ → **已定（2026-10-18）：复用 `MdPreview`**；实现阶段待办：读者端产物体积实测 + hljs 自托管配置
 - [ ] 后端入库清洗策略细节（依赖 API 设计）

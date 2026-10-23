@@ -1,7 +1,7 @@
 # 技术选型总览
 
 > **冻结日期：2026-10-18**（第一阶段选型收口）
-> 变更机制见文末。相关文档：`docs/auth-rbac.md`、`docs/markdown-dialect.md`、各端 README 选型表。
+> 变更机制见文末。相关文档：`docs/content-model.md`、`docs/auth-rbac.md`、`docs/markdown-dialect.md`、各端 README 选型表。
 
 ## 后端
 

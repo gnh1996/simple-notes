@@ -88,6 +88,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                         // blog 公开读接口匿名可访问；写操作要求会话（blog:* 权限码随 blog 功能设计补充）
                         .requestMatchers(HttpMethod.GET, "/api/blog/**").permitAll()
+                        // 稳定媒体 URL 匿名可读（正文 / 封面引用）
+                        .requestMatchers(HttpMethod.GET, "/api/media/**").permitAll()
                         // 三端接口域：要求已认证会话（client 一致性 + 权限码由过滤器 / 方法级校验）
                         .requestMatchers("/api/**").authenticated()
                         // 默认拒绝：API 服务不承载静态资源，非 API 路径一律拒绝

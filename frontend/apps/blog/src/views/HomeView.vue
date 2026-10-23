@@ -1,57 +1,84 @@
 <script setup lang="ts">
-interface PostItem {
-  id: number
-  title: string
-  summary: string
-  date: string
+import type { PublishedPostSummary } from '@simple-notes/api'
+import { onMounted, ref } from 'vue'
+
+import { blogApi } from '@/api'
+import PostCard from '@/components/PostCard.vue'
+
+const loading = ref(false)
+const posts = ref<PublishedPostSummary[]>([])
+const page = ref(1)
+const size = 10
+const total = ref(0)
+const error = ref('')
+
+async function load(nextPage = page.value): Promise<void> {
+  loading.value = true
+  error.value = ''
+  try {
+    const result = await blogApi.list({ page: nextPage, size })
+    posts.value = result.items ?? []
+    total.value = result.total ?? 0
+    page.value = nextPage
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '文章加载失败'
+  } finally {
+    loading.value = false
+  }
 }
 
-const posts: PostItem[] = [
-  {
-    id: 1,
-    title: '用 pnpm workspace 组织管理端与博客',
-    summary: '两个 Vue 应用共享 API 客户端与设计 token，独立构建、独立部署。',
-    date: '2026-10-16',
-  },
-  {
-    id: 2,
-    title: '响应式不是做两套页面',
-    summary: '路由与逻辑只有一份，只在断点处切换展示层——表格与卡片列表共享同一数据源。',
-    date: '2026-10-13',
-  },
-  {
-    id: 3,
-    title: 'Spring Boot + PostgreSQL 的随手记后端',
-    summary: 'JPA + Flyway 管理 schema 演进，springdoc-openapi 为多端生成类型化客户端。',
-    date: '2026-10-10',
-  },
-]
+onMounted(() => load(1))
+
+function go(nextPage: number): void {
+  if (nextPage < 1 || nextPage > Math.max(1, Math.ceil(total.value / size))) return
+  void load(nextPage)
+}
 </script>
 
 <template>
-  <div class="min-h-screen bg-white">
-    <header class="border-b border-gray-100">
-      <div class="mx-auto flex max-w-3xl items-center justify-between px-4 py-6">
-        <span class="text-xl font-bold text-brand-600">Simple Notes</span>
-        <span class="text-sm text-gray-400">随手记 · 博客</span>
-      </div>
-    </header>
+  <section class="pb-8">
+    <p class="text-xs font-medium uppercase tracking-[0.2em] text-brand-500">Simple Notes</p>
+    <h1 class="mt-3 text-3xl font-bold tracking-tight text-gray-900 md:text-4xl">
+      随手记，也认真写博客
+    </h1>
+    <p class="mt-3 max-w-2xl text-sm leading-relaxed text-gray-500">
+      记录日常、整理思考，偶尔把值得分享的内容发布出来。
+    </p>
+  </section>
 
-    <main class="mx-auto max-w-3xl px-4 py-8">
-      <h1 class="text-2xl font-bold md:text-3xl">最新文章</h1>
+  <section>
+    <div v-if="loading" class="grid gap-4 md:grid-cols-2">
+      <div v-for="i in 4" :key="i" class="h-64 animate-pulse rounded-xl bg-gray-100" />
+    </div>
 
-      <!-- 移动优先的单栏，逐级放大到双栏 -->
-      <div class="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-        <article
-          v-for="post in posts"
-          :key="post.id"
-          class="rounded-lg border border-gray-100 p-4 transition hover:border-brand-300 hover:shadow-sm"
-        >
-          <h2 class="font-semibold">{{ post.title }}</h2>
-          <p class="mt-2 line-clamp-2 text-sm leading-relaxed text-gray-600">{{ post.summary }}</p>
-          <p class="mt-3 text-xs text-gray-400">{{ post.date }}</p>
-        </article>
-      </div>
-    </main>
-  </div>
+    <div v-else-if="error" class="rounded-xl border border-red-100 bg-red-50 p-6 text-sm text-red-600">
+      {{ error }}
+    </div>
+
+    <div v-else-if="posts.length" class="grid gap-4 md:grid-cols-2">
+      <PostCard v-for="post in posts" :key="post.slug" :post="post" />
+    </div>
+
+    <div v-else class="rounded-xl border border-dashed border-gray-200 p-12 text-center text-sm text-gray-400">
+      还没有发布文章
+    </div>
+
+    <div v-if="total > size" class="mt-8 flex items-center justify-center gap-3 text-sm">
+      <button
+        class="rounded-md border border-gray-200 px-3 py-1.5 text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="page <= 1"
+        @click="go(page - 1)"
+      >
+        上一页
+      </button>
+      <span class="text-xs text-gray-400">第 {{ page }} / {{ Math.ceil(total / size) }} 页</span>
+      <button
+        class="rounded-md border border-gray-200 px-3 py-1.5 text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="page >= Math.ceil(total / size)"
+        @click="go(page + 1)"
+      >
+        下一页
+      </button>
+    </div>
+  </section>
 </template>

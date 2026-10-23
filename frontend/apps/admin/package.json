@@ -16,6 +16,7 @@
     "@simple-notes/ui": "workspace:*",
     "@vue/devtools-api": "catalog:",
     "element-plus": "catalog:",
+    "md-editor-v3": "catalog:",
     "pinia": "catalog:",
     "vue": "catalog:",
     "vue-router": "catalog:"

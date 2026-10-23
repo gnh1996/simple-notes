@@ -24,7 +24,7 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Simple Notes API")
-                        .description("随手记应用后端接口契约（认证 / RBAC 见 docs/auth-rbac.md）")
+                        .description("随手记应用后端接口契约（认证 / RBAC 见 docs/auth-rbac.md；内容模型见 docs/content-model.md）")
                         .version("v1"))
                 .components(new Components().addSecuritySchemes(BEARER_SCHEME,
                         new SecurityScheme()

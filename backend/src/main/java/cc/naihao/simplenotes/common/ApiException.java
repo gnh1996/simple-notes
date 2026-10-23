@@ -32,6 +32,26 @@ public class ApiException extends RuntimeException {
         return new ApiException(HttpStatus.CONFLICT, ErrorCodes.CONFLICT, message);
     }
 
+    public static ApiException versionConflict(String message) {
+        return new ApiException(HttpStatus.CONFLICT, ErrorCodes.VERSION_CONFLICT, message);
+    }
+
+    public static ApiException slugTaken(String message) {
+        return new ApiException(HttpStatus.CONFLICT, ErrorCodes.SLUG_TAKEN, message);
+    }
+
+    public static ApiException invalidState(String message) {
+        return new ApiException(HttpStatus.CONFLICT, ErrorCodes.INVALID_STATE_TRANSITION, message);
+    }
+
+    public static ApiException noChangesToPublish(String message) {
+        return new ApiException(HttpStatus.CONFLICT, ErrorCodes.NO_CHANGES_TO_PUBLISH, message);
+    }
+
+    public static ApiException publishValidation(String message) {
+        return new ApiException(HttpStatus.BAD_REQUEST, ErrorCodes.PUBLISH_VALIDATION_FAILED, message);
+    }
+
     public static ApiException permissionDenied(String message) {
         return new ApiException(HttpStatus.FORBIDDEN, ErrorCodes.PERMISSION_DENIED, message);
     }

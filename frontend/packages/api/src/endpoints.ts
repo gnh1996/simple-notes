@@ -37,11 +37,75 @@ export type GrantPermissionsRequest = Schema['GrantPermissionsRequest']
 
 export type UpdateMenuRequest = Schema['UpdateMenuRequest']
 
+// ---- 内容模块类型别名 ----
+
+export type TagBrief = Schema['TagBrief']
+export type NoteFolderResponse = Schema['NoteFolderResponse']
+export type NoteFolderRequest = Schema['NoteFolderRequest']
+export type NoteSummary = Schema['NoteSummary']
+export type NoteDetail = Schema['NoteDetail']
+export type CreateNoteRequest = Schema['CreateNoteRequest']
+export type UpdateNoteRequest = Schema['UpdateNoteRequest']
+export type PageResponseNoteSummary = Schema['PageResponseNoteSummary']
+
+export type PostSummary = Schema['PostSummary']
+export type PostDetail = Schema['PostDetail']
+export type CreatePostRequest = Schema['CreatePostRequest']
+export type UpdatePostRequest = Schema['UpdatePostRequest']
+export type PublishRequest = Schema['PublishRequest']
+export type PageResponsePostSummary = Schema['PageResponsePostSummary']
+
+export type AttachmentResponse = Schema['AttachmentResponse']
+export type TrashItemResponse = Schema['TrashItemResponse']
+
+export type PublishedPostSummary = Schema['PublishedPostSummary']
+export type PublishedPostDetail = Schema['PublishedPostDetail']
+export type PageResponsePublishedPostSummary = Schema['PageResponsePublishedPostSummary']
+export type TagCountResponse = Schema['TagCountResponse']
+export type ArchiveResponse = Schema['ArchiveResponse']
+
 export interface UserListQuery {
   page?: number
   size?: number
   /** 模糊匹配登录名 / 昵称 / 邮箱 */
   keyword?: string
+}
+
+export interface NoteListQuery {
+  page?: number
+  size?: number
+  keyword?: string
+  folderId?: string
+  tagId?: string
+  status?: 'ACTIVE' | 'ARCHIVED'
+  pinnedOnly?: boolean
+}
+
+export interface PostListQuery {
+  page?: number
+  size?: number
+  keyword?: string
+  status?: 'DRAFT' | 'PUBLISHED' | 'UNPUBLISHED'
+  hasUnpublishedChanges?: boolean
+}
+
+export interface PublishedPostListQuery {
+  page?: number
+  size?: number
+  tagId?: string
+  year?: number
+  month?: number
+}
+
+function queryString(params: object): string {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params as Record<string, unknown>)) {
+    if (value !== undefined && value !== null && value !== '') {
+      search.set(key, String(value))
+    }
+  }
+  const qs = search.toString()
+  return qs ? `?${qs}` : ''
 }
 
 /** 认证与个人中心（`/api/auth/**`） */
@@ -61,14 +125,8 @@ export function createAuthApi(client: ApiClient) {
 /** 用户管理（`/api/admin/users`） */
 export function createUserApi(client: ApiClient) {
   return {
-    list: (query: UserListQuery = {}) => {
-      const search = new URLSearchParams()
-      if (query.page != null) search.set('page', String(query.page))
-      if (query.size != null) search.set('size', String(query.size))
-      if (query.keyword) search.set('keyword', query.keyword)
-      const qs = search.toString()
-      return client.get<PageResponseUserResponse>(`/admin/users${qs ? `?${qs}` : ''}`)
-    },
+    list: (query: UserListQuery = {}) =>
+      client.get<PageResponseUserResponse>(`/admin/users${queryString(query)}`),
     create: (body: CreateUserRequest) => client.post<UserResponse>('/admin/users', body),
     update: (id: string, body: UpdateUserRequest) =>
       client.put<UserResponse>(`/admin/users/${id}`, body),
@@ -107,6 +165,90 @@ export function createMenuApi(client: ApiClient) {
   }
 }
 
+/** 随手记文件夹（`/api/admin/note-folders`） */
+export function createNoteFolderApi(client: ApiClient) {
+  return {
+    list: () => client.get<NoteFolderResponse[]>('/admin/note-folders'),
+    create: (body: NoteFolderRequest) =>
+      client.post<NoteFolderResponse>('/admin/note-folders', body),
+    update: (id: string, body: NoteFolderRequest) =>
+      client.put<NoteFolderResponse>(`/admin/note-folders/${id}`, body),
+    remove: (id: string) => client.delete<void>(`/admin/note-folders/${id}`),
+  }
+}
+
+/** 随手记（`/api/admin/notes`，仅 kind=NOTE） */
+export function createNoteApi(client: ApiClient) {
+  return {
+    list: (query: NoteListQuery = {}) =>
+      client.get<PageResponseNoteSummary>(`/admin/notes${queryString(query)}`),
+    get: (id: string) => client.get<NoteDetail>(`/admin/notes/${id}`),
+    create: (body: CreateNoteRequest) => client.post<NoteDetail>('/admin/notes', body),
+    update: (id: string, body: UpdateNoteRequest) =>
+      client.put<NoteDetail>(`/admin/notes/${id}`, body),
+    remove: (id: string) => client.delete<void>(`/admin/notes/${id}`),
+    /** 笔记转博客草稿（不可逆；没有反向接口） */
+    promote: (id: string) => client.post<PostDetail>(`/admin/notes/${id}/promote`),
+  }
+}
+
+/** 博客文章管理（`/api/admin/posts`，仅 kind=POST） */
+export function createPostApi(client: ApiClient) {
+  return {
+    list: (query: PostListQuery = {}) =>
+      client.get<PageResponsePostSummary>(`/admin/posts${queryString(query)}`),
+    get: (id: string) => client.get<PostDetail>(`/admin/posts/${id}`),
+    create: (body: CreatePostRequest) => client.post<PostDetail>('/admin/posts', body),
+    update: (id: string, body: UpdatePostRequest) =>
+      client.put<PostDetail>(`/admin/posts/${id}`, body),
+    /** 首次发布 / 更新发布：发布内容来自已保存草稿 */
+    publish: (id: string, version: number) =>
+      client.post<PostDetail>(`/admin/posts/${id}/publish`, { version }),
+    unpublish: (id: string) => client.post<PostDetail>(`/admin/posts/${id}/unpublish`),
+    remove: (id: string) => client.delete<void>(`/admin/posts/${id}`),
+  }
+}
+
+/** 回收站（笔记 / 文章分开，权限码独立） */
+export function createTrashApi(client: ApiClient) {
+  return {
+    notes: () => client.get<TrashItemResponse[]>('/admin/notes/trash'),
+    restoreNote: (id: string) => client.post<void>(`/admin/notes/${id}/restore`),
+    posts: () => client.get<TrashItemResponse[]>('/admin/posts/trash'),
+    restorePost: (id: string) => client.post<void>(`/admin/posts/${id}/restore`),
+  }
+}
+
+/** 媒体库（`/api/admin/media`） */
+export function createMediaApi(client: ApiClient) {
+  return {
+    list: () => client.get<AttachmentResponse[]>('/admin/media'),
+    upload: (file: File) => {
+      const form = new FormData()
+      form.set('file', file)
+      return client.request<AttachmentResponse>('/admin/media', {
+        method: 'POST',
+        body: form,
+      })
+    },
+    remove: (id: string) => client.delete<void>(`/admin/media/${id}`),
+  }
+}
+
+/** 公开博客（`/api/blog/**`，匿名可读） */
+export function createBlogApi(client: ApiClient) {
+  return {
+    list: (query: PublishedPostListQuery = {}) =>
+      client.get<PageResponsePublishedPostSummary>(`/blog/posts${queryString(query)}`),
+    detail: (slug: string) =>
+      client.get<PublishedPostDetail>(`/blog/posts/${encodeURIComponent(slug)}`),
+    tags: () => client.get<TagCountResponse[]>('/blog/tags'),
+    archives: () => client.get<ArchiveResponse[]>('/blog/archives'),
+    search: (query: PublishedPostListQuery & { q?: string } = {}) =>
+      client.get<PageResponsePublishedPostSummary>(`/blog/search${queryString(query)}`),
+  }
+}
+
 /**
  * 汇总实例：`createSimpleNotesApi(client)` 一次拿到全部接口分组。
  */
@@ -116,6 +258,12 @@ export function createSimpleNotesApi(client: ApiClient) {
     users: createUserApi(client),
     roles: createRoleApi(client),
     menus: createMenuApi(client),
+    noteFolders: createNoteFolderApi(client),
+    notes: createNoteApi(client),
+    posts: createPostApi(client),
+    trash: createTrashApi(client),
+    media: createMediaApi(client),
+    blog: createBlogApi(client),
   }
 }
 

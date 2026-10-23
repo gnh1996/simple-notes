@@ -25,6 +25,16 @@ public final class ErrorCodes {
     public static final String METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED";
     /** 与现有数据冲突（409）：登录名 / 角色码重复、角色仍被占用等 */
     public static final String CONFLICT = "CONFLICT";
+    /** 乐观锁版本冲突（409）：编辑 / 发布时客户端版本落后 */
+    public static final String VERSION_CONFLICT = "VERSION_CONFLICT";
+    /** 文章 slug 已被占用（409） */
+    public static final String SLUG_TAKEN = "SLUG_TAKEN";
+    /** 非法内容状态转换（409）：如笔记发布、已发布文章转笔记 */
+    public static final String INVALID_STATE_TRANSITION = "INVALID_STATE_TRANSITION";
+    /** 已发布文章没有未发布更改，无需再次发布（409） */
+    public static final String NO_CHANGES_TO_PUBLISH = "NO_CHANGES_TO_PUBLISH";
+    /** 发布字段校验失败（400） */
+    public static final String PUBLISH_VALIDATION_FAILED = "PUBLISH_VALIDATION_FAILED";
     /** 未预期的服务端错误（500） */
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
 
