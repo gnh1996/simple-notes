@@ -70,6 +70,14 @@ public final class Perms {
     public static final String ADMIN_POST_UNPUBLISH = "admin:post:unpublish";
     public static final String ADMIN_POST_DELETE = "admin:post:delete";
 
+    // ---- admin：标签管理 ----
+
+    public static final String ADMIN_TAG = "admin:tag";
+    public static final String ADMIN_TAG_CREATE = "admin:tag:create";
+    public static final String ADMIN_TAG_UPDATE = "admin:tag:update";
+    public static final String ADMIN_TAG_DELETE = "admin:tag:delete";
+    public static final String ADMIN_TAG_ASSIGN = "admin:tag:assign";
+
     // ---- admin：媒体库 ----
 
     public static final String ADMIN_MEDIA = "admin:media";

@@ -25,6 +25,8 @@ public final class ErrorCodes {
     public static final String METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED";
     /** 与现有数据冲突（409）：登录名 / 角色码重复、角色仍被占用等 */
     public static final String CONFLICT = "CONFLICT";
+    /** 标签仍被内容使用，删除需要显式确认（409） */
+    public static final String TAG_IN_USE = "TAG_IN_USE";
     /** 乐观锁版本冲突（409）：编辑 / 发布时客户端版本落后 */
     public static final String VERSION_CONFLICT = "VERSION_CONFLICT";
     /** 文章 slug 已被占用（409） */

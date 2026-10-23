@@ -43,7 +43,7 @@ apps/admin/src/
 ├── stores/           # auth（凭证 / me / 菜单树）、tabs（多标签页）
 ├── directives/       # v-perm（无码移除 DOM；超管放行）
 ├── composables/      # useTheme（暗色主题）
-└── views/            # login / dashboard / system（user、role、menu）/ profile / fallback
+└── views/            # login / dashboard / system（user、role、menu）/ notes / posts / tags / media / trash / profile / fallback
 ```
 
 - 侧边栏与路由由**服务端菜单树驱动**：`me.menus`（已按权限过滤）× 页面注册表 → `addRoute`；未命中注册表按目录递归，前端不做路由级权限判断（`docs/auth-rbac.md` §6.2）

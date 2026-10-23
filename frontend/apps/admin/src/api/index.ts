@@ -101,6 +101,7 @@ export const {
   noteFolders: noteFolderApi,
   notes: noteApi,
   posts: postApi,
+  tags: tagApi,
   trash: trashApi,
   media: mediaApi,
   blog: blogApi,

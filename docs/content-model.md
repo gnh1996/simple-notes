@@ -1,6 +1,6 @@
 # 内容模型设计（随手记 + 博客）
 
-> **状态：v1 · 2026-10-23（Web 端首版实现；效果调整走变更记录）**
+> **状态：v1.1 · 2026-10-23（Web 端已实现；v1.1 增加标签管理）**
 > 范围：随手记与博客文章的统一内容模型、发布快照、数据表草案、权限码、API 契约与 Web 端范围
 > 关联：`docs/auth-rbac.md`（权限体系）、`docs/markdown-dialect.md`（Markdown 方言）、`docs/tech-stack.md`（技术选型）
 > 非目标：评论、桌面端同步、SEO / SSR、多作者、定时发布、分类 / 系列、笔记分享 —— 见 §13
@@ -158,8 +158,11 @@ POST / UNPUBLISHED（后台保留，公开不可见）
 
 - 标签在笔记和文章之间共用；笔记标签只对笔记所有者可见，公开博客只读 `note_revision_tag`。
 - 编辑已发布文章的标签后，公开标签不变，直到「更新发布」。
-- 标签改名属于全局分类行为，会影响所有已发布文章的展示；v1 不提供复杂标签管理，P1 再设计合并 / 删除。
-- 标签删除采用软删除；公开查询过滤已删除标签。**删除标签前应提示会影响已发布文章。**
+- **标签管理（v1.1）**：标签是全局分类，提供独立管理页；编辑器标签下拉从全局标签联想复用，同时保留输入新名称创建。
+- **改名 / 删除是全局操作**：因为 `note_revision_tag` 只存 `tag_id`，改名 / 删除会立即影响所有当前内容和已发布快照的标签展示；管理页必须展示使用量并二次确认。
+- **删除语义**：标签软删除；清理当前 `note_tag` 关联，保留 `note_revision_tag` 历史关联但公开查询过滤已删除标签；有使用量时后端要求 `force=true`。
+- **从标签管理页分配内容**：只写当前草稿；已发布文章需在文章编辑页「更新发布」后线上标签才变化；移除同理，线上快照仍使用直到更新发布。
+- 使用量分三层：随手记数、博客草稿数、已发布快照数；关联内容列表同时标记“草稿 / 线上快照 / 待更新发布”。
 
 ### 3.4 文件夹 `note_folder`
 
@@ -535,7 +538,23 @@ note.delete_flag = 0
 
 不提供 `POST /api/admin/posts/{id}/demote` 或任何 `POST → NOTE` 接口。
 
-### 6.3 公开博客
+### 6.3 admin：标签管理
+
+| 方法 / 路径 | 权限 | 说明 |
+| --- | --- | --- |
+| `GET /api/admin/tags/options` | `admin:note` 或 `admin:post` | 编辑器联想：全部启用标签 id / name |
+| `GET /api/admin/tags` | `admin:tag` | 管理列表；含随手记 / 博客草稿 / 已发布快照三层使用量 |
+| `POST /api/admin/tags` | `admin:tag:create` | 手动创建标签 |
+| `PUT /api/admin/tags/{id}` | `admin:tag:update` | 改名；重名 409；影响所有当前 / 快照展示 |
+| `DELETE /api/admin/tags/{id}?force=true` | `admin:tag:delete` | 软删除；有使用量且未 force 时 409 `TAG_IN_USE` |
+| `GET /api/admin/tags/{id}/contents?kind=NOTE\|POST` | `admin:tag` | 关联内容；标记 `draftTagged` / `publishedTagged` |
+| `GET /api/admin/tags/{id}/candidates?kind=NOTE\|POST` | `admin:tag:assign` | 可添加内容候选（当前草稿未使用该标签） |
+| `POST /api/admin/tags/{id}/contents` | `admin:tag:assign` | 给一批内容当前草稿加标签 |
+| `DELETE /api/admin/tags/{id}/contents/{contentId}` | `admin:tag:assign` | 从内容当前草稿移除标签 |
+
+给已发布文章加 / 删标签只写当前草稿；线上需在文章编辑页「更新发布」后才变化。
+
+### 6.4 公开博客
 
 | 方法 / 路径 | 说明 |
 | --- | --- |
@@ -550,7 +569,7 @@ note.delete_flag = 0
 
 公开接口匿名可访问，不要求 `entry:blog`；`entry:blog` 只用于未来评论 / 登录互动。`feed.xml` / `sitemap.xml` 为非 JSON 出参，不纳入 TypeScript 生成客户端，需要时由 blog 前端直接请求。
 
-### 6.4 DTO 与错误
+### 6.5 DTO 与错误
 
 - 请求 DTO 分开：`NoteCreateRequest` / `NoteUpdateRequest` / `PostCreateRequest` / `PostUpdateRequest` / `PublishRequest`。
 - `kind`、`publish_status`、`published_revision_id` 不出现在普通更新请求中。
@@ -565,6 +584,7 @@ note.delete_flag = 0
 | slug 已存在 | 409 | `SLUG_TAKEN` |
 | 非法状态转换 | 409 | `INVALID_STATE_TRANSITION` |
 | 已发布且无更改 | 409 | `NO_CHANGES_TO_PUBLISH` |
+| 删除标签仍有使用量 | 409 | `TAG_IN_USE` |
 | 发布字段不完整 | 400 | `PUBLISH_VALIDATION_FAILED` |
 | 无权限 | 403 | `PERMISSION_DENIED` |
 
@@ -588,6 +608,11 @@ note.delete_flag = 0
 | `admin:post:publish` | ACTION | 首次发布 / 更新发布 |
 | `admin:post:unpublish` | ACTION | 下架 |
 | `admin:post:delete` | ACTION | 删除 / 回收站 / 恢复 |
+| `admin:tag` | MENU | 标签管理页面 + 读接口 |
+| `admin:tag:create` | ACTION | 创建标签 |
+| `admin:tag:update` | ACTION | 改名标签 |
+| `admin:tag:delete` | ACTION | 删除标签（有使用量需 force） |
+| `admin:tag:assign` | ACTION | 给内容分配 / 移除标签 |
 | `admin:media` | MENU | 媒体库页面 + 读接口 |
 | `admin:media:upload` | ACTION | 上传 |
 | `admin:media:delete` | ACTION | 删除 |
@@ -599,6 +624,8 @@ note.delete_flag = 0
 - 公开博客不需要权限码；未来评论使用 `blog:comment:*`。
 - v1 单作者；`admin:post` 持有者可管理全部文章，`admin:note` 默认只管理自己的笔记，超管不受限。多作者 / 数据范围后续再设计。
 - `admin:media` 的读权限由菜单码承担；上传 / 删除用 ACTION。
+- 编辑器联想 `GET /api/admin/tags/options` 允许 `admin:note` 或 `admin:post` 任一访问；标签管理页与写操作使用 `admin:tag:*`。
+- 标签改名 / 删除是全局分类操作；删除有使用量时前端二次确认并带 `force=true`。
 
 ### 7.2 菜单迁移
 
@@ -616,12 +643,17 @@ note.delete_flag = 0
 | `admin:post:publish` | ACTION | 发布 / 更新发布 | `admin:post` | 3 |
 | `admin:post:unpublish` | ACTION | 下架 | `admin:post` | 4 |
 | `admin:post:delete` | ACTION | 删除文章 | `admin:post` | 5 |
+| `admin:tag` | MENU | 标签管理 | `entry:admin` | 55 |
+| `admin:tag:create` | ACTION | 创建标签 | `admin:tag` | 1 |
+| `admin:tag:update` | ACTION | 改名标签 | `admin:tag` | 2 |
+| `admin:tag:delete` | ACTION | 删除标签 | `admin:tag` | 3 |
+| `admin:tag:assign` | ACTION | 分配标签 | `admin:tag` | 4 |
 | `admin:media` | MENU | 媒体库 | `entry:admin` | 60 |
 | `admin:media:upload` | ACTION | 上传媒体 | `admin:media` | 1 |
 | `admin:media:delete` | ACTION | 删除媒体 | `admin:media` | 2 |
 
 - `Perms` 增加对应常量；启动对账会检查常量、注解和 `sys_menu` 行一致。
-- 页面注册表新增 `admin:note` → `/notes`、`admin:post` → `/posts`、`admin:media` → `/media`。
+- 页面注册表新增 `admin:note` → `/notes`、`admin:post` → `/posts`、`admin:tag` → `/tags`、`admin:media` → `/media`。
 - 不新增 `admin:content` 目录；v1 直接作为一级菜单，后续内容模块增多再在菜单管理中调整。
 
 ---
@@ -635,6 +667,7 @@ note.delete_flag = 0
 - Markdown 编辑 / 预览 / 自动保存；
 - 标题、正文、标签、文件夹、置顶、归档、回收站；
 - 列表、搜索（标题 / 正文 / 标签）、筛选、排序、分页；
+- 标签联想复用、标签管理（改名 / 删除 / 使用量 / 内容分配）；
 - 图片上传、封面、正文插图、媒体库；
 - 软删除 / 恢复、乐观锁、审计字段。
 
@@ -675,7 +708,7 @@ note.delete_flag = 0
 - 评论（独立表、审核、反垃圾、登录 / 匿名策略）；
 - 版本历史 UI、回滚、revision 清理策略；
 - 定时发布；
-- 标签管理：改名 / 合并 / 删除提示；
+- 标签合并 / 别名 / 更细的治理；
 - 导入 / 导出 Markdown / ZIP；
 - RSS / sitemap / OG / JSON-LD；
 - slug 修改与 301 历史；
@@ -704,6 +737,7 @@ note.delete_flag = 0
 | `/notes/:id` | 笔记编辑 | `admin:note` |
 | `/posts` | 博客文章列表（状态 Tab） | `admin:post` |
 | `/posts/:id` | 文章编辑 / 发布 | `admin:post` |
+| `/tags` | 标签管理（使用量 / 分配内容） | `admin:tag` |
 | `/media` | 媒体库 | `admin:media` |
 | `/trash` | 回收站（笔记 / 文章分 Tab） | `admin:note:delete` / `admin:post:delete` |
 
@@ -763,10 +797,11 @@ note.delete_flag = 0
 
 ### 12.1 Flyway
 
-- **实现状态**：V2 / V3 已落地并通过 Testcontainers 集成测试；后续结构变更走新迁移。
+- **实现状态**：V2 / V3 / V4 已落地并通过 Testcontainers 集成测试；后续结构变更走新迁移。
 - `V1__init_auth_rbac.sql` 已冻结，不改。
 - `V2__init_content.sql`：`note_folder`、`tag`、`attachment`、`note`、`note_revision`、`note_tag`、`note_revision_tag`、索引、约束、`published_revision_id` 外键。
-- `V3__add_content_permissions.sql`：§7.2 的 `sys_menu` 节点；id 用 `gen_random_uuid()`，父节点按 code 子查询，不手填 UUID。
+- `V3__add_content_permissions.sql`：内容域 `sys_menu` 节点；id 用 `gen_random_uuid()`，父节点按 code 子查询，不手填 UUID。
+- `V4__add_tag_permissions.sql`：标签管理 `admin:tag` 菜单与动作节点。
 - 建表顺序：`note_folder` / `tag` / `attachment` → `note` → `note_revision` → 关联表 → `alter table note add constraint fk_note_published_revision`。
 
 ### 12.2 后端
@@ -779,6 +814,7 @@ note.delete_flag = 0
   - `PostService`：文章草稿 CRUD、详情、状态；
   - `PublishService`：发布、更新发布、下架、revision 创建、slug 校验；
   - `TagService`：标签解析 / 查找 / 快照；
+  - `TagAdminService`：标签管理列表 / 改名 / 删除 / 使用量 / 内容分配；
   - `AttachmentService`：上传、删除保护、稳定 URL。
 - Controller：`AdminNoteController`、`AdminPostController`、`AdminTrashController`、`AdminMediaController`、`BlogPostController`、`BlogTaxonomyController`、`MediaController`。
 - 公开 DTO 与后台 DTO 分开；公开详情从 revision 组装。
@@ -789,8 +825,8 @@ note.delete_flag = 0
 
 - `packages/api`：新增端点封装；`pnpm gen:api` 生成类型；禁止手写接口类型。
 - admin：
-  - 页面注册表新增 `admin:note` / `admin:post` / `admin:media`；
-  - 笔记列表 / 编辑器、文章列表 / 编辑器、媒体库、回收站；
+  - 页面注册表新增 `admin:note` / `admin:post` / `admin:tag` / `admin:media`；
+  - 笔记列表 / 编辑器、文章列表 / 编辑器、标签管理、媒体库、回收站；
   - `v-perm` 控制按钮；文章状态徽标和发布按钮；
   - Markdown 配置复用共享模块。
 - blog：
@@ -811,6 +847,7 @@ note.delete_flag = 0
 9. 公开接口不泄露笔记 / 草稿 / 已下架内容；
 10. slug 唯一、格式、首次发布后不可改、删除后不复用；
 11. 标签快照：编辑标签不更新发布，更新发布后才生效；
+12. 标签管理：联想选项、使用量、改名影响公开快照、分配 / 移除草稿、force 删除；
 12. 权限码与菜单启动对账；
 13. `version` 冲突返回 409；
 14. 回收站查询能读到软删除行，普通查询读不到。
@@ -823,7 +860,7 @@ note.delete_flag = 0
 2. **桌面端同步**：增量游标、墓碑读取、冲突解决、附件上传队列——Web 稳定后单独立项。
 3. **HTML 清洗**：是否在入库阶段拒绝裸 HTML，取决于是否为后端引入 Markdown 解析器；与 `docs/markdown-dialect.md` §8 一并定。
 4. **revision 保留策略**：v1 全量保留；何时清理、是否提供回滚 UI，P1 决定。
-5. **标签治理**：改名 / 合并 / 删除对已发布文章的影响，P1 设计。
+5. **标签治理**：改名 / 删除 / 使用量 / 内容分配已落地；合并、别名、删除后同名复用策略待后续评估。
 6. **slug 变更**：v1 首发布后不可改；未来如需改名，补 `post_slug_history` 与 301。
 7. **SEO / SSR**：v1 接受 SPA；若以后需要搜索流量或社交卡片稳定抓取，另做预渲染 / SSR 设计。
 8. **多作者 / 数据范围**：v1 单作者；`owner_id` 已预留，后续再定文章协作与笔记隔离规则。
@@ -838,3 +875,4 @@ note.delete_flag = 0
 | --- | --- | --- |
 | 2026-10-23 | v1 草案 | 初稿：单表 `note` + `kind`；发布快照 `note_revision`；不提供文章转笔记；评论 / 桌面端 / SEO 延后；权限码、API、功能清单落定 |
 | 2026-10-23 | v1 实现 | Web 端首版落地：V2/V3 迁移、`Note` / `NoteRevision` / 标签 / 附件实体、发布快照 API、admin 随手记 / 博客 / 媒体 / 回收站、blog 前台；媒体先接本地存储适配器；评论 / 桌面端 / SSR 保持非目标 |
+| 2026-10-23 | v1.1 标签管理 | V4 权限；标签管理页（改名 / 删除 / 三层使用量 / 内容分配）；编辑器全局标签联想；已发布文章分配标签只改草稿，需更新发布；删除有使用量时 force 二次确认 |

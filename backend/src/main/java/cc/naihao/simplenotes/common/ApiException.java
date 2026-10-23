@@ -32,6 +32,10 @@ public class ApiException extends RuntimeException {
         return new ApiException(HttpStatus.CONFLICT, ErrorCodes.CONFLICT, message);
     }
 
+    public static ApiException tagInUse(String message) {
+        return new ApiException(HttpStatus.CONFLICT, ErrorCodes.TAG_IN_USE, message);
+    }
+
     public static ApiException versionConflict(String message) {
         return new ApiException(HttpStatus.CONFLICT, ErrorCodes.VERSION_CONFLICT, message);
     }

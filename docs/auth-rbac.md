@@ -112,7 +112,7 @@
 - 个人中心（改自己密码 / 昵称）属"登录即可"，不设权限码（接口见 §8：`PUT /api/auth/password`、`PUT /api/auth/profile`）
 - 给用户分配角色独立为 `admin:user:assign-role`（与"分配角色"按钮同码，从 `admin:user:update` 拆出，见 §6.2 / §8）
 - 新增功能的标准开发动作 = **代码引用码 + 一条 INSERT 迁移**（对账兜底）
-- 预留命名空间（随对应功能设计补充，本次不枚举）：`admin:post:*`、`admin:note:*`、`admin:comment:*`、`admin:media:*`、`admin:settings:*`、`blog:*`、`desktop:*`；内容域具体权限码见 `docs/content-model.md` §7
+- 预留命名空间（随对应功能设计补充，本次不枚举）：`admin:post:*`、`admin:note:*`、`admin:tag:*`、`admin:comment:*`、`admin:media:*`、`admin:settings:*`、`blog:*`、`desktop:*`；内容域具体权限码见 `docs/content-model.md` §7
 
 ## 4. 预置用户与角色（超管）
 

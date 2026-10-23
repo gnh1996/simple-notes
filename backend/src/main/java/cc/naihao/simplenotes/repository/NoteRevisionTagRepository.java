@@ -12,4 +12,6 @@ public interface NoteRevisionTagRepository
     List<NoteRevisionTag> findByRevisionId(String revisionId);
 
     List<NoteRevisionTag> findByRevisionIdIn(Collection<String> revisionIds);
+
+    List<NoteRevisionTag> findByTagId(String tagId);
 }

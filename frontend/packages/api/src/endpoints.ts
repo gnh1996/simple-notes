@@ -58,6 +58,15 @@ export type PageResponsePostSummary = Schema['PageResponsePostSummary']
 export type AttachmentResponse = Schema['AttachmentResponse']
 export type TrashItemResponse = Schema['TrashItemResponse']
 
+export type TagAdminSummary = Schema['TagAdminSummary']
+export type TagContentResponse = Schema['TagContentResponse']
+export type TagContentCandidate = Schema['TagContentCandidate']
+export type TagNameRequest = Schema['TagNameRequest']
+export type TagAssignRequest = Schema['TagAssignRequest']
+export type PageResponseTagAdminSummary = Schema['PageResponseTagAdminSummary']
+export type PageResponseTagContentResponse = Schema['PageResponseTagContentResponse']
+export type PageResponseTagContentCandidate = Schema['PageResponseTagContentCandidate']
+
 export type PublishedPostSummary = Schema['PublishedPostSummary']
 export type PublishedPostDetail = Schema['PublishedPostDetail']
 export type PageResponsePublishedPostSummary = Schema['PageResponsePublishedPostSummary']
@@ -95,6 +104,19 @@ export interface PublishedPostListQuery {
   tagId?: string
   year?: number
   month?: number
+}
+
+export interface TagListQuery {
+  page?: number
+  size?: number
+  keyword?: string
+}
+
+export interface TagContentQuery {
+  kind: 'NOTE' | 'POST'
+  page?: number
+  size?: number
+  keyword?: string
 }
 
 function queryString(params: object): string {
@@ -219,6 +241,35 @@ export function createTrashApi(client: ApiClient) {
   }
 }
 
+/** 标签管理（`/api/admin/tags`） */
+export function createTagApi(client: ApiClient) {
+  return {
+    /** 编辑器联想：返回全部启用标签 */
+    options: () => client.get<TagBrief[]>('/admin/tags/options'),
+    list: (query: TagListQuery = {}) =>
+      client.get<PageResponseTagAdminSummary>(`/admin/tags${queryString(query)}`),
+    create: (body: TagNameRequest) => client.post<TagAdminSummary>('/admin/tags', body),
+    rename: (id: string, body: TagNameRequest) =>
+      client.put<TagAdminSummary>(`/admin/tags/${id}`, body),
+    /** 有使用量时需 force=true（前端确认警告后重试） */
+    remove: (id: string, force = false) =>
+      client.delete<void>(`/admin/tags/${id}${force ? '?force=true' : ''}`),
+    contents: (id: string, query: TagContentQuery) =>
+      client.get<PageResponseTagContentResponse>(
+        `/admin/tags/${id}/contents${queryString(query)}`,
+      ),
+    candidates: (id: string, query: TagContentQuery) =>
+      client.get<PageResponseTagContentCandidate>(
+        `/admin/tags/${id}/candidates${queryString(query)}`,
+      ),
+    /** 只写当前草稿；已发布文章需在文章编辑页更新发布 */
+    assign: (id: string, body: TagAssignRequest) =>
+      client.post<void>(`/admin/tags/${id}/contents`, body),
+    removeContent: (id: string, contentId: string) =>
+      client.delete<void>(`/admin/tags/${id}/contents/${contentId}`),
+  }
+}
+
 /** 媒体库（`/api/admin/media`） */
 export function createMediaApi(client: ApiClient) {
   return {
@@ -261,6 +312,7 @@ export function createSimpleNotesApi(client: ApiClient) {
     noteFolders: createNoteFolderApi(client),
     notes: createNoteApi(client),
     posts: createPostApi(client),
+    tags: createTagApi(client),
     trash: createTrashApi(client),
     media: createMediaApi(client),
     blog: createBlogApi(client),

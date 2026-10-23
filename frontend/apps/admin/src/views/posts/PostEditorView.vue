@@ -7,7 +7,7 @@ import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { mediaApi, postApi } from '@/api'
+import { mediaApi, postApi, tagApi } from '@/api'
 import { useTheme } from '@/composables/useTheme'
 import { publicPostUrl, summarizeMarkdown, tagNames } from '@/utils/content'
 import { formatDateTime, notifyError } from '@/utils/feedback'
@@ -25,6 +25,7 @@ const publishing = ref(false)
 const loaded = ref(false)
 const dirty = ref(false)
 const lastSavedAt = ref<string | null>(null)
+const tagOptions = ref<string[]>([])
 let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
 let suppressWatch = false
 
@@ -53,6 +54,10 @@ const coverUrl = computed(() =>
   form.coverAttachmentId ? `/api/media/${form.coverAttachmentId}` : '',
 )
 const publicLink = computed(() => (isPublished.value ? publicPostUrl(form.slug) : null))
+const tagOptionNames = computed(() =>
+  Array.from(new Set([...tagOptions.value, ...form.tags])),
+)
+
 const statusLabel = computed(() => {
   if (form.publishStatus === 'DRAFT') return '草稿'
   if (form.publishStatus === 'UNPUBLISHED') return '已下架'
@@ -80,6 +85,8 @@ const savedText = computed(() => {
 async function load(): Promise<void> {
   loading.value = true
   try {
+    const tagRows = await tagApi.options()
+    tagOptions.value = (tagRows ?? []).map((tag) => tag.name)
     if (isNew.value) {
       resetForm()
       loaded.value = true
@@ -419,7 +426,7 @@ onBeforeUnmount(() => {
               placeholder="输入后回车创建"
               class="w-full"
             >
-              <el-option v-for="tag in form.tags" :key="tag" :label="tag" :value="tag" />
+              <el-option v-for="tag in tagOptionNames" :key="tag" :label="tag" :value="tag" />
             </el-select>
           </el-form-item>
 

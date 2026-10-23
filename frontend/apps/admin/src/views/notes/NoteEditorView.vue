@@ -7,7 +7,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { mediaApi, noteApi, noteFolderApi } from '@/api'
+import { mediaApi, noteApi, noteFolderApi, tagApi } from '@/api'
 import { useTheme } from '@/composables/useTheme'
 import { tagNames } from '@/utils/content'
 import { formatDateTime, notifyError } from '@/utils/feedback'
@@ -25,6 +25,7 @@ const loaded = ref(false)
 const dirty = ref(false)
 const lastSavedAt = ref<string | null>(null)
 const folders = ref<NoteFolderResponse[]>([])
+const tagOptions = ref<string[]>([])
 let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
 let suppressWatch = false
 
@@ -39,6 +40,10 @@ const form = reactive({
   version: 0,
 })
 
+const tagOptionNames = computed(() =>
+  Array.from(new Set([...tagOptions.value, ...form.tags])),
+)
+
 const statusText = computed(() => {
   if (saving.value) return '保存中…'
   if (dirty.value) return '未保存'
@@ -48,7 +53,9 @@ const statusText = computed(() => {
 async function load(): Promise<void> {
   loading.value = true
   try {
-    folders.value = (await noteFolderApi.list()) ?? []
+    const [folderRows, tagRows] = await Promise.all([noteFolderApi.list(), tagApi.options()])
+    folders.value = folderRows ?? []
+    tagOptions.value = (tagRows ?? []).map((tag) => tag.name)
     if (isNew.value) {
       resetForm()
       loaded.value = true
@@ -270,7 +277,7 @@ onBeforeUnmount(() => {
               placeholder="输入后回车创建"
               class="w-full"
             >
-              <el-option v-for="tag in form.tags" :key="tag" :label="tag" :value="tag" />
+              <el-option v-for="tag in tagOptionNames" :key="tag" :label="tag" :value="tag" />
             </el-select>
           </el-form-item>
           <el-form-item label="置顶">

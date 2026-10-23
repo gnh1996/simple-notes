@@ -1,4 +1,12 @@
-import { Avatar, Document, Menu as MenuIcon, Notebook, Picture, User } from '@element-plus/icons-vue'
+import {
+  Avatar,
+  Document,
+  Menu as MenuIcon,
+  Notebook,
+  Picture,
+  PriceTag,
+  User,
+} from '@element-plus/icons-vue'
 import type { Component } from 'vue'
 
 /**
@@ -37,6 +45,14 @@ export const PAGE_REGISTRY: Record<string, PageRegistryItem> = {
     description: '草稿、发布快照与下架',
     icon: Document,
     component: () => import('@/views/posts/PostListView.vue'),
+  },
+  'admin:tag': {
+    path: '/tags',
+    name: 'TagList',
+    title: '标签管理',
+    description: '全局标签、使用量与内容分配',
+    icon: PriceTag,
+    component: () => import('@/views/tags/TagListView.vue'),
   },
   'admin:media': {
     path: '/media',
