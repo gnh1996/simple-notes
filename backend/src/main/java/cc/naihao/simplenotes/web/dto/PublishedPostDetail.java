@@ -6,7 +6,7 @@ import java.util.List;
 
 /** 公开文章详情：正文来自发布快照。 */
 @Schema(requiredProperties = { "slug", "title", "content", "summary", "tags", "authorName",
-        "firstPublishedAt", "lastPublishedAt" })
+        "firstPublishedAt", "lastPublishedAt", "readingMinutes" })
 public record PublishedPostDetail(
         String slug,
         String title,
@@ -16,5 +16,6 @@ public record PublishedPostDetail(
         List<TagBrief> tags,
         String authorName,
         Instant firstPublishedAt,
-        Instant lastPublishedAt) {
+        Instant lastPublishedAt,
+        int readingMinutes) {
 }

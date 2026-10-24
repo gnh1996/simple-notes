@@ -9,7 +9,7 @@
 | 端 | 引擎 | 角色 |
 | --- | --- | --- |
 | 管理端（Web） | md-editor-v3 7.x（`markdown-it` 内核） | 书写 + 预览 |
-| 博客前台（Web） | 待定（复用 MdPreview 或自建 `markdown-it + shiki`） | 发布渲染 |
+| 博客前台（Web） | `markdown-it`（blog runtime 内置，配置与 admin 等价） | 发布渲染 |
 | 桌面端 | LiveMarkdown.Avalonia 2.4.3（`Markdig` 内核） | 书写 + 预览 |
 | 后端 | 不解析、不渲染 | 原样存储 + 安全清洗 |
 
@@ -89,7 +89,7 @@
 | 端 | 配置要求 |
 | --- | --- |
 | 管理端（md-editor-v3） | 追加 `markdown-it-github-alerts` 插件；禁用内置 `!!!` admonition；`noKatex` / `noEcharts` 关闭未收语法；工具栏隐藏 sub/sup 等未收入口；`breaks: false` 对齐 CommonMark |
-| 博客前台 | **复用 `MdPreview`**（与编辑器同源，配置经全局 `config()` 共享）：hljs 自托管（生产不依赖 CDN）；Mermaid 全图种；`html: false` 默认符合方言 |
+| 博客前台 | **由 blog runtime 内置 `markdown-it` 渲染**（`docs/blog-runtime-theme.md`）；配置必须与编辑器等价：`breaks: false`、追加 `markdown-it-github-alerts`、`html: false`、禁 katex / echarts；hljs 自托管（生产不依赖 CDN）；Mermaid 全图种 |
 | 桌面端（LiveMarkdown） | 管线启用 GFM + Alerts；不启用数学 / 脚注扩展；注册 Mermaid 模块并限定承诺图种 |
 | 后端 | 入库清洗（HTML 处理策略在 API 设计中定）；v1 不做服务端渲染 |
 
@@ -104,7 +104,7 @@
 
 - [x] Web 端（admin / blog）已接入 `markdown-it-github-alerts`，确认 v7 管线共存、Alerts 渲染正常；`noKatex` / `noEcharts` 关闭、`breaks: false` 配置已落地（2026-10-23；桌面端随桌面端实现验收）
 - [ ] LiveMarkdown.Avalonia 用于静态内容渲染的用法确认（`DocumentUpdate` / builder 模式）
-- [x] ~~博客前台渲染管线选型~~ → **已定（2026-10-18）：复用 `MdPreview`**；实现阶段待办：读者端产物体积实测 + hljs 自托管配置
+- [x] ~~博客前台渲染管线选型~~ → **已改定（2026-10-24）：blog runtime 内置 `markdown-it`**（`docs/blog-runtime-theme.md`）；不再复用 `MdPreview`。待办：runtime 方言配置与 admin 的 `packages/shared/src/markdown.ts` 做 fixture 双向验证；hljs 自托管
 - [ ] 后端入库清洗策略细节（依赖 API 设计）
 
 ## 附录 A：代码块语言集（三端高亮承诺）
@@ -137,3 +137,4 @@
 | --- | --- | --- |
 | v1（草案） | 2026-10-17 | 初稿：代码博客 + 记事本最小集；Alerts 列入白名单（待验收）；数学/脚注等列为禁区（v2 候选） |
 | v1（草案） | 2026-10-18 | 修订：博客前台渲染管线定为复用 `MdPreview`（与编辑器同源）；Alerts 对齐方式明确（追加 github-alerts 插件、禁用 `!!!` 语法）；§6 三端配置清单更新 |
+| v1（草案） | 2026-10-24 | 修订：博客前台改为 blog runtime 内置 `markdown-it`（`docs/blog-runtime-theme.md`），不再复用 `MdPreview`；方言一致性改由「共享语义源 + fixture 双向验证」保证 |

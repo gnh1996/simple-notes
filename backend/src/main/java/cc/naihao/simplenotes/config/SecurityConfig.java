@@ -43,7 +43,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@EnableConfigurationProperties(AuthProperties.class)
+@EnableConfigurationProperties({ AuthProperties.class, SiteProperties.class })
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -90,6 +90,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/blog/**").permitAll()
                         // 稳定媒体 URL 匿名可读（正文 / 封面引用）
                         .requestMatchers(HttpMethod.GET, "/api/media/**").permitAll()
+                        // 博客前台：组装页 + 无构建运行时（docs/blog-runtime-theme.md §5）
+                        .requestMatchers(HttpMethod.GET, "/", "/posts/**", "/tags/**", "/archives",
+                                "/search", "/about", "/p/**", "/blog/**", "/favicon.svg")
+                        .permitAll()
                         // 三端接口域：要求已认证会话（client 一致性 + 权限码由过滤器 / 方法级校验）
                         .requestMatchers("/api/**").authenticated()
                         // 默认拒绝：API 服务不承载静态资源，非 API 路径一律拒绝

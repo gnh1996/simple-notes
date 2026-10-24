@@ -1,10 +1,12 @@
 import {
   Avatar,
+  Brush,
   Document,
   Menu as MenuIcon,
   Notebook,
   Picture,
   PriceTag,
+  Setting,
   User,
 } from '@element-plus/icons-vue'
 import type { Component } from 'vue'
@@ -61,6 +63,22 @@ export const PAGE_REGISTRY: Record<string, PageRegistryItem> = {
     description: '图片上传与站内稳定 URL',
     icon: Picture,
     component: () => import('@/views/media/MediaListView.vue'),
+  },
+  'admin:site': {
+    path: '/site',
+    name: 'SiteSettings',
+    title: '站点设置',
+    description: '品牌、导航、作者与独立页面',
+    icon: Setting,
+    component: () => import('@/views/site/SiteSettingsView.vue'),
+  },
+  'admin:theme': {
+    path: '/themes',
+    name: 'ThemeList',
+    title: '主题管理',
+    description: '主题版本、预览与应用',
+    icon: Brush,
+    component: () => import('@/views/themes/ThemeListView.vue'),
   },
   'admin:user': {
     path: '/system/user',

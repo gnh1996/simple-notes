@@ -105,5 +105,7 @@ export const {
   trash: trashApi,
   media: mediaApi,
   blog: blogApi,
+  site: siteApi,
+  themes: themeApi,
 } = api
 export { ApiError }

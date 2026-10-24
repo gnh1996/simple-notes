@@ -73,6 +73,21 @@ export type PageResponsePublishedPostSummary = Schema['PageResponsePublishedPost
 export type TagCountResponse = Schema['TagCountResponse']
 export type ArchiveResponse = Schema['ArchiveResponse']
 
+// ---- 站点配置 / 主题 / 独立页面 ----
+
+export type SiteSettingItem = Schema['SiteSettingItem']
+export type SiteSettingsResponse = Schema['SiteSettingsResponse']
+export type UpdateSiteSettingsRequest = Schema['UpdateSiteSettingsRequest']
+export type SiteResponse = Schema['SiteResponse']
+export type SitePageResponse = Schema['SitePageResponse']
+export type SitePageRequest = Schema['SitePageRequest']
+
+export type ThemeSummary = Schema['ThemeSummary']
+export type ThemeVersionResponse = Schema['ThemeVersionResponse']
+export type CreateThemeRequest = Schema['CreateThemeRequest']
+export type CreateThemeVersionRequest = Schema['CreateThemeVersionRequest']
+export type PreviewTokenResponse = Schema['PreviewTokenResponse']
+
 export interface UserListQuery {
   page?: number
   size?: number
@@ -296,6 +311,40 @@ export function createBlogApi(client: ApiClient) {
     archives: () => client.get<ArchiveResponse[]>('/blog/archives'),
     search: (query: PublishedPostListQuery & { q?: string } = {}) =>
       client.get<PageResponsePublishedPostSummary>(`/blog/search${queryString(query)}`),
+    site: () => client.get<SiteResponse>('/blog/site'),
+    page: (slug: string) => client.get<SitePageResponse>(`/blog/pages/${encodeURIComponent(slug)}`),
+  }
+}
+
+/** 站点设置与独立页面（`/api/admin/site/**`） */
+export function createSiteApi(client: ApiClient) {
+  return {
+    settings: () => client.get<SiteSettingsResponse>('/admin/site/settings'),
+    updateSettings: (body: UpdateSiteSettingsRequest) =>
+      client.put<SiteSettingsResponse>('/admin/site/settings', body),
+    pages: () => client.get<SitePageResponse[]>('/admin/site/pages'),
+    createPage: (body: SitePageRequest) =>
+      client.post<SitePageResponse>('/admin/site/pages', body),
+    updatePage: (id: string, body: SitePageRequest) =>
+      client.put<SitePageResponse>(`/admin/site/pages/${id}`, body),
+    removePage: (id: string) => client.delete<void>(`/admin/site/pages/${id}`),
+  }
+}
+
+/** 主题管理（`/api/admin/themes`）：版本不可变，应用 / 回滚都走 activate */
+export function createThemeApi(client: ApiClient) {
+  return {
+    list: () => client.get<ThemeSummary[]>('/admin/themes'),
+    create: (body: CreateThemeRequest) => client.post<ThemeSummary>('/admin/themes', body),
+    versions: (id: string) => client.get<ThemeVersionResponse[]>(`/admin/themes/${id}/versions`),
+    version: (id: string, versionId: string) =>
+      client.get<ThemeVersionResponse>(`/admin/themes/${id}/versions/${versionId}`),
+    createVersion: (id: string, body: CreateThemeVersionRequest) =>
+      client.post<ThemeVersionResponse>(`/admin/themes/${id}/versions`, body),
+    activate: (id: string, versionId: string) =>
+      client.post<ThemeSummary>(`/admin/themes/${id}/versions/${versionId}/activate`),
+    previewToken: (id: string, versionId: string) =>
+      client.post<PreviewTokenResponse>(`/admin/themes/${id}/versions/${versionId}/preview-token`),
   }
 }
 
@@ -315,6 +364,8 @@ export function createSimpleNotesApi(client: ApiClient) {
     trash: createTrashApi(client),
     media: createMediaApi(client),
     blog: createBlogApi(client),
+    site: createSiteApi(client),
+    themes: createThemeApi(client),
   }
 }
 

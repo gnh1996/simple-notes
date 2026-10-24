@@ -84,6 +84,17 @@ public final class Perms {
     public static final String ADMIN_MEDIA_UPLOAD = "admin:media:upload";
     public static final String ADMIN_MEDIA_DELETE = "admin:media:delete";
 
+    // ---- admin：站点设置 ----
+
+    public static final String ADMIN_SITE = "admin:site";
+    public static final String ADMIN_SITE_UPDATE = "admin:site:update";
+
+    // ---- admin：主题管理 ----
+
+    public static final String ADMIN_THEME = "admin:theme";
+    public static final String ADMIN_THEME_WRITE = "admin:theme:write";
+    public static final String ADMIN_THEME_ACTIVATE = "admin:theme:activate";
+
     private static final Set<String> ALL = collectAll();
 
     private Perms() {

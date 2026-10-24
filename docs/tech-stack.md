@@ -25,7 +25,7 @@
 | 管理端 UI | Element Plus 2.14 |
 | API 客户端 | 后端 springdoc 导出 OpenAPI → `packages/api` 用 **openapi-typescript** 生成类型（`pnpm gen:api`）+ 自建轻量 fetch 封装（传输层与 Bearer 注入在应用侧） |
 | Markdown 编辑器 | md-editor-v3 7（管理端） |
-| Markdown 渲染 | 博客前台复用 md-editor-v3 `MdPreview`（与编辑器同源；备选自建 shiki 管线未采用） |
+| Markdown 渲染 | 博客前台由 blog runtime 内置 `markdown-it`（方言配置与 admin 等价，经 fixture 双向验证）；见 `docs/blog-runtime-theme.md` |
 | 响应式 | `useBreakpoint()` 单一断点来源，展示层分叉 |
 
 ## 桌面端（`desktop/`）
@@ -64,6 +64,14 @@
 - 已发生的变更记录可追加到本文件文末
 
 ## 变更记录
+
+### 2026-10-24 · 博客前台改为「运行时 + 数据化主题」（详见 `docs/blog-runtime-theme.md`）
+
+- **形态**：博客前台不再作为 Vue SPA 构建产物发布，改为后端组装页面骨架（注入站点配置 + 主题 HTML/CSS）+ 无构建 `runtime.js` 接管路由、取数、四态、暗色与 Markdown 渲染；主题由管理端以不可变版本存储，改主题不发版
+- **渲染归属**：Markdown 渲染由 md-editor-v3 `MdPreview` 改为 runtime 内置 `markdown-it`（`breaks:false` / github-alerts / `html:false` 与 admin 等价，经 `docs/markdown-dialect-fixture.md` 双向验证）；md-editor-v3 仅用于 admin 编辑与预览
+- **理由**：① 主题可替换且不破坏方言一致性；② 移动端只有一套 DOM，质量可验收；③ 主题作者只写 HTML/CSS，便于后续 agent 产出；④ 运行时随代码发布、可评审，主题存库、可回滚
+- **代价**：引入契约版本（runtime/theme contract）与主题版本、预览 token、模板校验等机制；Vue 运行时模板编译需要 CSP `unsafe-eval`，靠 blog/admin 分域 + 零主题 JS 兜底
+- **影响**：`frontend/apps/blog` 由 SPA 改为无构建运行时；`pnpm dev:blog` / `build:blog` 需相应调整；blog 端不再使用 `packages/api` 的生成类型，改由 runtime 内统一 API 封装收口
 
 ### 2026-10-18 · admin 端实现落地（后端接 springdoc；Web 端 API 客户端生成链路收口）
 

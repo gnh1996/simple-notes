@@ -10,8 +10,8 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客前台）+ `pa
 
 ## Markdown（与内容方言强相关，详见 `docs/markdown-dialect.md`）
 
-- 编辑器：md-editor-v3 7（admin）；博客前台渲染复用其 `MdPreview`（一致性优先于自建管线）
-- 全局 `config()` 必须 admin / blog 共享同一配置模块（模块级设置，两端独立应用各自生效）：
+- 编辑器：md-editor-v3 7（仅 admin）；**博客前台不再复用 `MdPreview`**，改由 blog runtime 内置 `markdown-it` 渲染（见 `docs/blog-runtime-theme.md`）
+- 两端配置必须语义一致（admin 走全局 `config()`；blog 走 runtime 内的等价实现，由 fixture 双向验证）：
   - `breaks: false`（对齐 CommonMark 软换行）
   - 追加 `markdown-it-github-alerts`；禁用内置 `!!!` admonition
   - 过滤 katex / sub / sup / echarts 等未收扩展（`noKatex` / `noEcharts`）
@@ -22,6 +22,16 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客前台）+ `pa
 
 - `useBreakpoint()`（`@simple-notes/shared`）是唯一的断点判断来源，禁止 UA / 设备类型判断
 - 路由与业务逻辑只有一份；只在展示层按断点分叉（如桌面端侧边栏 vs 移动端抽屉，见 `apps/admin/src/layouts/AdminLayout.vue`）
+
+## 博客前台（blog runtime）
+
+> 设计与实现见 `docs/blog-runtime-theme.md`（P1 已落地）。
+
+- **无构建运行时**：纯静态 HTML / JS / CSS，不经 Vite、不写 TS；页面骨架由后端组装，主题由数据库下发且**禁止携带脚本**
+- 运行时与内置默认主题位于 `backend/src/main/resources/static/blog/` 与 `backend/src/main/resources/blog/default-theme/`；开发期直接访问后端 `http://localhost:8080`
+- 运行时只调用公开接口；依赖以自托管文件放在 `vendor/`，**禁止引用公共 CDN**
+- 断点值与 `BREAKPOINTS` 保持一致（runtime 无法直接 import TS 共享模块，需显式对齐）
+- 旧 `apps/blog`（Vue SPA）已被取代，待清理；`pnpm dev:blog` / `build:blog` 在清理后移除
 
 ## 管理端（apps/admin）
 

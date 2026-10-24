@@ -118,7 +118,8 @@ public class BlogService {
                 tagService.tagsOfRevision(revision.getId()),
                 authorName,
                 note.getFirstPublishedAt(),
-                note.getLastPublishedAt());
+                note.getLastPublishedAt(),
+                readingMinutes(revision.getContent()));
     }
 
     @Transactional(readOnly = true)
@@ -229,7 +230,17 @@ public class BlogService {
                 coverUrl(revision.getCoverAttachmentId()),
                 tags,
                 note.getPinned() == 1,
-                note.getFirstPublishedAt());
+                note.getFirstPublishedAt(),
+                readingMinutes(revision.getContent()));
+    }
+
+    /** 阅读时长：非空白字符数 / 400，至少 1 分钟（与前端公式一致） */
+    private int readingMinutes(String content) {
+        if (content == null || content.isBlank()) {
+            return 1;
+        }
+        int chars = content.replaceAll("\\s+", "").length();
+        return Math.max(1, (int) Math.round(chars / 400.0));
     }
 
     private String coverUrl(String attachmentId) {

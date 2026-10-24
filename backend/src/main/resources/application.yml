@@ -41,3 +41,7 @@ simple-notes:
       bucket: "${R2_BUCKET:simple-notes}"
       access-key: "${R2_ACCESS_KEY_ID}"
       secret-key: "${R2_SECRET_ACCESS_KEY}"
+  # 博客宿主（docs/blog-runtime-theme.md §5.2）：管理端源用于 CSP frame-ancestors 与预览 iframe
+  site:
+    admin-origin: "${ADMIN_ORIGIN:http://localhost:5173}"
+    preview-ttl: 30m

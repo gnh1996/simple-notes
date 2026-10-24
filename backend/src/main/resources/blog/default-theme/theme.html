@@ -1,0 +1,219 @@
+<div id="app" class="shell" data-blog-shell v-cloak
+     :data-blog-page="route.name" :data-state="state">
+  <a class="skip-link" href="#main">跳到正文</a>
+
+  <header class="site-head" data-blog-header>
+    <div class="head-inner">
+      <a class="brand" href="/" :aria-label="site.name">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <img v-if="site.logoUrl" class="brand-logo" :src="site.logoUrl" alt="" />
+        <span v-else class="brand-text">{{ site.name }}</span>
+      </a>
+
+      <nav class="nav-desktop" data-blog-nav aria-label="主导航">
+        <a v-for="n in nav" :key="n.key" :href="n.to"
+           :class="{ active: isNavActive(n.to) }">{{ n.label }}</a>
+      </nav>
+
+      <div class="head-actions">
+        <blog-theme-toggle></blog-theme-toggle>
+        <details class="nav-mobile">
+          <summary aria-label="打开菜单">
+            <span class="burger" aria-hidden="true"></span>
+          </summary>
+          <nav aria-label="移动端导航">
+            <a v-for="n in nav" :key="n.key" :href="n.to"
+               :class="{ active: isNavActive(n.to) }">{{ n.label }}</a>
+          </nav>
+        </details>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="main">
+    <!-- 首页 -->
+    <template v-if="route.name === 'home'">
+      <section class="hero">
+        <p class="eyebrow">{{ site.tagline }}</p>
+        <h1 class="hero-title">{{ site.name }}</h1>
+        <p v-if="site.description" class="lede">{{ site.description }}</p>
+        <div class="hero-rule" aria-hidden="true"><span></span></div>
+      </section>
+
+      <blog-state v-if="state !== 'ready' || !posts.length"
+                  :state="state === 'ready' ? 'empty' : state" :message="message"></blog-state>
+      <section v-else class="list">
+        <div class="section-head">
+          <span class="section-label">Index</span>
+          <span class="section-count">{{ pager.total }} 篇</span>
+        </div>
+        <div class="cards">
+          <blog-post-card v-for="p in posts" :key="p.slug" :post="p"></blog-post-card>
+        </div>
+        <blog-pager :pager="pager" @go="go"></blog-pager>
+      </section>
+    </template>
+
+    <!-- 文章详情 -->
+    <template v-else-if="route.name === 'post'">
+      <blog-state v-if="state !== 'ready'" :state="state" :message="message"></blog-state>
+      <div v-else-if="post" class="post-layout">
+        <article class="post" data-blog-post>
+          <a class="back" href="/">← 返回首页</a>
+          <p class="post-kicker">Journal</p>
+          <h1 class="post-title">{{ post.title }}</h1>
+          <p class="post-meta">
+            <span>{{ post.authorName }}</span>
+            <time>{{ formatDate(post.firstPublishedAt) }}</time>
+            <span>约 {{ post.readingMinutes }} 分钟</span>
+          </p>
+          <div v-if="post.tags.length" class="post-tags">
+            <blog-tag-chip v-for="t in post.tags" :key="t.id" :tag="t"></blog-tag-chip>
+          </div>
+          <blog-image v-if="post.coverUrl" class="cover"
+                      :src="post.coverUrl" :alt="post.title"></blog-image>
+          <blog-markdown :source="post.content"></blog-markdown>
+
+          <nav v-if="prevPost || nextPost" class="post-nav" aria-label="上下篇">
+            <a v-if="prevPost" class="prev" :href="'/posts/' + prevPost.slug">
+              <span>上一篇</span>{{ prevPost.title }}
+            </a>
+            <a v-if="nextPost" class="next" :href="'/posts/' + nextPost.slug">
+              <span>下一篇</span>{{ nextPost.title }}
+            </a>
+          </nav>
+        </article>
+
+        <aside class="toc-side">
+          <p class="toc-title">Contents</p>
+          <blog-toc></blog-toc>
+        </aside>
+      </div>
+    </template>
+
+    <!-- 标签 -->
+    <template v-else-if="route.name === 'tags'">
+      <section class="page-head">
+        <p class="eyebrow">Topics</p>
+        <h1>标签</h1>
+        <p>按主题浏览已发布文章。</p>
+      </section>
+      <blog-tag-cloud></blog-tag-cloud>
+    </template>
+
+    <!-- 标签文章 -->
+    <template v-else-if="route.name === 'tag-posts'">
+      <section class="page-head">
+        <a class="back" href="/tags">← 全部标签</a>
+        <p class="eyebrow">Topics</p>
+        <h1># {{ tag ? tag.name : '标签' }}</h1>
+        <p v-if="tag">{{ tag.count }} 篇文章</p>
+      </section>
+      <blog-state v-if="state !== 'ready' || !posts.length"
+                  :state="state === 'ready' ? 'empty' : state" :message="message"></blog-state>
+      <section v-else class="list">
+        <div class="cards">
+          <blog-post-card v-for="p in posts" :key="p.slug" :post="p"></blog-post-card>
+        </div>
+        <blog-pager :pager="pager" @go="go"></blog-pager>
+      </section>
+    </template>
+
+    <!-- 归档 -->
+    <template v-else-if="route.name === 'archives'">
+      <section class="page-head">
+        <p class="eyebrow">Archive</p>
+        <h1>归档</h1>
+        <p>按发布时间浏览全部文章。</p>
+      </section>
+      <blog-state v-if="state !== 'ready' || !posts.length"
+                  :state="state === 'ready' ? 'empty' : state" :message="message"></blog-state>
+      <div v-else class="archive-layout">
+        <aside class="archive-index">
+          <a v-for="a in archives" :key="a.year + '-' + a.month"
+             :href="'#y' + a.year + 'm' + a.month">
+            {{ a.year }} 年 {{ a.month }} 月 <span>{{ a.count }}</span>
+          </a>
+        </aside>
+        <div class="archive-list">
+          <section v-for="group in archiveGroups" :key="group.key"
+                   :id="'y' + group.year + 'm' + group.month" class="archive-group">
+            <h2>{{ group.year }} 年 {{ group.month }} 月</h2>
+            <ul>
+              <li v-for="p in group.posts" :key="p.slug">
+                <a :href="'/posts/' + p.slug">{{ p.title }}</a>
+                <time>{{ formatDate(p.firstPublishedAt) }}</time>
+              </li>
+            </ul>
+          </section>
+        </div>
+      </div>
+    </template>
+
+    <!-- 搜索 -->
+    <template v-else-if="route.name === 'search'">
+      <section class="page-head">
+        <p class="eyebrow">Search</p>
+        <h1>搜索</h1>
+        <p>搜索已发布文章的标题与正文。</p>
+      </section>
+      <blog-search-box :value="keyword" @search="search"></blog-search-box>
+      <blog-state v-if="state !== 'ready' || (searched && !posts.length)"
+                  :state="state === 'ready' ? 'empty' : state"
+                  :message="searched ? '没有找到匹配的文章' : '输入关键词开始搜索'"></blog-state>
+      <section v-else-if="posts.length" class="list">
+        <div class="cards">
+          <blog-post-card v-for="p in posts" :key="p.slug" :post="p"></blog-post-card>
+        </div>
+        <blog-pager :pager="pager" @go="go"></blog-pager>
+      </section>
+    </template>
+
+    <!-- 独立页面 -->
+    <template v-else-if="route.name === 'page'">
+      <blog-state v-if="state !== 'ready'" :state="state" :message="message"></blog-state>
+      <article v-else-if="page" class="page-doc">
+        <p class="eyebrow">About</p>
+        <h1>{{ page.title }}</h1>
+        <blog-markdown :source="page.content"></blog-markdown>
+      </article>
+    </template>
+
+    <!-- 404 -->
+    <template v-else>
+      <section class="page-head">
+        <p class="eyebrow">404</p>
+        <h1>页面不存在</h1>
+        <p>链接可能已失效，或内容尚未发布。</p>
+        <a class="back" href="/">返回首页</a>
+      </section>
+    </template>
+  </main>
+
+  <footer class="site-foot" data-blog-footer>
+    <div class="foot-inner">
+      <p class="foot-mark">{{ site.name }}</p>
+      <div class="foot-grid">
+        <div class="foot-col">
+          <p class="foot-label">About</p>
+          <p v-if="site.footerText" class="foot-text">{{ site.footerText }}</p>
+          <p v-if="site.author.name" class="foot-text">© {{ site.author.name }}</p>
+        </div>
+        <div class="foot-col" v-if="site.social.length">
+          <p class="foot-label">Elsewhere</p>
+          <a v-for="s in site.social" :key="s.url" :href="s.url" rel="noopener noreferrer"
+             target="_blank">{{ s.label }}</a>
+        </div>
+        <div class="foot-col">
+          <p class="foot-label">Record</p>
+          <a v-if="site.icp" href="https://beian.miit.gov.cn/" rel="noopener noreferrer"
+             target="_blank">{{ site.icp }}</a>
+          <span v-if="site.policeRecord">{{ site.policeRecord }}</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <blog-reading-progress></blog-reading-progress>
+  <blog-back-to-top></blog-back-to-top>
+</div>

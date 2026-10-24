@@ -755,8 +755,9 @@ note.delete_flag = 0
 | `/about` | 关于页（v1 静态内容可接受） |
 
 - 匿名可读；不要求登录。
-- Markdown 渲染复用 `MdPreview`，与 admin 共享全局配置（`breaks: false`、github-alerts、hljs 自托管、`html: false`）。
-- 响应式使用 `useBreakpoint()`，不按 UA 判断。
+- **页面形态（v1.3 起）**：后端组装整页骨架 + 无构建 runtime，主题由管理端以不可变版本下发；详见 `docs/blog-runtime-theme.md`。
+- Markdown 由 blog runtime 内置 `markdown-it` 渲染，配置与 admin 等价（`breaks: false`、github-alerts、hljs 自托管、`html: false`），一致性由 fixture 双向验证。
+- 响应式使用 `useBreakpoint()` / 统一断点值，不按 UA 判断。
 
 ---
 
@@ -871,3 +872,4 @@ note.delete_flag = 0
 | 2026-10-23 | v1 实现 | Web 端首版落地：V2/V3 迁移、`Note` / `NoteRevision` / 标签 / 附件实体、发布快照 API、admin 随手记 / 博客 / 媒体 / 回收站、blog 前台；媒体先接本地存储适配器；评论 / 桌面端 / SSR 保持非目标 |
 | 2026-10-23 | v1.1 标签管理 | V4 权限；标签管理页（改名 / 删除 / 三层使用量 / 内容分配）；编辑器全局标签联想；已发布文章分配标签只改草稿，需更新发布；删除有使用量时 force 二次确认 |
 | 2026-10-23 | v1.2 移除归档 | 随手记定位云端记事本，修改内容是常态；归档此前仅是状态标签，既不影响列表 / 搜索，也未形成独立入口，收纳需求由软删除 + 回收站覆盖。删除 `note.status` / `NoteStatus` / 相关 DTO 字段与前端开关（V5 迁移），文章下架继续用 `publish_status` |
+| 2026-10-24 | v1.3 博客运行时与主题化 | 前台改为「后端组装骨架 + 无构建 runtime + 数据化主题」（`docs/blog-runtime-theme.md`）；Markdown 渲染由 `MdPreview` 改为 runtime 内置 `markdown-it`（方言一致性由 fixture 双向验证）；新增站点配置、独立页面、主题版本与预览能力；内容模型与发布快照不变 |

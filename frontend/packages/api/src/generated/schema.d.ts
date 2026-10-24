@@ -100,6 +100,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/site/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["settings"];
+        put: operations["updateSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/site/pages/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updatePage"];
+        post?: never;
+        delete: operations["deletePage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/roles/{id}": {
         parameters: {
             query?: never;
@@ -260,7 +292,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/tags": {
+    "/api/admin/themes": {
         parameters: {
             query?: never;
             header?: never;
@@ -270,6 +302,70 @@ export interface paths {
         get: operations["list_1"];
         put?: never;
         post: operations["create_1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/themes/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["versions"];
+        put?: never;
+        post: operations["createVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/themes/{id}/versions/{versionId}/preview-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/themes/{id}/versions/{versionId}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["activate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_2"];
+        put?: never;
+        post: operations["create_2"];
         delete?: never;
         options?: never;
         head?: never;
@@ -292,6 +388,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/site/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["pages"];
+        put?: never;
+        post: operations["createPage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/roles": {
         parameters: {
             query?: never;
@@ -299,9 +411,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_2"];
+        get: operations["list_3"];
         put?: never;
-        post: operations["create_2"];
+        post: operations["create_3"];
         delete?: never;
         options?: never;
         head?: never;
@@ -315,9 +427,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_3"];
+        get: operations["list_4"];
         put?: never;
-        post: operations["create_3"];
+        post: operations["create_4"];
         delete?: never;
         options?: never;
         head?: never;
@@ -379,9 +491,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_4"];
+        get: operations["list_5"];
         put?: never;
-        post: operations["create_4"];
+        post: operations["create_5"];
         delete?: never;
         options?: never;
         head?: never;
@@ -427,9 +539,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_5"];
+        get: operations["list_6"];
         put?: never;
-        post: operations["create_5"];
+        post: operations["create_6"];
         delete?: never;
         options?: never;
         head?: never;
@@ -443,7 +555,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_6"];
+        get: operations["list_7"];
         put?: never;
         post: operations["upload"];
         delete?: never;
@@ -484,6 +596,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/blog/site": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["site"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/blog/search": {
         parameters: {
             query?: never;
@@ -507,7 +635,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_7"];
+        get: operations["list_8"];
         put?: never;
         post?: never;
         delete?: never;
@@ -524,6 +652,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["detail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/blog/pages/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["page"];
         put?: never;
         post?: never;
         delete?: never;
@@ -556,6 +700,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/themes/{id}/versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["version"];
         put?: never;
         post?: never;
         delete?: never;
@@ -651,7 +811,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_8"];
+        get: operations["list_9"];
         put?: never;
         post?: never;
         delete?: never;
@@ -757,6 +917,47 @@ export interface components {
             createTime: string;
             /** Format: date-time */
             updateTime?: string;
+        };
+        UpdateSiteSettingsRequest: {
+            /** Format: int64 */
+            version: number;
+            values: {
+                [key: string]: unknown;
+            };
+        };
+        SiteSettingItem: {
+            key?: string;
+            type?: string;
+            group?: string;
+            label?: string;
+            defaultValue?: string;
+            publicReadable?: boolean;
+            allowedValues?: string[];
+            value?: unknown;
+        };
+        SiteSettingsResponse: {
+            /** Format: int64 */
+            version: number;
+            items: components["schemas"]["SiteSettingItem"][];
+        };
+        SitePageRequest: {
+            slug: string;
+            title: string;
+            content: string;
+            visible?: boolean;
+            /** Format: int32 */
+            sort?: number;
+        };
+        SitePageResponse: {
+            id: string;
+            slug: string;
+            title: string;
+            content: string;
+            visible: boolean;
+            /** Format: int32 */
+            sort: number;
+            /** Format: date-time */
+            updatedAt?: string;
         };
         UpdateRoleRequest: {
             name: string;
@@ -905,6 +1106,48 @@ export interface components {
             /** Format: email */
             email?: string;
         };
+        CreateThemeRequest: {
+            name: string;
+        };
+        ThemeSummary: {
+            id: string;
+            name: string;
+            activeVersionId: string;
+            /** Format: int32 */
+            activeVersionNo: number;
+            /** Format: int32 */
+            contract: number;
+            isActiveSiteTheme: boolean;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateThemeVersionRequest: {
+            html: string;
+            css: string;
+            /** Format: int32 */
+            contract: number;
+        };
+        ThemeVersionResponse: {
+            id: string;
+            themeId: string;
+            /** Format: int32 */
+            versionNo: number;
+            /** Format: int32 */
+            format: number;
+            /** Format: int32 */
+            contract: number;
+            html: string;
+            css: string;
+            createBy?: string;
+            /** Format: date-time */
+            createTime: string;
+        };
+        PreviewTokenResponse: {
+            versionId: string;
+            token: string;
+            /** Format: int64 */
+            expiresAt: number;
+        };
         TagAssignRequest: {
             /** @enum {string} */
             kind: "NOTE" | "POST";
@@ -958,6 +1201,39 @@ export interface components {
             /** Format: int64 */
             count: number;
         };
+        AuthorResponse: {
+            name?: string;
+            avatarUrl?: string;
+            bio?: string;
+        };
+        NavItemResponse: {
+            key?: string;
+            label?: string;
+            to?: string;
+        };
+        SiteResponse: {
+            name: string;
+            tagline: string;
+            description: string;
+            logoUrl: string;
+            faviconUrl: string;
+            baseUrl: string;
+            icp: string;
+            policeRecord: string;
+            author: components["schemas"]["AuthorResponse"];
+            social: components["schemas"]["SocialLinkResponse"][];
+            nav: components["schemas"]["NavItemResponse"][];
+            themeMode: string;
+            themeOverrides: unknown;
+            footerText: string;
+            /** Format: int32 */
+            pageSize: number;
+        };
+        SocialLinkResponse: {
+            type?: string;
+            label?: string;
+            url?: string;
+        };
         PageResponsePublishedPostSummary: {
             items: components["schemas"]["PublishedPostSummary"][];
             /** Format: int64 */
@@ -976,6 +1252,8 @@ export interface components {
             pinned: boolean;
             /** Format: date-time */
             firstPublishedAt: string;
+            /** Format: int32 */
+            readingMinutes: number;
         };
         PublishedPostDetail: {
             slug: string;
@@ -989,6 +1267,8 @@ export interface components {
             firstPublishedAt: string;
             /** Format: date-time */
             lastPublishedAt: string;
+            /** Format: int32 */
+            readingMinutes: number;
         };
         ArchiveResponse: {
             /** Format: int32 */
@@ -1318,6 +1598,96 @@ export interface operations {
             query?: {
                 force?: boolean;
             };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SiteSettingsResponse"];
+                };
+            };
+        };
+    };
+    updateSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSiteSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SiteSettingsResponse"];
+                };
+            };
+        };
+    };
+    updatePage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SitePageRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SitePageResponse"];
+                };
+            };
+        };
+    };
+    deletePage: {
+        parameters: {
+            query?: never;
             header?: never;
             path: {
                 id: string;
@@ -1725,6 +2095,144 @@ export interface operations {
     };
     list_1: {
         parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ThemeSummary"][];
+                };
+            };
+        };
+    };
+    create_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateThemeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ThemeSummary"];
+                };
+            };
+        };
+    };
+    versions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ThemeVersionResponse"][];
+                };
+            };
+        };
+    };
+    createVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateThemeVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ThemeVersionResponse"];
+                };
+            };
+        };
+    };
+    previewToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["PreviewTokenResponse"];
+                };
+            };
+        };
+    };
+    activate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ThemeSummary"];
+                };
+            };
+        };
+    };
+    list_2: {
+        parameters: {
             query?: {
                 page?: number;
                 size?: number;
@@ -1747,7 +2255,7 @@ export interface operations {
             };
         };
     };
-    create_1: {
+    create_2: {
         parameters: {
             query?: never;
             header?: never;
@@ -1822,7 +2330,51 @@ export interface operations {
             };
         };
     };
-    list_2: {
+    pages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SitePageResponse"][];
+                };
+            };
+        };
+    };
+    createPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SitePageRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SitePageResponse"];
+                };
+            };
+        };
+    };
+    list_3: {
         parameters: {
             query?: never;
             header?: never;
@@ -1842,7 +2394,7 @@ export interface operations {
             };
         };
     };
-    create_2: {
+    create_3: {
         parameters: {
             query?: never;
             header?: never;
@@ -1866,7 +2418,7 @@ export interface operations {
             };
         };
     };
-    list_3: {
+    list_4: {
         parameters: {
             query?: {
                 page?: number;
@@ -1892,7 +2444,7 @@ export interface operations {
             };
         };
     };
-    create_3: {
+    create_4: {
         parameters: {
             query?: never;
             header?: never;
@@ -1984,7 +2536,7 @@ export interface operations {
             };
         };
     };
-    list_4: {
+    list_5: {
         parameters: {
             query?: {
                 page?: number;
@@ -2011,7 +2563,7 @@ export interface operations {
             };
         };
     };
-    create_4: {
+    create_5: {
         parameters: {
             query?: never;
             header?: never;
@@ -2077,7 +2629,7 @@ export interface operations {
             };
         };
     };
-    list_5: {
+    list_6: {
         parameters: {
             query?: never;
             header?: never;
@@ -2097,7 +2649,7 @@ export interface operations {
             };
         };
     };
-    create_5: {
+    create_6: {
         parameters: {
             query?: never;
             header?: never;
@@ -2121,7 +2673,7 @@ export interface operations {
             };
         };
     };
-    list_6: {
+    list_7: {
         parameters: {
             query?: never;
             header?: never;
@@ -2210,6 +2762,26 @@ export interface operations {
             };
         };
     };
+    site: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SiteResponse"];
+                };
+            };
+        };
+    };
     search: {
         parameters: {
             query?: {
@@ -2234,7 +2806,7 @@ export interface operations {
             };
         };
     };
-    list_7: {
+    list_8: {
         parameters: {
             query?: {
                 page?: number;
@@ -2282,6 +2854,28 @@ export interface operations {
             };
         };
     };
+    page: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SitePageResponse"];
+                };
+            };
+        };
+    };
     archives: {
         parameters: {
             query?: never;
@@ -2318,6 +2912,29 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["MeResponse"];
+                };
+            };
+        };
+    };
+    version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ThemeVersionResponse"];
                 };
             };
         };
@@ -2429,7 +3046,7 @@ export interface operations {
             };
         };
     };
-    list_8: {
+    list_9: {
         parameters: {
             query?: never;
             header?: never;

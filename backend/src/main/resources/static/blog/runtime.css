@@ -1,0 +1,399 @@
+/* =============================================================================
+ * blog runtime 基础样式（docs/blog-runtime-theme.md §3.4）
+ *
+ * 只包含：reset、运行时组件（bc-*）与通用交互。版式与配色由主题 CSS 负责。
+ * ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[v-cloak] {
+  display: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+}
+
+/* ---------- 文章卡片 ---------- */
+
+.bc-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--blog-surface);
+  border: 1px solid var(--blog-border);
+  border-radius: var(--blog-radius);
+  transition: border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.bc-card:hover {
+  border-color: color-mix(in oklab, var(--blog-accent) 45%, var(--blog-border));
+  box-shadow: 0 18px 40px -32px rgb(0 0 0 / 55%);
+  transform: translateY(-2px);
+}
+
+.bc-card-cover {
+  display: block;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--blog-text) 6%, transparent);
+}
+
+.bc-card-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 400ms ease;
+}
+
+.bc-card:hover .bc-card-cover img {
+  transform: scale(1.03);
+}
+
+.bc-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px 20px;
+}
+
+.bc-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--blog-text-muted);
+}
+
+.bc-card-pin {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--blog-accent) 14%, transparent);
+  color: var(--blog-accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bc-card-title {
+  font-size: 18px;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  font-weight: 650;
+}
+
+.bc-card-title a:hover {
+  color: var(--blog-accent);
+}
+
+.bc-card-summary {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--blog-text-muted);
+}
+
+.bc-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* ---------- 标签 ---------- */
+
+.bc-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--blog-border);
+  font-size: 12px;
+  color: var(--blog-text-muted);
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.bc-tag:hover {
+  border-color: var(--blog-accent);
+  color: var(--blog-accent);
+}
+
+.bc-tag-count {
+  opacity: 0.65;
+}
+
+.bc-tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.bc-tag-cloud .bc-tag {
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+/* ---------- 分页 ---------- */
+
+.bc-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 36px;
+  font-size: 13px;
+  color: var(--blog-text-muted);
+}
+
+.bc-pager button {
+  min-width: 74px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--blog-border);
+  border-radius: 10px;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.bc-pager button:hover:not(:disabled) {
+  border-color: var(--blog-accent);
+  color: var(--blog-accent);
+}
+
+.bc-pager button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------- 搜索框 ---------- */
+
+.bc-search {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+
+.bc-search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--blog-border);
+  border-radius: 10px;
+  background: var(--blog-surface);
+  color: var(--blog-text);
+  outline: none;
+  transition: border-color 160ms ease;
+}
+
+.bc-search input:focus {
+  border-color: var(--blog-accent);
+}
+
+.bc-search button {
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 10px;
+  background: var(--blog-accent);
+  color: var(--blog-accent-contrast);
+  font-weight: 600;
+}
+
+/* ---------- 明暗切换 ---------- */
+
+.bc-theme-toggle {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--blog-border);
+  border-radius: 10px;
+  color: var(--blog-text-muted);
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.bc-theme-toggle:hover {
+  color: var(--blog-accent);
+  border-color: var(--blog-accent);
+}
+
+.bc-theme-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---------- 文章目录 ---------- */
+
+.bc-toc {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bc-toc a {
+  display: block;
+  padding: 5px 0;
+  color: var(--blog-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  border-left: 2px solid transparent;
+  padding-left: 10px;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.bc-toc a:hover,
+.bc-toc a.active {
+  color: var(--blog-accent);
+  border-left-color: var(--blog-accent);
+}
+
+.bc-toc .depth-3 {
+  padding-left: 22px;
+  font-size: 12.5px;
+}
+
+/* ---------- 图片 ---------- */
+
+.bc-image {
+  display: block;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--blog-radius);
+  background: color-mix(in oklab, var(--blog-text) 6%, transparent);
+}
+
+.bc-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ---------- 四态 ---------- */
+
+.bc-state {
+  padding: 56px 20px;
+  text-align: center;
+  color: var(--blog-text-muted);
+  font-size: 14px;
+}
+
+.bc-state[data-state='loading'] {
+  display: grid;
+  gap: 14px;
+  text-align: left;
+  padding: 8px 0;
+}
+
+.bc-skeleton {
+  height: 132px;
+  border-radius: var(--blog-radius);
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--blog-text) 5%, transparent) 25%,
+    color-mix(in oklab, var(--blog-text) 9%, transparent) 37%,
+    color-mix(in oklab, var(--blog-text) 5%, transparent) 63%
+  );
+  background-size: 400% 100%;
+  animation: bc-shimmer 1.4s ease infinite;
+}
+
+@keyframes bc-shimmer {
+  from { background-position: 100% 50%; }
+  to { background-position: 0 50%; }
+}
+
+/* ---------- 回到顶部 / 阅读进度 ---------- */
+
+.bc-back-to-top {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--blog-border);
+  border-radius: 50%;
+  background: var(--blog-surface);
+  color: var(--blog-text-muted);
+  box-shadow: 0 12px 28px -18px rgb(0 0 0 / 60%);
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease, color 160ms ease;
+  z-index: 30;
+}
+
+.bc-back-to-top[data-visible='1'] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.bc-back-to-top:hover {
+  color: var(--blog-accent);
+}
+
+.bc-reading-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  background: var(--blog-accent);
+  z-index: 40;
+  pointer-events: none;
+}
+
+/* ---------- 灯箱 ---------- */
+
+.bc-lightbox {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 82%);
+  z-index: 90;
+  cursor: zoom-out;
+}
+
+.bc-lightbox img {
+  max-width: min(1100px, 100%);
+  max-height: 90vh;
+  border-radius: 10px;
+  box-shadow: 0 30px 80px -30px rgb(0 0 0 / 80%);
+}

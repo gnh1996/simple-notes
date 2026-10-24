@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.util.List;
 
 /** 公开文章列表项：只来自已发布快照，不含正文。 */
-@Schema(requiredProperties = { "slug", "title", "summary", "tags", "pinned", "firstPublishedAt" })
+@Schema(requiredProperties = { "slug", "title", "summary", "tags", "pinned", "firstPublishedAt", "readingMinutes" })
 public record PublishedPostSummary(
         String slug,
         String title,
@@ -13,5 +13,6 @@ public record PublishedPostSummary(
         String coverUrl,
         List<TagBrief> tags,
         boolean pinned,
-        Instant firstPublishedAt) {
+        Instant firstPublishedAt,
+        int readingMinutes) {
 }

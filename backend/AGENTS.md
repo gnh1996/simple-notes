@@ -27,6 +27,7 @@
 - 例外表（无需审计或确需物理删除）须在对应设计文档中说明
 - 已落地的实体基类：`domain/BaseEntity`（UUID 主键预生成 + `Persistable` 新实体判定 + 审计回调 + 软删辅助）；查询侧排除已删除数据用实体级 `@SQLRestriction("delete_flag = 0")`，不再逐查询手写条件
 - **内容模块例外**（设计见 `docs/content-model.md` §3.8）：`note_revision` 为不可变发布快照，仅 `create_by` / `create_time`，无软删除；`note_tag` / `note_revision_tag` 为关联表，物理删除；`note.slug` 唯一索引不带 `delete_flag = 0`（公开 URL 永久保留）
+- **站点配置 / 主题例外**（设计见 `docs/blog-runtime-theme.md` §6）：`site_theme_version` 为不可变主题版本，仅 `create_by` / `create_time`，无软删除；`site_setting` 为 KV 配置，物理 upsert（新增即 INSERT、写入即 UPDATE、移除即 DELETE），无 `delete_flag`；`site_page` 保存即线上，不做发布快照
 
 ## 认证与权限（RBAC，设计见 docs/auth-rbac.md）
 
@@ -52,6 +53,7 @@
 - **已执行脚本不可变**：某个版本只要在任一环境的数据库中执行过（本地 / 测试 / 生产），就禁止修改其内容、文件名或版本号；Flyway 校验和不匹配时应排查，不得用 `repair` 掩盖
 - **回退只能前进**：撤销 / 修正已执行的迁移，必须新增更高版本脚本（如 `V<N+1>__revert_xxx.sql`）做补偿；禁止删除历史脚本，禁止用 `flyway clean` 清库重来（社区版无 undo）
 - 仅当脚本尚未在任何数据库执行过（如尚未合并）时，才允许修改；合并后即视为已发布
+- **预发布阶段同样适用**（根 `AGENTS.md`「阶段策略」）：改动迁移前先查目标库的 `flyway_schema_history`；未执行可改，已执行只能追加。库里有需要保留的数据（含远程开发库）即视为已执行，不存在"开发环境可以随意重写迁移"的例外
 - **迁移内 INSERT 的新行 id 一律随机生成**（`gen_random_uuid()`，PostgreSQL 13+ 内置，无需 pgcrypto）：不手挑 / 不复制 UUID，不维护"编号式"id 序列（如 `0000…0010 / 0020` 递增编号）——手编号在后续迁移里极易误撞主键；行间引用按业务码子查询（如 `(select id from sys_menu where code = 'admin:user')`），不硬编码具体 id（同一迁移内先插入的行对后续语句可见）。V1 预置超管的固定 UUID 为设计文档 §4 的规定，属既成事实
 
 ## 查询约定
