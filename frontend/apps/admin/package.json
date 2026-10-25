@@ -4,21 +4,23 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "dev": "pnpm sync:vditor && vite",
+    "build": "pnpm sync:vditor && vue-tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "vue-tsc -b"
+    "typecheck": "vue-tsc -b",
+    "sync:vditor": "node ../../scripts/sync-vditor-assets.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "catalog:",
     "@simple-notes/api": "workspace:*",
+    "@simple-notes/markdown": "workspace:*",
     "@simple-notes/shared": "workspace:*",
     "@simple-notes/theme-starter": "workspace:*",
     "@simple-notes/ui": "workspace:*",
     "@vue/devtools-api": "catalog:",
     "element-plus": "catalog:",
-    "md-editor-v3": "catalog:",
     "pinia": "catalog:",
+    "vditor": "catalog:",
     "vue": "catalog:",
     "vue-router": "catalog:"
   },

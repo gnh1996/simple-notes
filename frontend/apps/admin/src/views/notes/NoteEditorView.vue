@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { ArrowLeft, Check, Promotion } from '@element-plus/icons-vue'
 import type { NoteDetail, NoteFolderResponse } from '@simple-notes/api'
-import { markdownCommonProps, markdownToolbars } from '@simple-notes/shared'
-import { MdEditor, type UploadImgEvent } from 'md-editor-v3'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { mediaApi, noteApi, noteFolderApi, tagApi } from '@/api'
+import MarkdownEditor from '@/components/MarkdownEditor.vue'
 import { useTheme } from '@/composables/useTheme'
 import { tagNames } from '@/utils/content'
 import { formatDateTime, notifyError } from '@/utils/feedback'
@@ -192,13 +191,13 @@ async function promote(): Promise<void> {
   }
 }
 
-const uploadImages: UploadImgEvent = async (files, callback) => {
-  try {
-    const uploaded = await Promise.all(files.map((file) => mediaApi.upload(file)))
-    callback(uploaded.map((item) => item.url))
-  } catch (error) {
-    notifyError(error, '图片上传失败')
-  }
+async function uploadImages(files: File[]): Promise<{ url: string; alt?: string }[]> {
+  const uploaded = await Promise.all(files.map((file) => mediaApi.upload(file)))
+  return uploaded.map((item) => ({ url: item.url, alt: item.altText ?? item.originalName }))
+}
+
+function handleUploadError(error: unknown): void {
+  notifyError(error, '图片上传失败')
 }
 
 onMounted(load)
@@ -240,13 +239,13 @@ onBeforeUnmount(() => {
 
     <div class="grid gap-4 xl:grid-cols-[1fr_280px]">
       <el-card shadow="never" body-class="p-0">
-        <MdEditor
+        <MarkdownEditor
           v-model="form.content"
-          v-bind="markdownCommonProps"
           :theme="editorTheme"
-          :toolbars="markdownToolbars"
-          :on-upload-img="uploadImages"
-          :style="{ height: 'calc(100vh - 280px)', minHeight: '420px' }"
+          :cache-id="`note-${noteId}`"
+          :height="'calc(100vh - 280px)'"
+          :upload="uploadImages"
+          :on-upload-error="handleUploadError"
           placeholder="开始记录…"
         />
       </el-card>

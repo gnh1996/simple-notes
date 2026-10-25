@@ -1,25 +1,27 @@
 # Markdown 内容方言规范
 
-> **版本：v1（草案）· 2026-10-17（2026-10-18 修订）**
+> **版本：v2 · 2026-10-25**
 > 适用：博客文章与随手记（统一方言，不做区分）
 > 验收样本：`docs/markdown-dialect-fixture.md`
+> 变更：v2 起允许数学公式、Emoji 短代码、脚注、上下标、mark 与**安全行内 HTML**；引擎统一为 Lute（Vditor）。
 
-本规范定义 Simple Notes 中「允许书写的 Markdown 语法」与「禁区」，用于约束三端行为一致：
+本规范定义 Simple Notes 中「允许书写的 Markdown 语法」与「边界」，用于约束多端行为一致：
 
-| 端 | 引擎 | 角色 |
-| --- | --- | --- |
-| 管理端（Web） | md-editor-v3 7.x（`markdown-it` 内核） | 书写 + 预览 |
-| 博客前台（Web） | `markdown-it`（blog runtime 内置；配置来自 `packages/shared` 的同一语义源） | 发布渲染 |
-| 桌面端 | LiveMarkdown.Avalonia 2.4.3（`Markdig` 内核） | 书写 + 预览 |
-| 后端 | 不解析、不渲染 | 原样存储 + 安全清洗 |
+| 端 | 引擎 | 角色 | 状态 |
+| --- | --- | --- | --- |
+| 管理端（Web） | **Vditor 4.0.1（Lute）** | 书写 + 预览 | v2 已切换 |
+| 博客前台（Web） | **Lute**（`@simple-notes/markdown` + `method.min.js`） | 发布渲染 | v2 已切换 |
+| 桌面端（Wails） | 过渡期仍为 md-editor-v3 / markdown-it | 书写 + 预览 | **待迁移，不参与 v2 验收** |
+| 后端 | 不解析、不渲染 | 原样存储 | 不做 HTML 清洗（见 §3） |
 
-两个内核（markdown-it / Markdig）扩展集与细节语义不同，本规范是唯一事实来源；**新增语法必须三端验收通过才能进入白名单**（见 §7）。
+管理端与博客共用同一份 Lute 配置（`frontend/packages/markdown/src/index.ts` 的 `vditorMarkdown`）；
+**配置只允许有一份**，任何一端另写都会被视为方言漂移。
 
 ---
 
 ## 1. 基线：CommonMark + GFM
 
-以下语法无条件支持，三端必须一致：
+以下语法无条件支持，admin / blog 必须一致：
 
 - 标题 h1–h6、段落、分隔线
 - 强调：`**粗体**` `*斜体*` `***粗斜体***`、删除线 `~~text~~`
@@ -28,86 +30,115 @@
 - 链接：内联链接、自动链接（裸 URL）
 - 图片：`![alt](url)`（引用规则见 §5）
 - 行内代码与围栏代码块
-- GFM 增量：**表格**（含对齐与 `\|` 转义）、**任务列表**（含嵌套）、删除线、自动链接
+- GFM 增量：**表格**（含对齐与 `\|` 转义）、**任务列表**（含嵌套，Lute 输出复选框）
 
-**换行语义**：遵循 CommonMark —— 段内单次回车为软换行（渲染为空格）。需要视觉换行时用空行分段；**不依赖行尾双空格**产生硬换行（可能被存储清洗剥离）。
+**换行语义**：遵循 CommonMark —— 段内单次回车为软换行（渲染为空格）。需要视觉换行时用空行分段。
 
 ## 2. 白名单（扩展）
 
-### 2.1 代码块（核心场景，最高优先级）
+### 2.1 代码块（核心场景）
 
-- 围栏必须使用三反引号 + 语言标识：```` ```java ````
-- info string 仅承诺**语言标识**；附加信息（如文件名、`title=`）v1 不承诺渲染
+- 围栏使用三反引号 + 语言标识：```` ```java ````
 - 语言集见 **附录 A**；未收录语言不禁止使用，但高亮效果不承诺
-- 围栏内内容原样呈现（含缩进、反引号）
+- `vue` 通过自托管 hljs 的别名（`vue → xml`）保证高亮；不要依赖 hljs 原生支持
+- 代码高亮由 Vditor 的 hljs 运行时完成；博客加载后移除其主题样式，使用主题自己的 token 颜色
 
 ### 2.2 Mermaid 图表
 
-- 语法：```` ```mermaid ```` 围栏
-- **承诺三端一致的图种**：`flowchart`（流程图）、`sequenceDiagram`（时序图）、`classDiagram`（类图）、`erDiagram`（ER 图）
-- 其余图种（`gantt`、`mindmap`、`timeline`、`pie` 等）：web 端可正常渲染，**桌面端不承诺**（可能降级为代码块显示）
+- 语法：```` ```mermaid ````
+- **承诺一致的图种**：`flowchart`、`sequenceDiagram`、`classDiagram`、`erDiagram`
+- 其余图种（`gantt`、`mindmap`、`timeline`、`pie` 等）可渲染，但不承诺像素级一致
+- Mermaid 资源按需加载；主题负责 `svg { max-width: 100% }` 等基础样式
 
 ### 2.3 提示块（GitHub Alerts）
 
-语法（必须位于引用块首行，大写）：
-
-```
+```markdown
 > [!NOTE] / [!TIP] / [!IMPORTANT] / [!WARNING] / [!CAUTION]
 ```
 
-- 五种全部支持；样式由各端主题决定（颜色/图标可有差异，结构必须一致）
-- 状态：Markdig 原生支持；md-editor-v3 内置的是 `!!!` 容器语法（`docarys/admonition`，与方言不符），需通过 `markdownItConfig` 追加 `markdown-it-github-alerts` 插件对齐（实现阶段验证）
+- 五种全部支持；Lute 输出结构为：
 
-## 3. 禁区（不收）
+  ```html
+  <div class="callout" data-subtype="NOTE">
+    <div class="callout-info"><span class="callout-icon">…</span><span class="callout-title">Note</span></div>
+    <div class="callout-content">…</div>
+  </div>
+  ```
 
-| 禁止内容 | 理由 | 预期行为 |
-| --- | --- | --- |
-| 裸 HTML（内联 / 块级 / iframe / video） | XSS 安全 + 三端差异最大 | 入库清洗；渲染端转义或移除 |
-| YAML front matter | 元数据走数据库字段（§4） | 按普通文本处理 |
-| 数学公式 `$...$` / `$$...$$` | v2 候选，当前场景（代码博客）低频 | 显示为纯文本 |
-| 脚注 `[^1]` | v2 候选 | 显示为纯文本 |
-| `==高亮==`、上下标 `H~2~O`、Emoji 短代码 `:smile:` | 保持方言最小 | 显示为纯文本 |
-| 图片尺寸语法 `![alt\|300](url)`（Obsidian 风格） | 尺寸由渲染端样式控制 | 显示为纯文本 |
-| Obsidian / Typora 等其他方言特有语法 | 无法三端保证 | 显示为纯文本 |
+- 主题按 `.callout[data-subtype="NOTE"]` 等选择器着色；标题文案由 Lute 决定（当前为英文）
+- 不要再使用 `markdown-it-github-alerts` 的 `.markdown-alert-*` 结构
 
-**编辑器端要求**：应关闭未收扩展的渲染（若默认开启，如 KaTeX），隐藏未收语法的工具栏入口，保证"编辑器预览所见 = 发布后所得"。
+### 2.4 数学公式
+
+- 行内 `$...$`、块级 `$$...$$`
+- 渲染引擎：**KaTeX**（不启用 MathJax；MathJax 资源不打包）
+- 公式块在清洗之后渲染，因此 DOMPurify 不会移除 KaTeX 输出
+
+### 2.5 Emoji、脚注、上下标、mark
+
+- Emoji 短代码（`:smile:`）由 Lute 转成 Unicode emoji
+- 脚注 `[^1]`、上标 `^2^`、下标 `~2~`、`==高亮==` 均支持
+- 这些语法在 v2 中属于白名单，不再做“降级为纯文本”的验收
+
+### 2.6 安全行内 HTML
+
+- 允许行内 HTML，但**渲染前必须清洗**：
+  - 后端：只存原始 Markdown，不做解析 / 渲染
+  - 前端：`packages/markdown` 的 `sanitizeHtml()`（DOMPurify）在 `innerHTML` 前执行
+  - Vditor 编辑器：`preview.transform` + paste 事件清洗；保留 Lute 的 `sanitize: true`
+- 清洗规则：移除 `script` / `iframe` / `object` / `embed` / `style` / 表单元素与事件属性；允许安全的格式、链接、图片、表格、callout、KaTeX/Mermaid 所需属性
+- **可信作者模型**：编辑不对外开放，但仍必须保留清洗——粘贴内容同样不可信
+
+## 3. 边界（不收 / 不承诺）
+
+| 内容 | 处理 |
+| --- | --- |
+| YAML front matter | 按普通文本处理；元数据走数据库字段（§4） |
+| 图片尺寸语法 `![alt\|300](url)` | 不承诺；尺寸由主题 CSS 控制 |
+| Obsidian / Typora 专有语法（callout 折叠、块引用等） | 不承诺 |
+| 不支持/未验证的 Mermaid 图种 | 可渲染但不承诺 |
+| 服务端 Markdown 渲染 | 不做；后端只存原文 |
+
+> v2 的“安全 HTML”是**清洗后的 HTML**，不是“任意 HTML”。后端不承担清洗职责，清洗发生在所有前端渲染入口。
 
 ## 4. 元数据策略
 
 - **正文零元数据**：不写 front matter，不写自定义头部
-- 标题、标签、发布日期、发布状态、封面等全部为数据库字段，由后端领域模型 / API 契约定义，管理端与桌面端通过表单编辑
+- 标题、标签、发布日期、发布状态、封面等全部为数据库字段，由后端领域模型 / API 契约定义
 
 ## 5. 资源引用规范
 
-- 图片 / 附件经**后端上传接口**获取站内 URL，正文中引用站内路径（具体 URL 形态由 API 设计定）
-- 外链图片：允许但不受保障（失效 / 防盗链 / 隐私）；桌面预览按 HTTP 缓存策略处理，加载失败显示 alt 文本
-- alt 文本：建议填写（可访问性）
-- 图片尺寸不写进语法（见 §3）
+- 图片 / 附件经**后端上传接口**获取站内 URL，正文中引用站内路径
+- 外链图片允许但不受保障；加载失败显示 alt
+- alt 文本建议填写；图片尺寸不写进语法
 
 ## 6. 各端配置对齐清单
 
 | 端 | 配置要求 |
 | --- | --- |
-| 管理端（md-editor-v3） | 追加 `markdown-it-github-alerts` 插件；禁用内置 `!!!` admonition；`noKatex` / `noEcharts` 关闭未收语法；工具栏隐藏 sub/sup 等未收入口；`breaks: false` 对齐 CommonMark |
-| 博客前台 | **由 blog runtime 内置 `markdown-it` 渲染**（`docs/blog-runtime-theme.md`）；配置从 `packages/shared` 的 `markdownDialect` / `hljs` / github-alerts 取（禁止 app 内另写）：`breaks: false`、`html: false`、追加 `markdown-it-github-alerts`、禁 katex / echarts；hljs 打进构建产物；Mermaid 全图种 |
-| 桌面端（LiveMarkdown） | 管线启用 GFM + Alerts；不启用数学 / 脚注扩展；注册 Mermaid 模块并限定承诺图种 |
-| 后端 | 入库清洗（HTML 处理策略在 API 设计中定）；v1 不做服务端渲染 |
+| 管理端（Vditor） | `createEditorOptions()`：`mode: 'ir'`、`vditorMarkdown`、`preview.transform = sanitizeHtml`、`hljs` 自托管、`cdn = /vditor`；工具栏可切换 IR / SV |
+| 博客前台 | `createPreviewOptions()` + `renderToElement()`（`method.min.js`，不打包完整编辑器）；同一份 `vditorMarkdown`；`sanitizeHtml`；`cdn = /blog/vditor`；Math / Mermaid / hljs 按需加载 |
+| 桌面端（Wails） | **待迁移**；迁移后与管理端完全同源。过渡期不参与方言验收 |
+| 后端 | 原样存储；不做 Markdown 渲染、不做 HTML 清洗（可信作者 + 前端清洗） |
+
+资源同步：`frontend/scripts/sync-vditor-assets.mjs` 裁剪并复制 Lute / hljs / KaTeX / Mermaid / icons / i18n / 内容主题到各应用 `public/vditor`。禁止引用公共 CDN。
 
 ## 7. 验收机制与变更流程
 
 1. 语法提案 → 在 `docs/markdown-dialect-fixture.md` 增加样本节
-2. 三端渲染 fixture → 记录差异（截图 / 备注）
-3. 通过 → 白名单更新 + 版本号 +1；不通过 → 不收录（或记录为"单端增强，不入方言"）
-4. fixture 中标注 **✗ 预期为纯文本** 的节用于验证禁区降级行为，同样需要三端一致
+2. **admin / blog 渲染 fixture** → 记录差异（截图 / 备注）；桌面端迁移后补第三端
+3. 通过 → 白名单更新 + 版本号 +1；不通过 → 不收录
+4. fixture 中的预期行为按 v2 解释：数学 / emoji / 安全 HTML 渲染属预期；front matter、图片尺寸语法仍为纯文本
 
 ## 8. 未决事项
 
-- [x] Web 端（admin / blog）已接入 `markdown-it-github-alerts`，确认 v7 管线共存、Alerts 渲染正常；`noKatex` / `noEcharts` 关闭、`breaks: false` 配置已落地（2026-10-23；桌面端随桌面端实现验收）
-- [ ] LiveMarkdown.Avalonia 用于静态内容渲染的用法确认（`DocumentUpdate` / builder 模式）
-- [x] ~~博客前台渲染管线选型~~ → **已改定（2026-10-24）：blog runtime 内置 `markdown-it`**（`docs/blog-runtime-theme.md`）；不再复用 `MdPreview`。**2026-10-25 已收口**：配置统一从 `packages/shared/src/markdown-dialect.ts` 取，admin 与 runtime 共用 `markdownDialect` / `hljs` / github-alerts
-- [ ] 后端入库清洗策略细节（依赖 API 设计）
+- [ ] 桌面端迁移到 Vditor / Lute（当前过渡期使用 md-editor-v3，**与 v2 不一致**）
+- [ ] callout 标题为英文（Lute 内置），是否需要中文映射 / 自定义渲染器
+- [ ] 博客主题 CSS 对 callout / 数学 / Mermaid / 任务列表的视觉验收
+- [ ] 后端是否保留“写入时扫描危险 HTML”的额外防线（当前仅前端清洗）
+- [ ] 超长文档（1 万字以上）在 Vditor IR 下的输入延迟实测
 
-## 附录 A：代码块语言集（三端高亮承诺）
+## 附录 A：代码块语言集（高亮承诺）
 
 | 语言 | 围栏标识 |
 | --- | --- |
@@ -129,13 +160,15 @@
 | Markdown | `markdown` |
 | 纯文本（无高亮） | `text` |
 
-说明：别名（如 `js`、`sh`、`cs`）渲染结果不承诺，写作时使用上表主标识。
+说明：别名（如 `js`、`sh`、`cs`）渲染结果不承诺；`vue` 由自托管 hljs 别名保证。
 
 ## 附录 B：版本记录
 
 | 版本 | 日期 | 变更 |
 | --- | --- | --- |
-| v1（草案） | 2026-10-17 | 初稿：代码博客 + 记事本最小集；Alerts 列入白名单（待验收）；数学/脚注等列为禁区（v2 候选） |
-| v1（草案） | 2026-10-18 | 修订：博客前台渲染管线定为复用 `MdPreview`（与编辑器同源）；Alerts 对齐方式明确（追加 github-alerts 插件、禁用 `!!!` 语法）；§6 三端配置清单更新 |
-| v1（草案） | 2026-10-24 | 修订：博客前台改为 blog runtime 内置 `markdown-it`（`docs/blog-runtime-theme.md`），不再复用 `MdPreview`；方言一致性改由「共享语义源 + fixture 双向验证」保证 |
-| v1（草案） | 2026-10-25 | 修订：blog runtime 改为构建产物，与 admin 共用 `packages/shared/src/markdown-dialect.ts` 的 `markdownDialect` / `hljs` / github-alerts，消除两份配置 |
+| v1（草案） | 2026-10-17 | 初稿：代码博客 + 记事本最小集；Alerts 列入白名单；数学/脚注等列为禁区 |
+| v1（草案） | 2026-10-18 | 博客前台复用 `MdPreview`；Alerts 对齐方式明确 |
+| v1（草案） | 2026-10-24 | 博客前台改为 runtime 内置 `markdown-it` |
+| v1（草案） | 2026-10-25 | blog runtime 改为构建产物，共享 `markdownDialect` |
+| v1（草案） | 2026-10-25 | 桌面端改为 Wails，复用 admin 编辑器 |
+| **v2** | **2026-10-25** | **admin / blog 切换 Vditor + Lute；允许数学、emoji、脚注、上下标、mark、安全行内 HTML；新增 DOMPurify 清洗与 hljs `vue` 别名；桌面端待迁移** |

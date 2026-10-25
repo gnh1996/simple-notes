@@ -5,13 +5,13 @@ Simple Notes 的图标源文件与各端导出。图形语义：**纸页 = 随�
 | 文件 | 用途 |
 | --- | --- |
 | `simple-notes.svg` | 设计源文件，64×64 viewBox（可无损缩放） |
-| `simple-notes-512.png` | 512×512 透明 PNG（Avalonia 窗口图标 / 文档与商店素材） |
+| `simple-notes-512.png` | 512×512 透明 PNG（桌面窗口图标 / 文档与商店素材） |
 | `simple-notes.ico` | Windows 可执行文件图标，含 16 / 24 / 32 / 48 / 64 / 128 / 256 多尺寸 |
 
 ## 引用位置
 
 - Web favicon：`frontend/apps/admin/public/favicon.svg`、`backend/src/main/resources/static/favicon.svg`（博客壳）、`frontend/apps/blog/public/favicon.svg`（runtime dev server）
-- 桌面端：`desktop/src/SimpleNotes.Desktop/Assets/icon.png`（非 Windows 窗口图标）、`icon.ico`（Windows 窗口 + 可执行文件图标）
+- 桌面端：`desktop/build/appicon.png`（窗口 / 打包源图；由 `wails3 generate icons` 生成 `build/windows/icon.ico` 与 `build/darwin/icons.icns`）
 
 ## 约定
 

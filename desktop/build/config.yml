@@ -1,0 +1,43 @@
+# Wails v3 项目配置。
+# 修改 info 后执行 `wails3 task common:update:build-assets` 重新生成平台元数据。
+version: '3'
+
+info:
+  companyName: 'naihao.cc'
+  productName: 'Simple Notes'
+  productIdentifier: 'cc.naihao.simplenotes'
+  description: '随手记与博客写作桌面端'
+  copyright: '(c) 2026 naihao.cc'
+  comments: 'Wails v3 desktop client'
+  version: '0.1.0'
+
+dev_mode:
+  root_path: .
+  log_level: warn
+  debounce: 500
+  ignore:
+    dir:
+      - .git
+      - node_modules
+      - web
+      - bin
+    file:
+      - .DS_Store
+      - .gitignore
+      - .gitkeep
+      - '*_test.go'
+    watched_extension:
+      - '*.go'
+    git_ignore: true
+  executes:
+    - cmd: wails3 build DEV=true
+      type: blocking
+    - cmd: wails3 task common:dev:frontend
+      type: background
+    - cmd: wails3 task run
+      type: primary
+      exit_policy: shutdown
+
+fileAssociations:
+
+other:

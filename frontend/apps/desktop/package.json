@@ -1,0 +1,32 @@
+{
+  "name": "@simple-notes/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "build:dev": "vue-tsc -b && vite build --minify false --mode development",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc -b",
+    "sync:wails": "node scripts/sync-wails.mjs"
+  },
+  "dependencies": {
+    "@simple-notes/api": "workspace:*",
+    "@simple-notes/shared": "workspace:*",
+    "@simple-notes/ui": "workspace:*",
+    "@wailsio/runtime": "catalog:",
+    "markdown-it-github-alerts": "catalog:",
+    "md-editor-v3": "catalog:",
+    "vue": "catalog:"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
+    "@vitejs/plugin-vue": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vue-tsc": "catalog:"
+  }
+}

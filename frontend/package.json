@@ -10,9 +10,11 @@
   "scripts": {
     "dev:admin": "pnpm --filter @simple-notes/admin dev",
     "dev:blog": "pnpm --filter @simple-notes/blog dev",
+    "dev:desktop": "pnpm --filter @simple-notes/desktop dev",
     "build": "pnpm -r --if-present build",
     "build:admin": "pnpm --filter @simple-notes/admin build",
     "build:blog": "pnpm --filter @simple-notes/blog build",
+    "build:desktop": "pnpm --filter @simple-notes/desktop build",
     "gen:api": "pnpm --filter @simple-notes/api gen:api",
     "sync:theme": "node scripts/sync-theme-starter.mjs",
     "check:theme": "node scripts/sync-theme-starter.mjs --check",

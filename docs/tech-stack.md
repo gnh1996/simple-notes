@@ -14,7 +14,7 @@
 | 对象存储 | Cloudflare R2（S3 兼容；上传 / 访问链路随附件功能设计定） |
 | 本地配置 | 非机密在 `application.yml`；机密在 `application-local.yml`（不入库，模板入库）；部署用环境变量覆盖 |
 | 安全 | Spring Security；认证机制已定：JWT + 服务端会话（三端统一 Bearer；`docs/auth-rbac.md`） |
-| API 契约 | OpenAPI 导出 → 生成 Web(TS) / 桌面(C#) 客户端（工具随契约设计定） |
+| API 契约 | OpenAPI 导出 → 生成 Web(TS) 客户端；桌面端复用同一 TS 类型（Go 侧只做通用 HTTP 转发） |
 
 ## Web（`frontend/`，pnpm workspace）
 
@@ -24,37 +24,38 @@
 | 样式 | Tailwind CSS v4 + 共享设计 token（`packages/ui`）；Element Plus 样式按 CSS 层导入（见 `frontend/AGENTS.md`） |
 | 管理端 UI | Element Plus 2.14 |
 | API 客户端 | 后端 springdoc 导出 OpenAPI → `packages/api` 用 **openapi-typescript** 生成类型（`pnpm gen:api`）+ 自建轻量 fetch 封装（传输层与 Bearer 注入在应用侧） |
-| Markdown 编辑器 | md-editor-v3 7（管理端） |
-| Markdown 渲染 | 博客前台由 blog runtime 内置 `markdown-it`（方言配置与 admin 等价，经 fixture 双向验证）；见 `docs/blog-runtime-theme.md` |
+| Markdown 编辑器 | **Vditor 4.0.1**（Lute 内核；admin 使用；桌面端待迁移） |
+| Markdown 渲染 | 博客前台由 blog runtime 使用 **Lute**（`@simple-notes/markdown` + `method.min.js`），与 admin 共用 `vditorMarkdown`；见 `docs/blog-runtime-theme.md` |
 | 响应式 | `useBreakpoint()` 单一断点来源，展示层分叉 |
 
-## 桌面端（`desktop/`）
+## 桌面端（`desktop/` + `frontend/apps/desktop`）
 
 | 项 | 结论 |
 | --- | --- |
-| 基础栈 | .NET 10 + Avalonia 12.1 |
-| 架构 | CommunityToolkit.Mvvm + Microsoft.Extensions.DependencyInjection |
+| 基础栈 | Go 1.26+ + **Wails v3.0.0-beta.34**（WebView2 / WKWebView / GTK4 + WebKitGTK 6.0） |
+| UI | Vue 3.5 + Vite 8 + TypeScript 6（pnpm workspace 成员，复用 `packages/*`） |
+| 架构 | Wails services / bindings；Go 侧负责窗口、HTTP 传输、SQLite、原生能力 |
 | 数据模式 | 本地优先（SQLite；离线可用 + 后台同步） |
-| Markdown 渲染 | LiveMarkdown.Avalonia 2.4.3（Apache-2.0） |
-| Markdown 编辑 | AvaloniaEdit 12（含 TextMate 高亮；待正式确认） |
-| 分发 | 预留 NativeAOT 单文件发布 |
+| Markdown | 过渡期复用 md-editor-v3（markdown-it）；**待迁移到 Vditor + Lute**，迁移后与管理端同源 |
+| 分发 | 三平台各自构建（Wails Taskfile / CI 矩阵）；不再使用 NativeAOT 单文件 |
+| 内存基线 | Windows 实测：空壳 ≈360MB WS / 当前骨架 ≈390MB WS（私有 ≈254MB；`--disable-gpu` 私有 ≈191MB） |
 
 ## 跨端
 
 | 项 | 结论 |
 | --- | --- |
-| 内容方言 | v1 已定稿（`docs/markdown-dialect.md` + 验收 fixture） |
-| API 契约 | OpenAPI 单一来源，全端生成客户端 |
+| 内容方言 | **v2 已落地（2026-10-25）**：Lute / Vditor；允许数学、emoji、脚注、上下标、mark、安全行内 HTML；见 `docs/markdown-dialect.md` |
+| API 契约 | OpenAPI 单一来源，全端使用生成类型（桌面端经 Go binding 转发） |
 
 ## 待定清单（选型性质，随设计 / 实现推进确定）
 
 1. **认证机制**（已定，2026-10-18）：JWT + 服务端会话记录（存数据库）；桌面端令牌存本地 SQLite（不采用系统钥匙串）——详见 `docs/auth-rbac.md`
 2. **附件 / 图片访问链路**：公开桶 + CDN vs 预签名 URL、直传 vs 服务端中转（存储后端已定 Cloudflare R2，随图片功能设计定）
 3. **部署形态**：admin 挂 `/admin` 子路径 vs 子域（影响 vite `base` 与资源 / 代理配置；认证已不依赖 Cookie，无跨域 Cookie 约束）
-4. **桌面本地存储实现**：Microsoft.Data.Sqlite 手写 SQL vs EF Core
-5. **API 客户端生成工具**（Web 端已定，2026-10-18）：**openapi-typescript**（仅生成类型到 `packages/api/src/generated`，请求侧沿用 `packages/api` 的轻量 fetch 封装）；契约来自后端 springdoc 的 `/v3/api-docs`（`pnpm gen:api` 拉取生成）。C# 端 Kiota vs openapi-generator 待定
+4. **桌面本地存储实现**（已定，2026-10-25）：SQLite + `modernc.org/sqlite`（纯 Go，无额外 CGO）；当前为 `app_kv` + `auth_session` 骨架，业务表随功能设计补迁移
+5. **API 客户端生成工具**（Web 端已定，2026-10-18）：**openapi-typescript**（仅生成类型到 `packages/api/src/generated`，请求侧沿用 `packages/api` 的轻量 fetch 封装）；契约来自后端 springdoc 的 `/v3/api-docs`（`pnpm gen:api` 拉取生成）。桌面端复用同一份 TS 类型，由 Go transport 转发（C# 客户端方案作废，2026-10-25）
 6. **工程化**：Vitest、ESLint/Prettier、后端 Testcontainers、机密防泄漏扫描（gitleaks 等）随实现补 —— **后端 Testcontainers 已补**（2026-10-18，随 RBAC 集成测试起用：`spring-boot-testcontainers` + `testcontainers-postgresql`，`@ServiceConnection` 注入）；其余待补
-7. **桌面 Markdown 编辑库正式确认**（AvaloniaEdit 为默认候选）
+7. **桌面 Markdown 编辑库**：桌面端迁移到 Vditor + Lute 后与管理端完全同源；当前过渡期仍为 md-editor-v3（不参与 v2 方言验收）。见 `docs/markdown-dialect.md` §6
 8. **logback CVE-2026-19880 复查**：1.5.x 线无修复版，待 Spring Boot 升级至 logback 1.6.x 或 1.5.x 发布修复版后复核（详见变更记录）
 
 ## 变更机制
@@ -64,6 +65,25 @@
 - 已发生的变更记录可追加到本文件文末
 
 ## 变更记录
+
+### 2026-10-25 · admin / blog 切换 Vditor + Lute，方言 v2 落地
+
+- **形态**：管理端编辑器由 md-editor-v3 改为 **Vditor 4.0.1**（IR 模式，可切 SV）；博客 runtime 由 markdown-it 改为 **Lute**（`@simple-notes/markdown` + `method.min.js`，不打包完整编辑器）；两端共用 `packages/markdown/src/index.ts` 的 `vditorMarkdown`
+- **理由**：编辑体验是第一优先级；统一引擎后编辑预览 = 发布结果，不再需要跨引擎对齐；Vditor 的 IR / WYSIWYG 是 md-editor-v3 的主要缺口
+- **方言 v2**：允许数学（KaTeX）、emoji、脚注、上下标、mark、**安全行内 HTML**；HTML 在所有前端渲染入口用 DOMPurify 清洗；后端仍只存原文、不解析不渲染；可信作者模型
+- **资源**：`frontend/scripts/sync-vditor-assets.mjs` 裁剪并复制 Lute / hljs / KaTeX / Mermaid / icons / i18n / 内容主题到各应用 `public/vditor`（约 9.4MB raw），禁止公共 CDN；MathJax / Graphviz / ECharts / PlantUML 等不打包
+- **代码高亮**：自托管 hljs 补 `vue → xml` 别名（`third-languages.js`），附录 A 的 `vue` 承诺继续成立
+- **代价**：blog runtime 由 543KB raw 降至约 291KB（gzip ≈102KB），但 Lute / hljs / KaTeX / Mermaid 作为 `/blog/vditor/**` 外部资源按需加载；首屏增加约 0.6–0.9MB gzip；主题 CSS 需适配 `.callout` / KaTeX / 任务列表
+- **桌面端**：暂不迁移，仍为 md-editor-v3 过渡；不参与 v2 方言验收（见 `docs/markdown-dialect.md` §6）
+
+### 2026-10-25 · 桌面端改为 Wails v3（Go + WebView），编辑器 Vditor 进入 POC
+
+- **形态**：桌面端由 .NET 10 + Avalonia 改为 **Go 1.26 + Wails v3.0.0-beta.34**；UI 为 `frontend/apps/desktop`（Vue 3 + Vite，pnpm workspace 成员），Go module 在 `desktop/`，前端产物同步进 `desktop/web/dist` 供 `//go:embed`
+- **理由**：① 复用 Vue/TS、`packages/api`、`packages/shared`、`packages/ui`，实现成本与 UI 质量更可控；② 桌面端不再自带第三套 Markdown 引擎（原计划 Markdig），改为与 admin 同源，方言引擎由 3 套降为 2 套；③ 本地优先（SQLite + 后台同步 + token）落在 Go 侧，与 `docs/auth-rbac.md` 的 token 存储设计一致；④ NativeAOT / 源生成 JSON 约束随之取消
+- **代价**：旧"不内嵌 WebView"硬约束作废；内存基线显著上移（Windows 骨架实测 WS ≈390MB、私有 ≈254MB，`--disable-gpu` 私有 ≈191MB）；Linux 需 GTK4 + WebKitGTK 6.0，三平台各自构建；Wails v3 仍是 beta
+- **实现**：Go 侧提供通用 `api.Do` binding（Bearer 注入、无 CORS、token 不进入 JS）；WebView 不直连后端；大文件 / 附件走 Go 侧路径或流，不走 IPC 大载荷
+- **编辑器**：桌面端复用 md-editor-v3 + `packages/shared`（已可构建）；Vditor 4 / Lute 的 POC 已于 2026-10-25 执行（暴露方言冲突；随后按“编辑体验优先”改为 admin/blog 切换 Vditor + 方言 v2，见上条）；桌面端迁移待办
+- **边界**：Wails 的采纳理由是 UI / 类型复用与方言引擎收敛；Vditor POC 暴露的方言冲突最终通过 v2 白名单解决（见上条），不推翻 Wails
 
 ### 2026-10-25 · blog 构建产物并入后端 jar（方案 C 收敛）
 

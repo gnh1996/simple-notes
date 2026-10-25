@@ -275,6 +275,8 @@ backend/src/main/resources/blog/default-theme/{theme.html,theme.css}   ← pnpm 
 
 后端拼壳需要自包含的兜底资源（不能依赖前端构建或 CDN 在线），因此保留一份副本；`pnpm check:theme` 校验两份内容哈希一致，禁止手工只改一边。
 
+> **升级注意**：主题版本不可变。修改 `theme-starter`（例如新增 Lute `.callout` / KaTeX / 任务列表样式）**不会自动更新已存库的激活主题**；部署后需在管理端新建主题版本并人工应用，否则博客仍使用旧 CSS。
+
 ### 4.3 能力边界
 
 | 能做 | 不能做 |
@@ -332,7 +334,7 @@ GET /posts/hello
 - 主题 CSS 内联：避免二次请求与首帧闪烁；体积上限 256KB。
 - runtime 由 Vite 构建，Maven 在 `prepare-package` 把 `apps/blog/dist` 拷入 jar 的 `static/blog/`；入口名固定，chunk / 静态资源带内容哈希。
 - `runtime.js` 由后端以 `no-cache` 提供；`/blog/chunks/**`、`/blog/assets/**` 长缓存 + `immutable`（见 `BlogAssetCacheFilter`）。
-- 依赖全部打进构建产物（Vue 含模板编译器、markdown-it、hljs），**不使用公共 CDN**（可用性、CSP、供应链）。
+- 依赖自托管：Vue（含模板编译器）打进构建产物；Lute / hljs / KaTeX / Mermaid 作为 `/blog/vditor/**` 静态资源按需加载，**不使用公共 CDN**（可用性、CSP、供应链）。
 - runtime 基础样式（`runtime.css`）由构建产物内联注入；首帧只依赖主题 CSS，组件样式在挂载前生效。
 - 壳与路由无关：不注入 `path`，runtime 自己读 `location`，因此同一份壳可被所有路由复用。
 - **单启动路径**：runtime 只从 `window.__BLOG_BOOT__` 启动；不存在客户端 bootstrap 分支。`GET /api/blog/bootstrap` 保留为调试 / agent / 未来桌面端的读取入口。
@@ -342,7 +344,7 @@ GET /posts/hello
 | 项 | 措施 |
 | --- | --- |
 | 分域 | blog 与 admin 不同源；blog 不持有 admin 凭证 |
-| CSP | `default-src 'self'; script-src 'self' 'unsafe-eval'`；主题 CSS 需 `style-src 'unsafe-inline'`；同源部署下无需放行资产域（开发期 `BLOG_ASSET_BASE` 指向 Vite 时自动放行该 origin） |
+| CSP | `default-src 'self'; script-src 'self' 'unsafe-eval'`；主题 CSS 需 `style-src 'unsafe-inline'`；KaTeX 字体需 `font-src 'self' data:`；同源部署下无需放行资产域（开发期 `BLOG_ASSET_BASE` 指向 Vite 时自动把该 origin 加入 script/style/font/connect） |
 | `unsafe-eval` | Vue 运行时模板编译必需；靠零主题 JS + 校验 + 分域兜底 |
 | 模板校验 | 保存时后端校验；**加载时 runtime 再校验一次**（库内旧数据 / 被篡改数据不得直接进编译器）；见 §8 |
 | 预览隔离 | 草稿仅通过短期签名 token 可见（30 分钟，HMAC）；页面 `no-store` + `no-referrer`，bootstrap 同样 `no-store` |
@@ -585,7 +587,7 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 
 **P1（不含 agent，约 3–3.5 周）**
 
-1. runtime：Vue / 路由 / API 客户端 / markdown-it 方言 / 组件库 / 四态 / 契约版本
+1. runtime：Vue / 路由 / API 客户端 / Lute 方言（`@simple-notes/markdown`）/ 组件库 / 四态 / 契约版本
 2. 后端：主题存储 + 版本 + 组装壳 + 路由 fallback + 配置注册表 + 独立页面
 3. 管理端：主题编辑 / 校验 / 预览 / 应用 / 回滚；站点设置；独立页面
 4. 内置默认主题（移动端 + 暗色 + 四态）
@@ -638,8 +640,8 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 
 | 文档 | 需要修订的内容 |
 | --- | --- |
-| `docs/tech-stack.md` | 博客前台 Markdown 渲染由 md-editor-v3 `MdPreview` 改为运行时内置 markdown-it（方言一致）；记录变更理由 |
-| `docs/markdown-dialect.md` | 明确方言的唯一浏览器实现位于 blog runtime；md-editor-v3 仅服务 admin |
+| `docs/tech-stack.md` | 博客前台 Markdown 渲染由 md-editor-v3 `MdPreview` 改为运行时内置 `markdown-it`（方言一致）；2026-10-25 起进一步改为 **Lute**（与 admin 同引擎） |
+| `docs/markdown-dialect.md` | 明确方言的唯一浏览器实现位于 blog runtime；admin 使用 Vditor/Lute（方言 v2） |
 | `frontend/AGENTS.md` | `apps/blog` 为 Vite 构建的 runtime（TS，无 SFC 依赖）；产物在 Maven 打包时进入后端 jar；共享方言与默认主题位置 |
 | `docs/content-model.md` | §9.2 前台信息架构改为「后端组装壳 + 运行时」；§10 补充 Markdown 渲染归属 |
 | `backend/AGENTS.md` | 记录 `site_theme_version` 不可变、`site_setting` 物理 upsert 两项审计例外；主题以 API / 壳下发，后端不执行主题模板；jar 内 runtime 的打包与缓存约定 |
@@ -654,3 +656,4 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 2026-10-24 | v1.1 实现 | P1 落地：`V6`–`V9` 迁移；`site_theme` / `site_theme_version`（不可变）/ `site_setting`（KV + 注册表）/ `site_page`；`BlogPageController` 组装页面（CSP、预览 token、契约回落）；无构建 runtime（Vue + vue-router + markdown-it + 自托管 hljs）与内置默认主题；管理端「站点设置」「主题管理」（编辑 / 预览 iframe / 应用 / 回滚）；`Perms` +5；单测覆盖预览 token 与配置注册表 |
 | 2026-10-25 | v1.2 实现（方案 A） | runtime 改为独立 Vite 构建产物（TS，复用 `packages/shared` 方言与 hljs；入口固定 `runtime.js`），后端不再托管；壳支持 `asset-base`、ETag / `s-maxage`、预览 `no-store` / `no-referrer`；新增 `GET /api/blog/bootstrap` 与运行时双启动路径；默认主题收敛到 `packages/theme-starter`（后端兜底副本由 `pnpm sync:theme` 同步、`check:theme` 校验）；管理端新建主题复用 starter；数据库零迁移 |
 | 2026-10-25 | v1.3 实现（方案 C） | 收敛为单产物：Maven `prepare-package` 把 `apps/blog/dist` 拷入 jar 的 `static/blog/`，后端同源提供 `/blog/**`；删去 runtime 的 bootstrap 启动分支（`GET /api/blog/bootstrap` 降级为调试 / agent 接口）；`/blog/runtime.js` `no-cache`、哈希资源长缓存；生产不再需要 `BLOG_ASSET_BASE`；修复 `pnpm gen:api` 在 Windows 下的变量展开；数据库零迁移 |
+| 2026-10-25 | v1.4 实现 | runtime 的 Markdown 渲染由 markdown-it 改为 **Lute**（`@simple-notes/markdown` + `method.min.js`，不打包完整编辑器）；与 admin 共用 `vditorMarkdown` 与 DOMPurify；Vditor 资源自托管在 `/blog/vditor`；主题 CSS 适配 `.callout` / KaTeX / 任务列表；方言 v2 |

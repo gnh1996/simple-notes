@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=Simple Notes
+Comment=随手记与博客写作桌面端
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/SimpleNotes %u
+Terminal=false
+Type=Application
+Icon=SimpleNotes
+Categories=Utility;
+StartupWMClass=SimpleNotes
+
+ 

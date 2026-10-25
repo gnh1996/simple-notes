@@ -1,6 +1,6 @@
 # simple-notes · 前端工作区
 
-pnpm workspace 管理的多前端仓库：**管理端（admin）** + **博客 runtime（blog）**，共享 API 客户端、工具函数、设计 token 与 Markdown 方言配置。
+pnpm workspace 管理的多前端仓库：**管理端（admin）** + **博客 runtime（blog）** + **桌面端 UI（desktop）**，共享 API 客户端、工具函数、设计 token 与 Markdown 方言配置。
 
 ## 目录结构
 
@@ -11,10 +11,12 @@ frontend/
 ├── scripts/                # 内置默认主题同步 / 校验
 ├── apps/
 │   ├── admin/              # 管理端（Vue 3 + Element Plus + Tailwind v4 + Vite）
-│   └── blog/               # 博客 runtime（Vue 3 + Vite；产物 runtime.js 由后端壳引用）
+│   ├── blog/               # 博客 runtime（Vue 3 + Vite；产物 runtime.js 由后端壳引用）
+│   └── desktop/            # 桌面端 UI（Vue 3 + Vite；由 Wails WebView 加载，bindings/ 由 Go 生成）
 └── packages/
     ├── api/                # @simple-notes/api    后端 API 客户端（管理端 + 桌面端复用）
-    ├── shared/             # @simple-notes/shared 工具函数 / composables / Markdown 方言
+    ├── markdown/           # @simple-notes/markdown  Vditor / Lute 配置、DOMPurify 清洗、博客渲染入口
+    ├── shared/             # @simple-notes/shared 工具函数 / composables / 旧 md-editor-v3 配置（桌面端过渡期）
     ├── theme-starter/      # @simple-notes/theme-starter 内置默认主题（runtime 兜底 + admin starter）
     └── ui/                 # @simple-notes/ui     共享设计 token（Tailwind @theme）
 ```
@@ -28,13 +30,14 @@ frontend/
 | `pnpm install` | 安装全部依赖 |
 | `pnpm dev:admin` | 启动管理端 dev server（<http://localhost:5173>） |
 | `pnpm dev:blog` | 启动博客 runtime dev server（<http://localhost:5174>；页面走后端 8080） |
-| `pnpm build:admin` / `pnpm build:blog` | 构建单个应用；blog 产物在 Maven 打包时进入后端 jar |
+| `pnpm dev:desktop` | 启动桌面端 UI dev server（<http://localhost:5175>；binding 调用需在 Wails 壳内） |
+| `pnpm build:admin` / `pnpm build:blog` / `pnpm build:desktop` | 构建单个应用；blog 产物在 Maven 打包时进入后端 jar；desktop 产物由 `desktop/` 的 `wails3 build` 同步并嵌入 |
 | `pnpm sync:theme` / `pnpm check:theme` | 同步 / 校验后端内置默认主题副本 |
 | `pnpm build` | 构建全部应用 |
 | `pnpm gen:api` | 按后端 OpenAPI 契约重新生成 `packages/api` 类型（需后端已启动；默认 `http://localhost:8080/v3/api-docs`，可用 `OPENAPI_URL` 覆盖） |
 | `pnpm typecheck` | 全仓类型检查 |
 
-开发期 `/api` 请求由 Vite proxy 转发到后端 `http://localhost:8080`（见各应用 `vite.config.ts`）；需要连其他后端端口时用 `VITE_API_PROXY=http://localhost:8081 pnpm dev:admin` 覆盖。
+开发期 `/api` 请求由 Vite proxy 转发到后端 `http://localhost:8080`（见 admin / blog 的 `vite.config.ts`；桌面端不走 proxy，由 Go binding 转发）；需要连其他后端端口时用 `VITE_API_PROXY=http://localhost:8081 pnpm dev:admin` 覆盖。
 
 ## 管理端（apps/admin）结构
 
@@ -60,14 +63,23 @@ apps/admin/src/
 - 内置默认主题在 `packages/theme-starter`；后端兜底副本用 `pnpm sync:theme` 同步、`pnpm check:theme` 校验
 - Markdown 方言、hljs、github-alerts 均来自 `@simple-notes/shared`，不在 app 内重复配置
 
+## 桌面端 UI（apps/desktop）
+
+- 只负责渲染与交互；窗口、本地 SQLite、HTTP 传输、令牌都在 `desktop/` 的 Go 侧
+- **不直连后端**：调用 Go binding `api.Do({ method, path, body })`；Bearer 由 Go 注入，token 不进入 JS
+- `bindings/` 由 `wails3 task bindings` 生成（改 Go service 签名后重跑），随仓库提交；**禁止手写 IPC 类型**
+- API 类型仍来自 `@simple-notes/api` 的 OpenAPI 生成物；Go 侧只做通用转发
+- Markdown 与 admin 同源：`configureMarkdown()` + `packages/shared`；编辑器高度按容器计算，不做移动端分叉
+- 构建产物由 `pnpm build:desktop` → `pnpm sync:wails` 同步到 `desktop/web/dist`（`//go:embed` 不能跨 module）
+
 ## 已定选型（设计阶段记录）
 
 | 位置 | 选型 | 说明 |
 | --- | --- | --- |
-| 管理端 Markdown 编辑器 | **md-editor-v3 7.x**（2026-09 活跃） | Vue 3.5 原生分屏编辑器：工具栏 / 预览 / 目录 / 图片上传 / KaTeX / Mermaid 内置，自带 XSS 清洗；peer 要求 Vue `^3.5.3`（当前 3.5.44 满足） |
-| 博客前台 Markdown 渲染 | **runtime 内置 markdown-it**（2026-10-24 起；2026-10-25 改为构建产物） | 方言配置从 `@simple-notes/shared` 取（`breaks: false` / `html: false` / github-alerts / hljs 自托管），md-editor-v3 只服务 admin 编辑与预览；主题零 JS |
+| 管理端 / 桌面端 Markdown 编辑器 | **Vditor 4.0.1**（Lute 内核；admin 已切换，desktop 待迁移） | IR / WYSIWYG，KaTeX / Mermaid / emoji / 表格内置；后端只存原文 |
+| 博客前台 Markdown 渲染 | **Lute**（`@simple-notes/markdown` + `method.min.js`，2026-10-25 起） | 与 admin 共用 `vditorMarkdown`；DOMPurify 清洗；Math / Mermaid / hljs 按需加载 |
 
-> 注意：md-editor-v3 的全局 `config()`（breaks、插件、hljs、主题）作用于模块级实例；blog runtime 使用同一份 `markdownDialect` 语义源构造 markdown-it，两端一致性由 fixture 双向验证。
+> 注意：admin 与 blog 共用 `packages/markdown` 的 `vditorMarkdown` 与 `sanitizeHtml`；主题 CSS 需按 Lute 的 `.callout` / KaTeX / 任务列表结构适配。Vditor 静态资源由 `pnpm sync:vditor`（各应用 predev/prebuild 自动执行）裁剪复制到 `public/vditor`，禁止公共 CDN。
 
 ## 约定
 

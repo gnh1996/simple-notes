@@ -1245,6 +1245,72 @@ html[data-color-mode='dark'] .bc-prose pre {
 .bc-prose .markdown-alert-warning { border-color: #a8781f; }
 .bc-prose .markdown-alert-caution { border-color: #a83a32; }
 
+/* Lute callouts（方言 v2；Vditor 的 HTML 结构与 github-alerts 不同） */
+
+.bc-prose .callout {
+  margin: 1.6em 0;
+  padding: 16px 20px;
+  border-left: 2px solid var(--blog-accent);
+  background: color-mix(in oklab, var(--blog-accent) 5%, transparent);
+}
+
+.bc-prose .callout-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-family: var(--blog-font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.bc-prose .callout-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.bc-prose .callout-content > :first-child {
+  margin-top: 0;
+}
+
+.bc-prose .callout-content > :last-child {
+  margin-bottom: 0;
+}
+
+.bc-prose .callout[data-subtype='NOTE'] { border-color: #4a6fa5; }
+.bc-prose .callout[data-subtype='TIP'] { border-color: #3f7d5c; }
+.bc-prose .callout[data-subtype='IMPORTANT'] { border-color: #7a5aa6; }
+.bc-prose .callout[data-subtype='WARNING'] { border-color: #a8781f; }
+.bc-prose .callout[data-subtype='CAUTION'] { border-color: #a83a32; }
+
+/* 任务列表（Lute 输出 input[type=checkbox]） */
+
+.bc-prose li:has(> input[type='checkbox']) {
+  list-style: none;
+}
+
+.bc-prose li > input[type='checkbox'] {
+  margin: 0 0.5em 0 -1.2em;
+  vertical-align: middle;
+}
+
+/* 数学 / Mermaid */
+
+.bc-prose .katex-display {
+  margin: 1.4em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.bc-prose .language-mermaid svg,
+.bc-prose .vditor-mermaid svg,
+.bc-prose .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
 /* 代码高亮 token（纸墨双色） */
 
 .hljs-comment,

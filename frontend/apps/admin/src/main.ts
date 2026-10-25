@@ -1,4 +1,3 @@
-import { configureMarkdown } from '@simple-notes/shared'
 import ElementPlus from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { createPinia } from 'pinia'
@@ -12,7 +11,6 @@ import router from './router'
 import './styles/main.css'
 
 initTheme()
-configureMarkdown()
 
 const app = createApp(App)
 app.use(createPinia())

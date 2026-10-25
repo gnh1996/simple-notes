@@ -1,6 +1,6 @@
 # frontend 工作区规则
 
-pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `packages/*`（共享）。结构、命令与选型见 `README.md` 与 `docs/tech-stack.md`。
+pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `apps/desktop`（桌面端 UI）+ `packages/*`（共享）。结构、命令与选型见 `README.md` 与 `docs/tech-stack.md`。
 
 ## 依赖与包管理
 
@@ -8,15 +8,14 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 - **包边界**：`apps/*` 之间互不依赖；共享代码下沉 `packages/*`，用 `"workspace:*"` 引用（内部包直接导出 TS 源码，无构建步骤）
 - 新增依赖前：确认与 Vue 3.5 / Vite 8 兼容、许可证可自由使用、维护活跃
 
-## Markdown（与内容方言强相关，详见 `docs/markdown-dialect.md`）
+## Markdown（方言 v2；详见 `docs/markdown-dialect.md`）
 
-- 编辑器：md-editor-v3 7（仅 admin）；**博客前台不再复用 `MdPreview`**，改由 blog runtime 内置 `markdown-it` 渲染（见 `docs/blog-runtime-theme.md`）
-- 两端配置必须语义一致（admin 走全局 `config()`；blog 走 runtime 内的等价实现，由 fixture 双向验证）：
-  - `breaks: false`（对齐 CommonMark 软换行）
-  - 追加 `markdown-it-github-alerts`；禁用内置 `!!!` admonition
-  - 过滤 katex / sub / sup / echarts 等未收扩展（`noKatex` / `noEcharts`）
-  - hljs 自托管（生产不依赖 CDN）
-- 代码块语言集与方言白名单一致；新增 Markdown 语法前必须先在 `docs/markdown-dialect-fixture.md` 加样本并完成三端验收
+- 编辑器：**Vditor 4.0.1**（admin；桌面端待迁移），IR 模式，可切 SV；配置来自 `@simple-notes/markdown`
+- 博客前台：**Lute**（`@simple-notes/markdown` 的 `createPreviewOptions` + `renderToElement`，`method.min.js` 不打包完整编辑器）
+- 单一语义源：`packages/markdown/src/index.ts` 的 `vditorMarkdown`；admin / blog 禁止另写配置
+- 安全：`sanitizeHtml()`（DOMPurify）在所有 `innerHTML` 前执行；Vditor 预览 `transform` + paste 清洗；Lute `sanitize: true` 保留
+- 资源：`pnpm sync:vditor` 裁剪复制到 `public/vditor`（Lute / hljs / KaTeX / Mermaid / icons / i18n / 内容主题）；禁止公共 CDN
+- 代码高亮：自托管 hljs 的 `third-languages.js` 注册 `vue → xml` 别名；新增语言集需同步附录 A 与 fixture
 
 ## 响应式
 
@@ -32,7 +31,7 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 - 开发期：`mvn spring-boot:run` 默认启用 `dev` profile，`asset-base` 自动指向 Vite（`http://localhost:5174`）获得 HMR；生产 jar 不启用，固定 `/blog`
 - 主题来自数据库且**禁止携带脚本**；runtime 加载前必须再执行一次 `validateTheme`（保存时后端已校验）
 - 内置默认主题唯一源：`packages/theme-starter/`；后端兜底副本用 `pnpm sync:theme` 同步、`pnpm check:theme` 校验，禁止只改一边
-- Markdown 方言从 `@simple-notes/shared` 取（`markdownDialect` / `hljs` / github-alerts），不得在 app 内另写一份配置
+- Markdown 方言从 `@simple-notes/markdown` 取（`createPreviewOptions` / `renderToElement` / `sanitizeHtml`），不得在 app 内另写一份配置；Lute 与 hljs 资源由 `pnpm sync:vditor` 自托管
 - 运行时只调用公开接口；依赖全部打进 bundle，**禁止引用公共 CDN**
 - 断点值与 `BREAKPOINTS` 保持一致（runtime 通过 CSS 媒体查询，不按 UA 判断）
 
@@ -44,15 +43,29 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 - **样式**：Element Plus 经 `@layer element-plus` 导入（层序 `theme, base, components, element-plus, utilities`）；Tailwind 工具类可直接覆盖组件样式；应用级覆盖写在 `styles/main.css` 末尾
 - **主题 / 布局**：暗色主题由 `useTheme`（模块级单例 + `html.dark`）驱动，首屏由 `index.html` 内联脚本防闪白；多标签页状态在 `stores/tabs`（内存态，不做持久化）
 
+## 桌面端（apps/desktop）
+
+> 壳与本地能力见 `desktop/AGENTS.md`；此处只约束前端部分。
+
+- UI 由 `desktop/` 的 Wails WebView 加载；窗口、SQLite、HTTP、令牌都在 Go 侧
+- **不直连后端**：只调用 Go binding `api.Do({ method, path, body })`；token 不进入 JS / localStorage
+- `bindings/` 由 `wails3 task bindings` 生成（改 Go service 签名后重跑），随仓库提交；禁止手写 IPC 类型
+- API 类型来自 `@simple-notes/api`（OpenAPI 生成），不另写接口类型；Go 侧只做通用转发
+- Markdown 与 admin 同源：`configureMarkdown()` + `packages/shared`；新增语法仍按方言 fixture 流程
+- 构建产物先 `pnpm build:desktop`，再由 `desktop/` 的 `wails3 build` 执行 `pnpm sync:wails` 同步进 `desktop/web/dist`
+- 内存按 WebView 进程树评估：新增常驻面板 / 依赖前先实测（见 `desktop/README.md`）
+
 ## 命令
 
 ```bash
 pnpm install
 pnpm dev:admin            # 5173
 pnpm dev:blog             # 5174（runtime dev server；页面走后端 8080）
+pnpm dev:desktop          # 5175（桌面端 UI；binding 需在 Wails 壳内）
 pnpm typecheck            # 全仓类型检查（含默认主题副本校验）
 pnpm build:admin          # 单应用构建
 pnpm build:blog           # 产出 runtime.js；Maven 打包时拷入后端 jar
+pnpm build:desktop        # 桌面端 UI 构建；之后由 desktop/ 的 wails3 build 同步并嵌入
 pnpm sync:theme           # packages/theme-starter → 后端兜底副本
 pnpm check:theme          # 校验默认主题副本未漂移
 pnpm gen:api              # 依后端 OpenAPI 重新生成 packages/api 类型（需后端已启动）

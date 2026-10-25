@@ -1,5 +1,4 @@
 import {
-  computed,
   defineComponent,
   nextTick,
   onBeforeUnmount,
@@ -74,10 +73,30 @@ const BlogMarkdown = defineComponent({
     source: { type: String, default: '' },
   },
   setup(props) {
-    const html = computed(() => renderMarkdown(props.source))
-    return { html }
+    const el = ref<HTMLElement>()
+    let sequence = 0
+
+    async function draw(): Promise<void> {
+      if (!el.value) {
+        return
+      }
+      const current = ++sequence
+      await renderMarkdown(el.value, props.source, colorMode.value === 'dark' ? 'dark' : 'light')
+      if (current !== sequence) {
+        return
+      }
+      window.dispatchEvent(new CustomEvent('blog:markdown-rendered'))
+    }
+
+    onMounted(draw)
+    watch([() => props.source, colorMode], draw, { flush: 'post' })
+    onBeforeUnmount(() => {
+      sequence++
+    })
+
+    return { el }
   },
-  template: `<div class="bc-prose" data-blog-prose v-html="html"></div>`,
+  template: `<div ref="el" class="bc-prose" data-blog-prose></div>`,
 })
 
 const BlogToc = defineComponent({
@@ -116,7 +135,16 @@ const BlogToc = defineComponent({
     }
 
     watch([contentVersion, currentPath], build, { immediate: true })
-    onBeforeUnmount(() => observer?.disconnect())
+
+    function onRendered(): void {
+      void build()
+    }
+
+    onMounted(() => window.addEventListener('blog:markdown-rendered', onRendered))
+    onBeforeUnmount(() => {
+      window.removeEventListener('blog:markdown-rendered', onRendered)
+      observer?.disconnect()
+    })
 
     function jump(event: Event, id: string): void {
       event.preventDefault()

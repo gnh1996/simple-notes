@@ -221,11 +221,12 @@
 - v1 登录态能力最小集：查看自身身份 / 退出；登录后互动能力（评论等）随 blog 功能设计，命名空间 `blog:*` 预留
 - 凭证独立持有：localStorage key `sn.auth.blog`（与 admin 互不干扰——同一浏览器可同时保持两端会话；部署形态见 tech-stack 待定 #3）；未登录触发受保护交互 → 引导登录
 
-### 6.4 desktop 端（.NET / Avalonia）
+### 6.4 desktop 端（Go + Wails）
 
-- 登录 `client=DESKTOP`，要求 `entry:desktop`；JWT 存**本地 SQLite 专表**（依赖操作系统用户级文件权限保护；访问经 `ITokenStore` 抽象，未来可按平台接入 DPAPI / libsecret / Keychain 而不改结构）
-  - 评估记录（为什么不上系统钥匙串）：跨平台钥匙串在 Linux 侧依赖 D-Bus / keyring 守护进程（无桌面会话环境不可用），.NET 生态库与 AOT 兼容性不确定；且钥匙串防的是"静态读盘"（磁盘 / 备份 / 同机其他用户），防不了"同用户态进程"（主要威胁），个人设备上收益边际
-  - 硬约束：认证数据（令牌表）**永不参与内容同步 / 导出 / 备份**（随同步协议设计落实）
+- 登录 `client=DESKTOP`，要求 `entry:desktop`；JWT 存**本地 SQLite 专表** `auth_session`（依赖操作系统用户级文件权限保护；访问经 `store.Token()/SetToken()/ClearToken()` 收口，未来可按平台加密而不改调用方）
+  - 评估记录（为什么不上系统钥匙串）：跨平台钥匙串在 Linux 侧依赖 D-Bus / keyring 守护进程（无桌面会话环境不可用），Go 生态接入需额外的 CGO / 系统集成；且钥匙串防的是"静态读盘"（磁盘 / 备份 / 同机其他用户），防不了"同用户态进程"（主要威胁），个人设备上收益边际
+  - 硬约束：认证数据（`auth_session`）**永不参与内容同步 / 导出 / 备份**（随同步协议设计落实）；令牌不进入 WebView / JS，由 Go 侧注入 `Authorization: Bearer`
+- **WebView 不直连后端**：前端经 Go binding `api.Do` 转发，避免自定义 scheme 的 CORS（见 `desktop/README.md`）
 - **本地优先边界**：
   - 登录（或 token 有效期内）后，本地数据读写离线可用；一切与服务端交互（同步 / 发布）在线校验
   - 离线期间发生的授权变更以"下次在线"为准；401 → 提示重新登录，403 → 提示权限已变化

@@ -1,0 +1,20 @@
+{
+  "name": "@simple-notes/markdown",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./render": "./src/render.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dompurify": "catalog:",
+    "vditor": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

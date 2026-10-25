@@ -1,30 +1,47 @@
 # desktop 端规则
 
-.NET 10 + Avalonia 12 桌面端（随手记 + 博客写作 + 发布）。**当前为框架骨架**：功能设计定稿后才进入实现。结构与选型见 `README.md` 与 `docs/tech-stack.md`。
+Go 1.26+ + Wails v3（WebView）桌面端；前端是 `frontend/apps/desktop`（Vue 3 / TS，pnpm workspace 成员）。**当前为技术骨架**：功能设计定稿后才进入实现。结构与选型见 `README.md` 与 `docs/tech-stack.md`。
 
 ## 已定技术项
 
-- 架构：CommunityToolkit.Mvvm + Microsoft.Extensions.DependencyInjection（组合根在 `App.axaml.cs`）
-- 数据模式：本地优先（SQLite，离线可用 + 后台同步；同步协议待设计）
-- Markdown：渲染 LiveMarkdown.Avalonia（静态内容用法待确认）；编辑 AvaloniaEdit（+ TextMate 高亮）
-- 分发：预留 NativeAOT 单文件发布
+- 壳 / 本地能力：Go + Wails v3.0.0-beta.34（锁版本）；services + bindings
+- UI：Vue 3 + Vite + Tailwind（复用 `packages/shared`、`packages/ui`、`packages/api` 类型）
+- 数据：本地优先（SQLite，`modernc.org/sqlite`；离线 + 后台同步，协议待设计）
+- Markdown：过渡期仍为 md-editor-v3（markdown-it）；admin / blog 已于 2026-10-25 切到 Vditor + Lute（方言 v2），**桌面端待迁移**，迁移前不参与 v2 验收
+- 分发：三平台各自构建（Wails Taskfile / CI 矩阵），不再使用 .NET NativeAOT
 
 ## 硬约束（来自选型，改动需走变更决策）
 
-- **内存优先**：不内嵌 WebView 做 Markdown 预览；新增依赖先评估内存与包体积
-- **AOT / 裁剪友好**：保持 `IsAotCompatible`；JSON 一律用源生成（`JsonSerializerContext`）；避免反射与动态代码生成；新增依赖须评估 AOT 兼容性
-- **许可证**：不使用需要商业许可的组件（如 Avalonia Pro 控件）
-- **平台目标**：Windows / Linux / macOS
+- **WebView 内存预算**：内存主要由 WebView2 / WebKitGTK 进程树决定（Windows 骨架实测 WS ≈390MB、私有 ≈254MB）。新增常驻 UI、依赖或后台能力前先评估内存；优化项（`--disable-gpu`、延迟加载编辑器、裁剪 WebView 功能）需记录实测数据
+- **WebView 不直连后端**：所有 API 请求走 Go `api.Do` binding；Go 注入 Bearer，令牌只存 SQLite，不进入 JS / localStorage
+- **大载荷不走 IPC**：附件 / 图片用 Go 侧文件路径或流式接口；binding 只传 JSON
+- **三平台**：Windows / Linux（GTK4 + WebKitGTK 6.0，Ubuntu 24.04 基线）/ macOS 11+；无交叉编译，各自构建
+- **许可证**：不使用需要商业许可的组件
+
+## 代码约定
+
+- Go module 根在 `desktop/`；前端在 `frontend/apps/desktop/`，通过 `pnpm sync:wails` 把 `dist` 同步到 `desktop/web/dist`（`//go:embed` 不能跨 module）
+- 改 Go service 签名后执行 `wails3 task bindings`，生成的 `frontend/apps/desktop/bindings/` 随仓库提交
+- 前端调用 binding 一律从 `bindings/` 导入，不手写 IPC 类型
+- API 类型仍来自后端 OpenAPI（`packages/api`），**禁止手写接口类型**；Go 侧只做通用转发，不复制 DTO
+- 本地数据库只存桌面端私有数据；认证数据不参与内容同步 / 导出 / 备份
+- JSON 用 Go 标准库；不引入需要 CGO 的库（SQLite 已选纯 Go 驱动）
 
 ## 环境注意
 
-- 本仓库的开发服务器**无图形环境**（无 X / Wayland / fontconfig）：构建与无头验证可行，GUI 与 UI 验证需在有桌面的机器上进行
-- 中文输入法（fcitx5）与 Wayland 下的体验需要实机验证（选型期已知风险点）
+- 本仓库开发机为 Windows，**Windows 构建 / 运行已验证**；Linux / macOS 与中文输入法（fcitx5 + Wayland、微软拼音）需实机验证
+- 无图形环境时只能跑 `go test ./...`、`pnpm typecheck`、`pnpm build:desktop`；`wails3 dev` / GUI 需桌面环境
 
 ## 命令
 
 ```bash
-dotnet build -c Release
-dotnet run --project src/SimpleNotes.Desktop   # 需要图形环境
-# AOT 单文件发布示例见 README（需 clang）
+# desktop/
+wails3 build                  # bindings → 前端构建 → 同步 → 编译 bin/SimpleNotes.exe
+wails3 dev                    # 开发模式（需要图形环境）
+wails3 task bindings          # 只生成 TS bindings
+go test ./...                 # Go 单测
+
+# frontend/
+pnpm dev:desktop              # 5175（浏览器调试 UI；binding 调用不可用）
+pnpm build:desktop
 ```

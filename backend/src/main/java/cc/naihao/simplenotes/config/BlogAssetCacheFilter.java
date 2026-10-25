@@ -25,6 +25,9 @@ public class BlogAssetCacheFilter extends OncePerRequestFilter {
             response.setHeader("Cache-Control", "no-cache");
         } else if (path.startsWith("/blog/chunks/") || path.startsWith("/blog/assets/")) {
             response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        } else if (path.startsWith("/blog/vditor/")) {
+            // 资源名未带内容哈希；用 1 小时缓存平衡加载性能与升级后的失效速度。
+            response.setHeader("Cache-Control", "public, max-age=3600");
         }
         filterChain.doFilter(request, response);
     }

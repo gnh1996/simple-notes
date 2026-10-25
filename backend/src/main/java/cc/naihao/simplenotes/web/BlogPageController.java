@@ -200,6 +200,7 @@ public class BlogPageController {
         return "default-src 'self'; "
                 + "script-src 'self' 'unsafe-inline' 'unsafe-eval'" + extra + "; "
                 + "style-src 'self' 'unsafe-inline'" + extra + "; "
+                + "font-src 'self' data:" + extra + "; "
                 + "img-src 'self' data:; "
                 + "connect-src 'self'" + extra + ws + "; "
                 + "frame-ancestors 'self' " + siteProperties.getAdminOrigin();

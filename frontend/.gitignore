@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+# Vditor 运行时资源由 pnpm sync:vditor 裁剪生成
+apps/*/public/vditor
 
 # Editor directories and files
 .vscode/*

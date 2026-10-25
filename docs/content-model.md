@@ -756,7 +756,7 @@ note.delete_flag = 0
 
 - 匿名可读；不要求登录。
 - **页面形态（v1.3 起）**：后端组装壳（站点配置 + 主题 HTML/CSS）+ Vite 构建的 runtime（打包时进入后端 jar，同源 `/blog/**`），主题由管理端以不可变版本下发；详见 `docs/blog-runtime-theme.md`。
-- Markdown 由 blog runtime 内置 `markdown-it` 渲染，配置从 `packages/shared` 取（`breaks: false`、github-alerts、hljs 自托管、`html: false`），与 admin 共用同一语义源。
+- Markdown 由 blog runtime 使用 **Lute** 渲染（`@simple-notes/markdown` + `method.min.js`），与 admin 共用同一份 `vditorMarkdown`；DOMPurify 在渲染前清洗；方言 v2 允许数学 / emoji / 安全行内 HTML。
 - 响应式使用 `useBreakpoint()` / 统一断点值，不按 UA 判断。
 
 ---
@@ -765,8 +765,8 @@ note.delete_flag = 0
 
 - 笔记与文章使用同一套 Markdown 方言（`docs/markdown-dialect.md`），不为博客单独扩展语法。
 - 元数据全部走数据库字段，不使用 front matter。
-- 后端只存原文，不渲染；公开渲染端设置 `html: false`，粗 HTML 按方言要求转义 / 移除。
-- 入库清洗策略仍按 `docs/markdown-dialect.md` §8 的待办处理：若需要严格拒绝裸 HTML，应使用 Markdown 解析器识别 HTML 节点，避免正则误伤代码块中的 HTML 示例。
+- 后端只存原文，不渲染；公开渲染端在 `innerHTML` 前用 `sanitizeHtml`（DOMPurify）清洗；方言 v2 允许安全行内 HTML。
+- 入库清洗策略（2026-10-25 收口）：**不做后端入库清洗**，清洗发生在所有前端渲染入口；若未来需要严格拒绝裸 HTML，再按 Markdown-aware 方案重新评估。
 - 正文图片使用稳定站内 URL，不写 R2 key；封面使用 `cover_attachment_id`。
 - 上传校验：大小上限、MIME 白名单、图片重新编码、禁止 SVG；文件名不参与存储路径。
 - 公开 bucket 下草稿图片可能被知道 URL 的人访问；个人项目接受，后续可改私有 bucket / 签名 URL。
@@ -853,7 +853,7 @@ note.delete_flag = 0
 
 1. **评论**：独立表；匿名 / 登录、审核、反垃圾、通知策略待单独设计。
 2. **桌面端同步**：增量游标、墓碑读取、冲突解决、附件上传队列——Web 稳定后单独立项。
-3. **HTML 清洗**：是否在入库阶段拒绝裸 HTML，取决于是否为后端引入 Markdown 解析器；与 `docs/markdown-dialect.md` §8 一并定。
+3. **HTML 清洗**（2026-10-25 已收口）：v2 允许安全行内 HTML；后端不解析 / 不清洗，前端统一 DOMPurify；可信作者模型。
 4. **revision 保留策略**：v1 全量保留；何时清理、是否提供回滚 UI，P1 决定。
 5. **标签治理**：改名 / 删除 / 使用量 / 内容分配已落地；合并、别名、删除后同名复用策略待后续评估。
 6. **slug 变更**：v1 首发布后不可改；未来如需改名，补 `post_slug_history` 与 301。

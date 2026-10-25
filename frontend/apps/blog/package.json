@@ -4,20 +4,20 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "dev": "pnpm sync:vditor && vite",
+    "build": "pnpm sync:vditor && vue-tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "vue-tsc -b"
+    "typecheck": "vue-tsc -b",
+    "sync:vditor": "node ../../scripts/sync-vditor-assets.mjs"
   },
   "dependencies": {
-    "@simple-notes/shared": "workspace:*",
+    "@simple-notes/markdown": "workspace:*",
     "@simple-notes/theme-starter": "workspace:*",
-    "markdown-it": "catalog:",
+    "vditor": "catalog:",
     "vue": "catalog:",
     "vue-router": "catalog:"
   },
   "devDependencies": {
-    "@types/markdown-it": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

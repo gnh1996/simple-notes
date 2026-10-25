@@ -1,0 +1,78 @@
+version: '3'
+
+# Wails v3 通用构建任务。
+# 前端源码在 frontend/apps/desktop（pnpm workspace 成员）；
+# 构建后用 sync:wails 把 dist 同步到本 module 的 web/dist，供 //go:embed 使用。
+
+vars:
+  FRONTEND_DIR: '../frontend/apps/desktop'
+
+tasks:
+  go:mod:tidy:
+    summary: Runs `go mod tidy`
+    internal: true
+    run: once
+    cmds:
+      - go mod tidy
+
+  install:frontend:deps:
+    summary: Install frontend dependencies
+    run: once
+    dir: '{{.FRONTEND_DIR}}'
+    sources:
+      - package.json
+    generates:
+      - node_modules
+    cmds:
+      - pnpm install
+
+  build:frontend:
+    summary: Build the frontend and sync it into the Go embed directory
+    run: once
+    dir: '{{.FRONTEND_DIR}}'
+    deps:
+      - task: install:frontend:deps
+      - task: generate:bindings
+    cmds:
+      - pnpm run {{if eq .DEV "true"}}build:dev{{else}}build{{end}}
+      - pnpm run sync:wails
+
+  generate:bindings:
+    summary: Generates TypeScript bindings for the frontend
+    run: once
+    deps:
+      - task: go:mod:tidy
+    sources:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+    generates:
+      - '{{.FRONTEND_DIR}}/bindings/**/*'
+    cmds:
+      - wails3 generate bindings -clean=true -ts -i -d {{.FRONTEND_DIR}}/bindings
+
+  generate:icons:
+    summary: Generates Windows `.ico` and macOS `.icns` from build/appicon.png
+    run: once
+    dir: build
+    sources:
+      - appicon.png
+    generates:
+      - darwin/icons.icns
+      - windows/icon.ico
+    cmds:
+      - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
+
+  dev:frontend:
+    summary: Runs the frontend Vite dev server
+    deps:
+      - task: install:frontend:deps
+    dir: '{{.FRONTEND_DIR}}'
+    cmds:
+      - pnpm run dev -- --port {{.VITE_PORT}} --strictPort
+
+  update:build-assets:
+    summary: Regenerates platform metadata from build/config.yml
+    dir: build
+    cmds:
+      - wails3 update build-assets -name "{{.APP_NAME}}" -binaryname "{{.APP_NAME}}" -config config.yml -dir .
