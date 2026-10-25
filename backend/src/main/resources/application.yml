@@ -44,4 +44,6 @@ simple-notes:
   # 博客宿主（docs/blog-runtime-theme.md §5.2）：管理端源用于 CSP frame-ancestors 与预览 iframe
   site:
     admin-origin: "${ADMIN_ORIGIN:http://localhost:5173}"
+    # runtime 构建产物基址：生产默认 /blog（jar 内 static/blog）；开发期用 BLOG_ASSET_BASE 指向 Vite dev server
+    asset-base: "${BLOG_ASSET_BASE:/blog}"
     preview-ttl: 30m

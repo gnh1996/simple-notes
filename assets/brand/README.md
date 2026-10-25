@@ -10,7 +10,7 @@ Simple Notes 的图标源文件与各端导出。图形语义：**纸页 = 随�
 
 ## 引用位置
 
-- Web favicon：`frontend/apps/admin/public/favicon.svg`、`frontend/apps/blog/public/favicon.svg`（源文件副本）
+- Web favicon：`frontend/apps/admin/public/favicon.svg`、`backend/src/main/resources/static/favicon.svg`（博客壳）、`frontend/apps/blog/public/favicon.svg`（runtime dev server）
 - 桌面端：`desktop/src/SimpleNotes.Desktop/Assets/icon.png`（非 Windows 窗口图标）、`icon.ico`（Windows 窗口 + 可执行文件图标）
 
 ## 约定

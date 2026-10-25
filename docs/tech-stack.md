@@ -65,13 +65,29 @@
 
 ## 变更记录
 
+### 2026-10-25 · blog 构建产物并入后端 jar（方案 C 收敛）
+
+- **形态**：仍保留「后端组装壳 + 数据化主题」，runtime 由 `frontend/apps/blog` 用 Vite 构建；Maven `prepare-package` 把 `dist` 拷入 jar 的 `static/blog/`，由后端同源提供 `/blog/**`
+- **原因**：方案 A 的「壳 + 独立产物 + 双启动路径」把部署与排错复杂度叠加了；当前规模不需要独立前端发布/CDN，单产物更适合单维护者与 agent 调试
+- **收益**：① 一个发布单元、一个 origin、一条启动路径；② 无 `BLOG_ASSET_BASE`、无跨域 CSP、无发布顺序与版本漂移；③ preview / E2E 直接打 8080
+- **代价**：前端改动必须重打 jar；`mvn package` 依赖先执行 `pnpm build:blog`（缺失产物直接失败；`mvn test` 不依赖 dist）
+- **保留**：`GET /api/blog/bootstrap` 降级为调试 / agent / 未来桌面端接口；`packages/theme-starter` 仍是默认主题唯一源，后端兜底副本由 `pnpm sync:theme` 同步
+
+### 2026-10-25 · 博客 runtime 改为独立构建产物（方案 A，已被同日方案 C 收敛）
+
+- **形态**：仍保留「后端组装壳 + 数据化主题」，但 `runtime.js` 由 `frontend/apps/blog` 用 Vite 构建后独立部署（同域 `/assets/blog/<release>/` 或 CDN），后端不再托管前端产物
+- **启动**：生产由后端壳注入 site + 主题；开发 / 无壳路径调用新增的 `GET /api/blog/bootstrap`（带 ETag）
+- **收益**：① blog 前端恢复可构建、可类型检查、可独立发版；② 直接复用 `packages/shared` 的 Markdown 方言与 hljs，消除一分为二的等价实现；③ 后端 jar 不再背前端资产
+- **代价**：两个发布产物需要版本纪律（先发 runtime，再切 `BLOG_ASSET_BASE` / 后端）；壳缓存需要按主题 + 配置版本失效（`s-maxage=60`，必要时 purge）
+- **默认主题**：唯一源迁到 `frontend/packages/theme-starter/`，后端兜底副本由 `pnpm sync:theme` 同步、`pnpm check:theme` 校验
+
 ### 2026-10-24 · 博客前台改为「运行时 + 数据化主题」（详见 `docs/blog-runtime-theme.md`）
 
 - **形态**：博客前台不再作为 Vue SPA 构建产物发布，改为后端组装页面骨架（注入站点配置 + 主题 HTML/CSS）+ 无构建 `runtime.js` 接管路由、取数、四态、暗色与 Markdown 渲染；主题由管理端以不可变版本存储，改主题不发版
 - **渲染归属**：Markdown 渲染由 md-editor-v3 `MdPreview` 改为 runtime 内置 `markdown-it`（`breaks:false` / github-alerts / `html:false` 与 admin 等价，经 `docs/markdown-dialect-fixture.md` 双向验证）；md-editor-v3 仅用于 admin 编辑与预览
 - **理由**：① 主题可替换且不破坏方言一致性；② 移动端只有一套 DOM，质量可验收；③ 主题作者只写 HTML/CSS，便于后续 agent 产出；④ 运行时随代码发布、可评审，主题存库、可回滚
 - **代价**：引入契约版本（runtime/theme contract）与主题版本、预览 token、模板校验等机制；Vue 运行时模板编译需要 CSP `unsafe-eval`，靠 blog/admin 分域 + 零主题 JS 兜底
-- **影响**：`frontend/apps/blog` 由 SPA 改为无构建运行时；`pnpm dev:blog` / `build:blog` 需相应调整；blog 端不再使用 `packages/api` 的生成类型，改由 runtime 内统一 API 封装收口
+- **影响**：`frontend/apps/blog` 由 SPA 改为无构建运行时；`pnpm dev:blog` / `build:blog` 需相应调整；blog 端不再使用 `packages/api` 的生成类型，改由 runtime 内统一 API 封装收口（2026-10-25 已进一步改为 Vite 构建产物并并入后端 jar，见上两条）
 
 ### 2026-10-18 · admin 端实现落地（后端接 springdoc；Web 端 API 客户端生成链路收口）
 

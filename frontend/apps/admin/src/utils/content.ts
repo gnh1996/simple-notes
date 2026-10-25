@@ -1,7 +1,7 @@
 import type { TagBrief } from '@simple-notes/api'
 
-/** 博客前台地址：开发期默认 5174；部署时用 VITE_BLOG_URL 覆盖 */
-const BLOG_BASE = (import.meta.env.VITE_BLOG_URL as string | undefined) ?? 'http://localhost:5174'
+/** 博客前台地址：开发期默认 8080（后端壳 + jar 内 runtime）；部署时用 VITE_BLOG_URL 覆盖 */
+const BLOG_BASE = (import.meta.env.VITE_BLOG_URL as string | undefined) ?? 'http://localhost:8080'
 
 export function publicPostUrl(slug?: string | null): string | null {
   return slug ? `${BLOG_BASE.replace(/\/$/, '')}/posts/${encodeURIComponent(slug)}` : null

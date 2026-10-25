@@ -10,20 +10,15 @@
     "typecheck": "vue-tsc -b"
   },
   "dependencies": {
-    "@simple-notes/api": "workspace:*",
     "@simple-notes/shared": "workspace:*",
-    "@simple-notes/ui": "workspace:*",
-    "@vue/devtools-api": "catalog:",
-    "md-editor-v3": "catalog:",
-    "pinia": "catalog:",
+    "@simple-notes/theme-starter": "workspace:*",
+    "markdown-it": "catalog:",
     "vue": "catalog:",
     "vue-router": "catalog:"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "catalog:",
+    "@types/markdown-it": "catalog:",
     "@types/node": "catalog:",
-    "@vitejs/plugin-vue": "catalog:",
-    "tailwindcss": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vue-tsc": "catalog:"

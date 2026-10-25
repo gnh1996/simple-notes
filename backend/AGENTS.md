@@ -29,6 +29,16 @@
 - **内容模块例外**（设计见 `docs/content-model.md` §3.8）：`note_revision` 为不可变发布快照，仅 `create_by` / `create_time`，无软删除；`note_tag` / `note_revision_tag` 为关联表，物理删除；`note.slug` 唯一索引不带 `delete_flag = 0`（公开 URL 永久保留）
 - **站点配置 / 主题例外**（设计见 `docs/blog-runtime-theme.md` §6）：`site_theme_version` 为不可变主题版本，仅 `create_by` / `create_time`，无软删除；`site_setting` 为 KV 配置，物理 upsert（新增即 INSERT、写入即 UPDATE、移除即 DELETE），无 `delete_flag`；`site_page` 保存即线上，不做发布快照
 
+## 博客前台（壳组装，设计见 docs/blog-runtime-theme.md）
+
+- 后端只组装壳：注入 site + 主题 HTML/CSS + CSP / 缓存头；**不得在服务端执行主题模板**（不要引入 Thymeleaf / 服务端模板引擎渲染主题）
+- runtime 由 `frontend/apps/blog` 用 Vite 构建；Maven `prepare-package` 把 `dist` 拷入 jar 的 `static/blog/`，后端同源提供 `/blog/**`。**`mvn test` / `compile` 不依赖 dist，`mvn package` 依赖先执行 `pnpm build:blog`**
+- 壳 ETag = 主题版本 + 配置版本 + asset-base + `SHELL_VERSION`；非预览 `s-maxage=60`，预览 `no-store` + `no-referrer`
+- `/blog/runtime.js` 用 `no-cache`，`/blog/chunks/**`、`/blog/assets/**` 长缓存 + `immutable`（`BlogAssetCacheFilter`）
+- 开发期：`mvn spring-boot:run` 默认启用 `dev` profile（`application-dev.yml`），`asset-base` 自动指向 Vite；生产固定 `/blog`。需要覆盖时仍可用 `BLOG_ASSET_BASE` 环境变量
+- `GET /api/blog/bootstrap` 是调试 / agent / 未来桌面端接口，**不参与首屏启动**；返回 DTO 必须补 `@Schema(requiredProperties = ...)`，并跑 `pnpm gen:api`
+- 默认主题唯一源在 `frontend/packages/theme-starter`；后端 `blog/default-theme/` 是兜底副本，只由 `pnpm sync:theme` 更新，`pnpm check:theme` 校验
+
 ## 认证与权限（RBAC，设计见 docs/auth-rbac.md）
 
 - **权限码是唯一纽带**：新增权限 = `security/Perms` 加常量 + 一条 Flyway `INSERT`（`sys_menu` 节点行，id 用 `gen_random_uuid()`、父节点按 code 子查询，见「数据库迁移约定」）；接口注解 `@PreAuthorize("@authz.can('...')")` 里的码必须与 `Perms` 声明一致——启动对账（`startup/MenuCatalogValidator`）扫描常量与注解，缺失 / 漂移直接启动失败

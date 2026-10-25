@@ -1,6 +1,6 @@
 # frontend 工作区规则
 
-pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客前台）+ `packages/*`（共享）。结构、命令与选型见 `README.md` 与 `docs/tech-stack.md`。
+pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `packages/*`（共享）。结构、命令与选型见 `README.md` 与 `docs/tech-stack.md`。
 
 ## 依赖与包管理
 
@@ -25,13 +25,16 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客前台）+ `pa
 
 ## 博客前台（blog runtime）
 
-> 设计与实现见 `docs/blog-runtime-theme.md`（P1 已落地）。
+> 设计与实现见 `docs/blog-runtime-theme.md`（v1.3 / 方案 C 已落地）。
 
-- **无构建运行时**：纯静态 HTML / JS / CSS，不经 Vite、不写 TS；页面骨架由后端组装，主题由数据库下发且**禁止携带脚本**
-- 运行时与内置默认主题位于 `backend/src/main/resources/static/blog/` 与 `backend/src/main/resources/blog/default-theme/`；开发期直接访问后端 `http://localhost:8080`
-- 运行时只调用公开接口；依赖以自托管文件放在 `vendor/`，**禁止引用公共 CDN**
-- 断点值与 `BREAKPOINTS` 保持一致（runtime 无法直接 import TS 共享模块，需显式对齐）
-- 旧 `apps/blog`（Vue SPA）已被取代，待清理；`pnpm dev:blog` / `build:blog` 在清理后移除
+- **构建产物**：`apps/blog` 是 Vite + TS 的 runtime（无 SFC 依赖，组件模板在运行时编译）；产物入口固定为 `runtime.js`，Maven `prepare-package` 会拷入后端 jar 的 `static/blog/`
+- **首屏**：唯一启动路径 = 后端 `BlogPageController` 组装壳（站点配置 + 主题 HTML/CSS 内联）；runtime 只读 `window.__BLOG_BOOT__`，不再有客户端 bootstrap 启动分支
+- 开发期：`mvn spring-boot:run` 默认启用 `dev` profile，`asset-base` 自动指向 Vite（`http://localhost:5174`）获得 HMR；生产 jar 不启用，固定 `/blog`
+- 主题来自数据库且**禁止携带脚本**；runtime 加载前必须再执行一次 `validateTheme`（保存时后端已校验）
+- 内置默认主题唯一源：`packages/theme-starter/`；后端兜底副本用 `pnpm sync:theme` 同步、`pnpm check:theme` 校验，禁止只改一边
+- Markdown 方言从 `@simple-notes/shared` 取（`markdownDialect` / `hljs` / github-alerts），不得在 app 内另写一份配置
+- 运行时只调用公开接口；依赖全部打进 bundle，**禁止引用公共 CDN**
+- 断点值与 `BREAKPOINTS` 保持一致（runtime 通过 CSS 媒体查询，不按 UA 判断）
 
 ## 管理端（apps/admin）
 
@@ -46,8 +49,11 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客前台）+ `pa
 ```bash
 pnpm install
 pnpm dev:admin            # 5173
-pnpm dev:blog             # 5174
-pnpm typecheck            # 全仓类型检查
+pnpm dev:blog             # 5174（runtime dev server；页面走后端 8080）
+pnpm typecheck            # 全仓类型检查（含默认主题副本校验）
 pnpm build:admin          # 单应用构建
+pnpm build:blog           # 产出 runtime.js；Maven 打包时拷入后端 jar
+pnpm sync:theme           # packages/theme-starter → 后端兜底副本
+pnpm check:theme          # 校验默认主题副本未漂移
 pnpm gen:api              # 依后端 OpenAPI 重新生成 packages/api 类型（需后端已启动）
 ```

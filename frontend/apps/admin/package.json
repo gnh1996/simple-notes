@@ -13,6 +13,7 @@
     "@element-plus/icons-vue": "catalog:",
     "@simple-notes/api": "workspace:*",
     "@simple-notes/shared": "workspace:*",
+    "@simple-notes/theme-starter": "workspace:*",
     "@simple-notes/ui": "workspace:*",
     "@vue/devtools-api": "catalog:",
     "element-plus": "catalog:",

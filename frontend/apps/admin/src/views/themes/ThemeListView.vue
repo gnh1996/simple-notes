@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import type { ThemeSummary, ThemeVersionResponse } from '@simple-notes/api'
+import { starterThemeMeta } from '@simple-notes/theme-starter'
+import starterThemeCss from '@simple-notes/theme-starter/theme.css?raw'
+import starterThemeHtml from '@simple-notes/theme-starter/theme.html?raw'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 
@@ -21,7 +24,7 @@ const editor = reactive({
   versionNo: 0,
   html: '',
   css: '',
-  contract: 1,
+  contract: starterThemeMeta.contract as number,
 })
 
 const previewVisible = ref(false)
@@ -74,33 +77,14 @@ async function createTheme(): Promise<void> {
   }
 }
 
-function starterHtml(): string {
-  return `<div id="app" class="shell" data-blog-shell v-cloak
-     :data-blog-page="route.name" :data-state="state">
-  <header class="site-head" data-blog-header>
-    <a class="brand" href="/">{{ site.name }}</a>
-    <nav class="nav-desktop" data-blog-nav>
-      <a v-for="n in nav" :key="n.key" :href="n.to">{{ n.label }}</a>
-    </nav>
-  </header>
-  <main class="main">
-    <blog-state v-if="state !== 'ready'" :state="state" :message="message"></blog-state>
-    <template v-else>
-      <blog-post-card v-for="p in posts" :key="p.slug" :post="p"></blog-post-card>
-      <blog-pager :pager="pager" @go="go"></blog-pager>
-    </template>
-  </main>
-</div>`
-}
-
 function openNewVersion(): void {
   if (!selected.value) return
   editor.themeId = selected.value.id
   editor.versionId = ''
   editor.versionNo = (versions.value[0]?.versionNo ?? 0) + 1
-  editor.html = versions.value[0]?.html || starterHtml()
-  editor.css = versions.value[0]?.css || ''
-  editor.contract = versions.value[0]?.contract ?? 1
+  editor.html = versions.value[0]?.html || starterThemeHtml
+  editor.css = versions.value[0]?.css || starterThemeCss
+  editor.contract = versions.value[0]?.contract ?? starterThemeMeta.contract
   editorVisible.value = true
 }
 

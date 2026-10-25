@@ -755,8 +755,8 @@ note.delete_flag = 0
 | `/about` | 关于页（v1 静态内容可接受） |
 
 - 匿名可读；不要求登录。
-- **页面形态（v1.3 起）**：后端组装整页骨架 + 无构建 runtime，主题由管理端以不可变版本下发；详见 `docs/blog-runtime-theme.md`。
-- Markdown 由 blog runtime 内置 `markdown-it` 渲染，配置与 admin 等价（`breaks: false`、github-alerts、hljs 自托管、`html: false`），一致性由 fixture 双向验证。
+- **页面形态（v1.3 起）**：后端组装壳（站点配置 + 主题 HTML/CSS）+ Vite 构建的 runtime（打包时进入后端 jar，同源 `/blog/**`），主题由管理端以不可变版本下发；详见 `docs/blog-runtime-theme.md`。
+- Markdown 由 blog runtime 内置 `markdown-it` 渲染，配置从 `packages/shared` 取（`breaks: false`、github-alerts、hljs 自托管、`html: false`），与 admin 共用同一语义源。
 - 响应式使用 `useBreakpoint()` / 统一断点值，不按 UA 判断。
 
 ---
@@ -873,3 +873,5 @@ note.delete_flag = 0
 | 2026-10-23 | v1.1 标签管理 | V4 权限；标签管理页（改名 / 删除 / 三层使用量 / 内容分配）；编辑器全局标签联想；已发布文章分配标签只改草稿，需更新发布；删除有使用量时 force 二次确认 |
 | 2026-10-23 | v1.2 移除归档 | 随手记定位云端记事本，修改内容是常态；归档此前仅是状态标签，既不影响列表 / 搜索，也未形成独立入口，收纳需求由软删除 + 回收站覆盖。删除 `note.status` / `NoteStatus` / 相关 DTO 字段与前端开关（V5 迁移），文章下架继续用 `publish_status` |
 | 2026-10-24 | v1.3 博客运行时与主题化 | 前台改为「后端组装骨架 + 无构建 runtime + 数据化主题」（`docs/blog-runtime-theme.md`）；Markdown 渲染由 `MdPreview` 改为 runtime 内置 `markdown-it`（方言一致性由 fixture 双向验证）；新增站点配置、独立页面、主题版本与预览能力；内容模型与发布快照不变 |
+| 2026-10-25 | v1.3.1 方案 A | blog runtime 改为独立 Vite 构建产物（部署在同域静态路径 / CDN），后端只组装壳；新增 `GET /api/blog/bootstrap`；Markdown 方言与 hljs 复用 `packages/shared`；默认主题收敛到 `packages/theme-starter`；内容模型与发布快照不变 |
+| 2026-10-25 | v1.3.2 方案 C | 收敛为单产物：Maven 打包时把 blog dist 拷入 jar 的 `static/blog/`，后端同源提供 `/blog/**`；runtime 只保留壳注入单启动路径；`GET /api/blog/bootstrap` 降级为调试 / agent 接口；内容模型与发布快照不变 |

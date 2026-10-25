@@ -1,7 +1,7 @@
 # 博客运行时与主题化设计（Blog Runtime & Theme）
 
-> **状态：v1.1 · 2026-10-24（P1 已落地：运行时 / 主题 / 站点配置 / 独立页面 / 管理端）**
-> 范围：博客前台从 Vue SPA 改为「后端组装页面 + 固定运行时 + 数据化主题」；含站点配置、独立页面、主题管理与 agent 预览链路
+> **状态：v1.3 · 2026-10-25（方案 C 收敛：runtime 随后端 jar 发布，单产物 / 单启动路径）**
+> 范围：博客前台从 Vue SPA 改为「后端组装页面 + 固定运行时 + 数据化主题」；runtime 仍由 Vite 构建，但产物在 Maven 打包时进入后端 jar，与页面、API 同源提供；含站点配置、独立页面、主题管理与 agent 预览链路
 > 关联：`docs/content-model.md`（内容与公开读取）、`docs/tech-stack.md`（选型）、`docs/markdown-dialect.md`（方言）、`docs/auth-rbac.md`（权限码与菜单）
 > 非目标：SSR / 预渲染、评论、图片派生、RSS / sitemap、主题市场、多作者
 
@@ -9,8 +9,8 @@
 
 | 决策点 | 结论 |
 | --- | --- |
-| 前台形态 | 保留 SPA 交互，但**首屏由后端组装**：注入站点配置 + 主题 HTML/CSS，返回整页 |
-| 运行时归属 | `runtime.js` 是**部署物**（随代码发布、可评审、内容哈希缓存），不存数据库 |
+| 前台形态 | 保留 SPA 交互，**首屏由后端组装壳**：注入站点配置 + 主题 HTML/CSS，返回整页；runtime 由同源静态资源加载 |
+| 运行时归属 | runtime 是**构建产物**（Vite 构建、随代码发布、可评审、入口名固定 + chunk 哈希），Maven 打包时进入 jar 的 `static/blog/`，不存数据库 |
 | 主题归属 | 主题是**数据**（数据库中的不可变版本），由管理端 / agent 编辑，不发版即生效 |
 | 主题构成 | `theme.html` + `theme.css`，**零主题 JS**；行为与数据由 runtime 提供 |
 | 主题自由度 | **版式自由、行为受控**：整页 DOM 由主题决定；数据、动作、路由、Markdown 渲染由 runtime 决定 |
@@ -20,7 +20,8 @@
 | 应用与回滚 | 版本不可变 + 指针切换；**激活必须人工确认**，agent 只提交建议 |
 | 站点配置 | KV 表 + 代码侧配置注册表；复杂值以 JSON 字符串存储 |
 | 独立页面 | 独立表 `site_page`，保存即线上，不做发布快照（刻意与文章不一致） |
-| 部署 | blog 与 admin **分域**；blog 同域提供页面、runtime 与 `/api/**` |
+| 默认主题 | 唯一源 `frontend/packages/theme-starter/`；后端兜底副本由 `pnpm sync:theme` 同步并由 `pnpm check:theme` 校验 |
+| 部署 | blog 与 admin **分域**；blog 为**单 jar**：页面、`/blog/**` 运行时资源与 `/api/**` 同源；不要求独立静态托管 / CDN |
 
 ---
 
@@ -48,28 +49,27 @@
 
 ```text
 浏览器（blog.example.com）
-  │  GET /  /posts/**  /tags/**  …（全部由后端 fallback 到同一骨架）
+  │  GET /  /posts/**  /tags/**  …（全部由后端 fallback 到同一壳）
   ▼
 Spring 后端
   ├─ 读取 ACTIVE 主题版本 + site 配置
   ├─ 组装 HTML：注入 window.__BLOG_BOOT__、内联主题 CSS、输出主题 HTML
-  └─ 返回整页
-       ├─ /blog/runtime.js    固定运行时（Vue 3 + vue-router + API + markdown-it + 组件）
-       ├─ /blog/runtime.css   token / reset / 组件基础样式
-       └─ /blog/vendor/*      自托管依赖（禁止公共 CDN）
+  └─ 返回整页（ETag + s-maxage；预览 no-store）
+       ├─ /blog/runtime.js       jar 内构建产物（Vite；入口固定，chunk 带哈希）
+       └─ /api/blog/**           公开 JSON 接口
 
-运行时（浏览器）
+runtime（浏览器）
   ├─ 挂载 #app，接管路由与数据请求
-  ├─ 调用 /api/blog/*（匿名公开接口）
-  └─ 渲染主题模板（模板由后端下发，零脚本）
+  ├─ 从壳注入数据读取 site / 主题元信息（无第二条启动路径）
+  └─ 渲染主题模板（模板已由后端注入，零脚本）
 ```
 
 职责边界：
 
 | 层 | 负责 | 不负责 |
 | --- | --- | --- |
-| 后端 | 组装骨架、注入配置、存储主题版本、签发预览 token、出公开接口 | 渲染 Markdown、执行业务逻辑 |
-| runtime | 路由、取数、四态、Markdown 渲染、暗色、动作、契约校验 | 决定版式 |
+| 后端 | 组装壳、注入配置、存储主题版本、签发预览 token、出公开接口、CSP / 缓存头、托管 jar 内 runtime | 渲染 Markdown、执行业务逻辑、执行主题模板 |
+| runtime | 路由、取数、四态、Markdown 渲染、暗色、动作、契约校验、模板编译 | 决定版式、决定主题版本 |
 | 主题 | 版式、DOM 结构、样式、条件与循环 | 发请求、写脚本、改方言、改路由 |
 
 **关键取舍**：Markdown 渲染留在浏览器，后端不渲染。这样 `docs/content-model.md` §10「后端只存原文」的约定不被推翻，方言一致性由 runtime 单点保证。
@@ -91,7 +91,8 @@ theme.contract   = N
 
 - 只增不改；删除或改语义 = 升 major；
 - 运行时至少同时支持 `N` 与 `N-1`；
-- 管理端保存 / 应用 / 预览时都要做版本校验。
+- 管理端保存 / 应用 / 预览时都要做版本校验；
+- **运行期双端校验**：后端按自己的 `RUNTIME_CONTRACT` 上限兜底，runtime 再按自身支持的契约校验（主题是数据，无法在构建期检查）；runtime 与后端同 jar 发布，契约常量在同一次发版中升级。
 
 **冻结分级**（避免"什么都不能改"或"什么都能改"两种极端）：
 
@@ -265,11 +266,14 @@ theme.css     全部样式（含暗色与响应式）
 
 不引入第三个 manifest 文件；元信息（名称、契约版本）由管理端表单录入并存表。
 
-内置默认主题随 runtime 部署（不进数据库），作为兜底与 starter theme：
+内置默认主题的唯一源是 `frontend/packages/theme-starter/`，随 runtime 构建进入 bundle，同时作为管理端「新建主题」的起点：
 
 ```text
-backend/src/main/resources/blog/default-theme/{theme.html,theme.css}
+frontend/packages/theme-starter/{theme.html,theme.css,src/index.ts}
+backend/src/main/resources/blog/default-theme/{theme.html,theme.css}   ← pnpm sync:theme 同步的兜底副本
 ```
+
+后端拼壳需要自包含的兜底资源（不能依赖前端构建或 CDN 在线），因此保留一份副本；`pnpm check:theme` 校验两份内容哈希一致，禁止手工只改一边。
 
 ### 4.3 能力边界
 
@@ -317,34 +321,42 @@ backend/src/main/resources/blog/default-theme/{theme.html,theme.css}
 GET /posts/hello
   → 匹配到公开路由 → 读取 site 配置 + ACTIVE 主题版本
   → 组装 HTML：
-       <script>window.__BLOG_BOOT__ = {site, route, colorMode}</script>
-       <style>/* runtime.css */</style>  ← 外链
-       <style>/* 主题 CSS，内联 */</style>
-       <div id="app">/* 主题 HTML */</div>
-       <script src="/blog/runtime.js?v=<hash>"></script>
-  → 返回整页
+       <script>window.__BLOG_BOOT__ = {site, themeMode, adminOrigin, contract, theme:{id,versionNo,contract}}</script>
+       <style>[v-cloak]{display:none}</style>
+       <style id="blog-theme">/* 主题 CSS，内联 */</style>
+       <body data-theme-id=…>/* 主题 HTML，原样注入 */</body>
+       <script type="module" src="/blog/runtime.js"></script>
+  → 返回整页（ETag = 主题版本 + 配置版本 + 壳版本；s-maxage=60）
 ```
 
-- 主题 CSS 内联：避免二次请求与缓存失效问题；体积上限 256KB。
-- `runtime.js` / `runtime.css` 用内容哈希 + `immutable` 长缓存。
-- 依赖自托管在 `/blog/vendor/`，**不使用公共 CDN**（可用性、CSP、供应链）。
+- 主题 CSS 内联：避免二次请求与首帧闪烁；体积上限 256KB。
+- runtime 由 Vite 构建，Maven 在 `prepare-package` 把 `apps/blog/dist` 拷入 jar 的 `static/blog/`；入口名固定，chunk / 静态资源带内容哈希。
+- `runtime.js` 由后端以 `no-cache` 提供；`/blog/chunks/**`、`/blog/assets/**` 长缓存 + `immutable`（见 `BlogAssetCacheFilter`）。
+- 依赖全部打进构建产物（Vue 含模板编译器、markdown-it、hljs），**不使用公共 CDN**（可用性、CSP、供应链）。
+- runtime 基础样式（`runtime.css`）由构建产物内联注入；首帧只依赖主题 CSS，组件样式在挂载前生效。
+- 壳与路由无关：不注入 `path`，runtime 自己读 `location`，因此同一份壳可被所有路由复用。
+- **单启动路径**：runtime 只从 `window.__BLOG_BOOT__` 启动；不存在客户端 bootstrap 分支。`GET /api/blog/bootstrap` 保留为调试 / agent / 未来桌面端的读取入口。
 
 ### 5.2 安全边界
 
 | 项 | 措施 |
 | --- | --- |
 | 分域 | blog 与 admin 不同源；blog 不持有 admin 凭证 |
-| CSP | `default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'` |
+| CSP | `default-src 'self'; script-src 'self' 'unsafe-eval'`；主题 CSS 需 `style-src 'unsafe-inline'`；同源部署下无需放行资产域（开发期 `BLOG_ASSET_BASE` 指向 Vite 时自动放行该 origin） |
 | `unsafe-eval` | Vue 运行时模板编译必需；靠零主题 JS + 校验 + 分域兜底 |
-| 模板校验 | 禁 `<script>` / `v-html` / 危险全局；见 §8 |
-| 预览隔离 | 草稿仅通过短期签名 token 可见（30 分钟，HMAC） |
-| 嵌入控制 | `frame-ancestors 'self' https://admin.example.com` |
+| 模板校验 | 保存时后端校验；**加载时 runtime 再校验一次**（库内旧数据 / 被篡改数据不得直接进编译器）；见 §8 |
+| 预览隔离 | 草稿仅通过短期签名 token 可见（30 分钟，HMAC）；页面 `no-store` + `no-referrer`，bootstrap 同样 `no-store` |
+| 嵌入控制 | `frame-ancestors 'self' https://admin.example.com`（由后端壳输出） |
+| 缓存 | 非预览壳 `s-maxage=60` + `stale-while-revalidate`；文章发布不失效壳，主题激活 / 配置保存 / 发版才变 |
 
-### 5.3 部署
+### 5.3 构建与部署
 
-- blog 域由后端提供页面、静态资源与 `/api/**`（同域，无 CORS）。
+- **单产物**：`pnpm build:blog` → Maven `prepare-package` 拷贝 `../frontend/apps/blog/dist` 到 jar 的 `static/blog/` → `mvn package`。部署与回滚都以 jar 为单位。
+- 构建顺序是唯一新增依赖：后端 `mvn test` / `compile` 不需要 dist；`mvn package` 必须在 `pnpm build:blog` 之后。缺失产物时 Maven 直接失败，不会打出空壳 jar。
+- 开发期：`mvn spring-boot:run` 默认启用 `dev` profile，`asset-base` 自动指向 Vite（5174），页面仍在 8080；生产 jar 不启用该 profile，固定 `/blog`。
+- 推荐同源；若在整站前面挂 CDN，按整站回源缓存即可，不需要单独的资产域或 CORS。
 - admin 为独立前端域，调同一 API（跨域，需 CORS 白名单）。
-- `VITE_BLOG_URL`（admin）= blog 公开地址；后端配置 admin 域名用于 `frame-ancestors` 与 postMessage 白名单。
+- `VITE_BLOG_URL`（admin）= blog 公开地址（预览 iframe 指向后端壳）；后端配置 admin 域名用于 `frame-ancestors` 与 postMessage 白名单。
 
 ---
 
@@ -506,8 +518,9 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 
 | 方法 / 路径 | 说明 |
 | --- | --- |
-| `GET /`、`/posts/**`、`/tags/**`、`/archives`、`/search`、`/about`、`/p/**` | 返回组装后的 HTML（含 fallback） |
-| `GET /blog/runtime.js`、`/blog/runtime.css`、`/blog/vendor/*` | 静态运行时 |
+| `GET /`、`/posts/**`、`/tags/**`、`/archives`、`/search`、`/about`、`/p/**` | 返回组装后的壳（含 fallback；ETag + `s-maxage`，预览 `no-store`） |
+| `GET /blog/runtime.js`、`/blog/chunks/*`、`/blog/assets/*` | 后端从 jar 内 `static/blog/` 同源提供；入口 `no-cache`，哈希资源长缓存 |
+| `GET /api/blog/bootstrap` | 保留为调试 / agent / 未来桌面端的结构化读取入口：`{ site, theme, runtimeContract, adminOrigin, preview, settingVersion }`；**不再参与首屏启动**；支持 `previewTheme` + `token`，`no-store` |
 | `GET /api/blog/posts` | 已有；`page` / `size` / `tagId` / `year` / `month` |
 | `GET /api/blog/posts/{slug}` | 已有 |
 | `GET /api/blog/tags`、`/api/blog/archives`、`/api/blog/search` | 已有 |
@@ -548,7 +561,12 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 
 | 项 | 标准 |
 | --- | --- |
-| 窄屏 | 320 / 375 / 414 无横向滚动；首屏可见首篇文章标题 |
+| 壳首帧 | 生产路径首屏即主题壳（无整页骨架）；暗色用户首帧不闪白 |
+| 降级 | runtime 加载失败时仍呈现主题壳 + `<noscript>` 提示；无横向滚动 |
+| 壳缓存 | 主题激活 / 站点配置保存后 ≤ 60s（或 purge 后立即）刷新可见 |
+| 单启动路径 | 深链直开、站内跳转、预览、暗色都走同一套后端壳启动；不存在客户端 bootstrap 分支 |
+| 打包 | `pnpm build:blog` → `mvn package` 后 jar 内存在 `static/blog/runtime.js`；缺失产物时构建失败 |
+| 窄屏 | 320 / 375 / 414 无横向滚动；ready 态可见首篇文章标题 |
 | 触控 | 可点元素 ≥ 44×44px |
 | 四态 | loading / empty / error / ready 均有明确呈现 |
 | 暗色 | 明暗双套配色；图片不过曝；代码块主题成对 |
@@ -568,9 +586,16 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 **P1（不含 agent，约 3–3.5 周）**
 
 1. runtime：Vue / 路由 / API 客户端 / markdown-it 方言 / 组件库 / 四态 / 契约版本
-2. 后端：主题存储 + 版本 + 组装出页 + 路由 fallback + 配置注册表 + 独立页面
+2. 后端：主题存储 + 版本 + 组装壳 + 路由 fallback + 配置注册表 + 独立页面
 3. 管理端：主题编辑 / 校验 / 预览 / 应用 / 回滚；站点设置；独立页面
 4. 内置默认主题（移动端 + 暗色 + 四态）
+
+**P1.5（方案 C，2026-10-25 落地）**
+
+1. runtime 改为 Vite 构建产物（TS、共享 markdown 方言、入口固定 `runtime.js`）
+2. Maven `prepare-package` 把 `apps/blog/dist` 拷入 jar；后端同源提供 `/blog/**`，单产物发布
+3. 壳只保留一条启动路径（`window.__BLOG_BOOT__`）；runtime 不再有 bootstrap 启动分支
+4. 默认主题收敛到 `packages/theme-starter` + 后端兜底副本同步与校验
 
 **P2（agent，约 2–4 周）**
 
@@ -589,12 +614,15 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 
 | 风险 | 说明 | 缓解 |
 | --- | --- | --- |
-| 模板静默失败 | 引用不存在的键不会报错，页面只是变空 | 保存时静态校验 + 预览必看 + 四态检查 |
+| 模板静默失败 | 引用不存在的键不会报错，页面只是变空 | 保存时静态校验 + 加载时再校验 + 预览必看 + 四态检查 |
 | `unsafe-eval` | 模板编译依赖 `new Function` | 分域 + 零主题 JS + CSP + 校验 |
-| 契约漂移 | 主题是数据，没有编译期 | 三张冻结表 + 版本门禁 + 回归 |
+| 契约漂移 | 主题是数据，没有编译期 | 三张冻结表 + 版本门禁 + 双端校验 + 回归 |
 | 主题质量参差 | agent 产出不稳定 | starter theme + 验收清单 + 截图回归（P3） |
-| 运行时无法复用 TS 共享模块 | 无构建，不能直接 import `packages/shared` | 方言以 `packages/shared/src/markdown.ts` 为语义源，runtime 维护等价实现，由 fixture 双向验证 |
-| 首屏多一次请求 | 数据由 runtime 取 | 站点配置已注入；列表一次请求可接受 |
+| 构建顺序耦合 | `mvn package` 需要先 `pnpm build:blog` | 缺失产物直接失败；CI 用 artifact 传递；`mvn test` 不依赖 dist |
+| 前端发布随后端 | runtime 改动必须重打 jar | 当前规模可接受；若独立发布成为硬需求，再外置为方案 A/B |
+| 默认主题副本漂移 | packages 与后端兜底各一份 | `pnpm sync:theme` + `pnpm check:theme` 哈希校验 |
+| 壳缓存过期 | 主题激活后 CDN 仍给旧壳 | 先 `s-maxage=60`；需要即时生效时接 purge |
+| 首屏多一次请求 | 数据由 runtime 取 | 站点配置 / 主题已进壳；列表一次请求可接受 |
 
 开放问题：
 
@@ -602,7 +630,7 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 2. 图片派生：本期不做，移动端图片靠 CSS + 上传规范。
 3. 评论、阅读量：领域数据，届时由 runtime 增字段（升契约）。
 4. 主题数量膨胀后的回归成本：待主题数 > 3 时再引入自动化截图。
-5. blog 运行时是否长期依赖 `packages/shared` 的等价实现：待 P1 后评估是否引入最小构建步骤消除重复。
+5. ~~blog 运行时是否长期依赖 `packages/shared` 的等价实现~~ → 已解决（2026-10-25）：runtime 改为构建产物，直接复用 `packages/shared` 的方言配置与 hljs 实例。
 
 ---
 
@@ -612,9 +640,9 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | --- | --- |
 | `docs/tech-stack.md` | 博客前台 Markdown 渲染由 md-editor-v3 `MdPreview` 改为运行时内置 markdown-it（方言一致）；记录变更理由 |
 | `docs/markdown-dialect.md` | 明确方言的唯一浏览器实现位于 blog runtime；md-editor-v3 仅服务 admin |
-| `frontend/AGENTS.md` | 移除"博客前台复用 MdPreview"；说明 `apps/blog` 由 SPA 改为无构建运行时 |
-| `docs/content-model.md` | §9.2 前台信息架构改为「后端组装 + 运行时」；§10 补充 Markdown 渲染归属 |
-| `backend/AGENTS.md` | 记录 `site_theme_version` 不可变、`site_setting` 物理 upsert 两项审计例外 |
+| `frontend/AGENTS.md` | `apps/blog` 为 Vite 构建的 runtime（TS，无 SFC 依赖）；产物在 Maven 打包时进入后端 jar；共享方言与默认主题位置 |
+| `docs/content-model.md` | §9.2 前台信息架构改为「后端组装壳 + 运行时」；§10 补充 Markdown 渲染归属 |
+| `backend/AGENTS.md` | 记录 `site_theme_version` 不可变、`site_setting` 物理 upsert 两项审计例外；主题以 API / 壳下发，后端不执行主题模板；jar 内 runtime 的打包与缓存约定 |
 
 ---
 
@@ -624,3 +652,5 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | --- | --- | --- |
 | 2026-10-24 | v1 草案 | 初稿：运行时/主题职责边界、三张冻结契约表、主题版本与预览协议、KV 配置、独立页面、agent 权限与验收清单 |
 | 2026-10-24 | v1.1 实现 | P1 落地：`V6`–`V9` 迁移；`site_theme` / `site_theme_version`（不可变）/ `site_setting`（KV + 注册表）/ `site_page`；`BlogPageController` 组装页面（CSP、预览 token、契约回落）；无构建 runtime（Vue + vue-router + markdown-it + 自托管 hljs）与内置默认主题；管理端「站点设置」「主题管理」（编辑 / 预览 iframe / 应用 / 回滚）；`Perms` +5；单测覆盖预览 token 与配置注册表 |
+| 2026-10-25 | v1.2 实现（方案 A） | runtime 改为独立 Vite 构建产物（TS，复用 `packages/shared` 方言与 hljs；入口固定 `runtime.js`），后端不再托管；壳支持 `asset-base`、ETag / `s-maxage`、预览 `no-store` / `no-referrer`；新增 `GET /api/blog/bootstrap` 与运行时双启动路径；默认主题收敛到 `packages/theme-starter`（后端兜底副本由 `pnpm sync:theme` 同步、`check:theme` 校验）；管理端新建主题复用 starter；数据库零迁移 |
+| 2026-10-25 | v1.3 实现（方案 C） | 收敛为单产物：Maven `prepare-package` 把 `apps/blog/dist` 拷入 jar 的 `static/blog/`，后端同源提供 `/blog/**`；删去 runtime 的 bootstrap 启动分支（`GET /api/blog/bootstrap` 降级为调试 / agent 接口）；`/blog/runtime.js` `no-cache`、哈希资源长缓存；生产不再需要 `BLOG_ASSET_BASE`；修复 `pnpm gen:api` 在 Windows 下的变量展开；数据库零迁移 |

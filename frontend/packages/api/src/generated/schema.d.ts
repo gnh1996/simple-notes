@@ -676,6 +676,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/blog/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["bootstrap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/blog/archives": {
         parameters: {
             query?: never;
@@ -1269,6 +1285,25 @@ export interface components {
             lastPublishedAt: string;
             /** Format: int32 */
             readingMinutes: number;
+        };
+        BlogBootstrapResponse: {
+            site: components["schemas"]["SiteResponse"];
+            theme?: components["schemas"]["BlogThemePayload"];
+            /** Format: int32 */
+            runtimeContract: number;
+            adminOrigin: string;
+            preview: boolean;
+            /** Format: int64 */
+            settingVersion: number;
+        };
+        BlogThemePayload: {
+            id: string;
+            /** Format: int32 */
+            versionNo: number;
+            /** Format: int32 */
+            contract: number;
+            html: string;
+            css: string;
         };
         ArchiveResponse: {
             /** Format: int32 */
@@ -2872,6 +2907,31 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["SitePageResponse"];
+                };
+            };
+        };
+    };
+    bootstrap: {
+        parameters: {
+            query?: {
+                previewTheme?: string;
+                token?: string;
+            };
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BlogBootstrapResponse"];
                 };
             };
         };

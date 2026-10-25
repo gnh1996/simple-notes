@@ -52,15 +52,17 @@
 # Web（frontend/ 下执行）
 pnpm install && pnpm typecheck
 pnpm dev:admin            # http://localhost:5173
-pnpm dev:blog             # http://localhost:5174
+pnpm dev:blog             # http://localhost:5174（runtime dev；页面走后端 8080）
 pnpm build:admin && pnpm build:blog
+pnpm sync:theme           # 默认主题：packages/theme-starter → 后端兜底副本
 
 # 桌面（desktop/ 下执行）
 dotnet build -c Release
 dotnet run --project src/SimpleNotes.Desktop   # 需要图形环境
 
-# 后端（backend/ 下执行）
+# 后端（backend/ 下执行；打包前先 pnpm build:blog，产物会进 jar）
 ./mvnw test
+./mvnw spring-boot:run   # 默认 dev profile：asset-base → Vite 5174（HMR）
 ```
 
 ## 禁则（Guardrails）

@@ -1,0 +1,17 @@
+{
+  "name": "@simple-notes/theme-starter",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./theme.html": "./theme.html",
+    "./theme.css": "./theme.css"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

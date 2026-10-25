@@ -14,7 +14,9 @@
     "build:admin": "pnpm --filter @simple-notes/admin build",
     "build:blog": "pnpm --filter @simple-notes/blog build",
     "gen:api": "pnpm --filter @simple-notes/api gen:api",
-    "typecheck": "pnpm -r --if-present typecheck"
+    "sync:theme": "node scripts/sync-theme-starter.mjs",
+    "check:theme": "node scripts/sync-theme-starter.mjs --check",
+    "typecheck": "pnpm check:theme && pnpm -r --if-present typecheck"
   },
   "devDependencies": {
     "@vue/tsconfig": "catalog:",

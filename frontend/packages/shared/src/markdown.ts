@@ -1,14 +1,6 @@
-import hljs from 'highlight.js/lib/common'
-import dockerfile from 'highlight.js/lib/languages/dockerfile'
-import properties from 'highlight.js/lib/languages/properties'
-import xml from 'highlight.js/lib/languages/xml'
 import { allToolbar, config, type ToolbarNames } from 'md-editor-v3'
-import MarkdownItGitHubAlerts from 'markdown-it-github-alerts'
 
-// 方言附录 A 中 common 未包含的语言；Vue 以 XML 语法近似高亮
-hljs.registerLanguage('dockerfile', dockerfile)
-hljs.registerLanguage('properties', properties)
-hljs.registerLanguage('vue', xml)
+import { hljs, MarkdownItGitHubAlerts, markdownDialect } from './markdown-dialect'
 
 /**
  * admin / blog 共享的 md-editor-v3 配置（docs/markdown-dialect.md §6）。
@@ -33,9 +25,9 @@ export function configureMarkdown(): void {
       },
     },
     markdownItConfig(md) {
-      md.options.breaks = false
-      md.options.html = false
-      md.options.linkify = true
+      md.options.breaks = markdownDialect.breaks
+      md.options.html = markdownDialect.html
+      md.options.linkify = markdownDialect.linkify
       md.use(MarkdownItGitHubAlerts)
     },
     markdownItPlugins(plugins) {

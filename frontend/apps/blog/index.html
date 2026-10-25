@@ -3,11 +3,38 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" />
     <title>Simple Notes</title>
+    <style>
+      html { background: #ffffff; }
+      html[data-color-mode='dark'] { background: #121212; }
+      [v-cloak] { display: none; }
+      .dev-loading {
+        display: grid;
+        place-items: center;
+        min-height: 60vh;
+        font: 14px/1.7 system-ui, sans-serif;
+        color: #8a8a8a;
+      }
+    </style>
+    <script>
+      // 开发壳：先解析明暗模式，避免暗色用户闪白（生产由后端壳注入同一段逻辑）
+      (function () {
+        try {
+          var stored = localStorage.getItem('sn.blog.colorMode');
+          var resolved = stored && stored !== 'system'
+            ? stored
+            : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          document.documentElement.dataset.colorMode = resolved;
+        } catch (e) { /* 隐私模式下忽略 */ }
+      })();
+    </script>
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <div id="blog-dev-loading" class="dev-loading" aria-busy="true">
+      请通过后端入口（8080）访问博客；本页面仅用于 runtime 构建与资源调试。
+    </div>
+    <script type="module" src="/src/runtime.ts"></script>
   </body>
 </html>

@@ -1,0 +1,7 @@
+# 开发 profile：runtime 指向 Vite dev server，获得 HMR
+#
+# 仅用于 mvn spring-boot:run（Maven 插件默认激活 dev）或 IDE 手动启用 dev profile。
+# 生产 jar 不启用本 profile，asset-base 固定 /blog，从 jar 内 static/blog 读取。
+simple-notes:
+  site:
+    asset-base: http://localhost:5174

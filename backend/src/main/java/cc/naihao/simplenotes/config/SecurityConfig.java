@@ -90,7 +90,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/blog/**").permitAll()
                         // 稳定媒体 URL 匿名可读（正文 / 封面引用）
                         .requestMatchers(HttpMethod.GET, "/api/media/**").permitAll()
-                        // 博客前台：组装页 + 无构建运行时（docs/blog-runtime-theme.md §5）
+                        // 博客前台：组装壳 + jar 内 runtime 资源（docs/blog-runtime-theme.md §5）
                         .requestMatchers(HttpMethod.GET, "/", "/posts/**", "/tags/**", "/archives",
                                 "/search", "/about", "/p/**", "/blog/**", "/favicon.svg")
                         .permitAll()

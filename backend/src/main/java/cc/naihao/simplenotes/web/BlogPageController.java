@@ -11,6 +11,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -22,18 +23,23 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
 /**
- * 博客页面组装（docs/blog-runtime-theme.md §5.1）：后端注入站点配置与主题，返回整页。
+ * 博客页面组装（docs/blog-runtime-theme.md §5.1）：后端只组装壳（站点配置 + 主题
+ * HTML/CSS），runtime 由 Vite 构建后随 jar 同源提供。
  *
  * <ul>
  *   <li>主题版本由 {@code site_setting.theme.id} + {@code site_theme.active_version_id} 决定；</li>
- *   <li>未配置主题时回落随代码发布的内置默认主题；</li>
- *   <li>预览通过 {@code previewTheme} + 短期签名 token 选中草稿版本。</li>
+ *   <li>未配置主题 / 契约不兼容时回落随代码发布的内置默认主题；</li>
+ *   <li>壳与路由无关（runtime 自己读 location），因此 ETag 只需主题 + 配置 + 资产版本；</li>
+ *   <li>预览通过 {@code previewTheme} + 短期签名 token 选中草稿版本，且不进入任何缓存。</li>
  * </ul>
  */
 @Controller
 @RequiredArgsConstructor
 @Slf4j
 public class BlogPageController {
+
+    /** 壳模板结构版本：模板 / 注入数据变化时递增，避免 ETag 命中旧壳。 */
+    private static final int SHELL_VERSION = 2;
 
     private static final Pattern STYLE_BREAKOUT = Pattern.compile("</style", Pattern.CASE_INSENSITIVE);
 
@@ -58,40 +64,57 @@ public class BlogPageController {
     })
     public void page(HttpServletRequest request, HttpServletResponse response) throws IOException {
         String previewVersionId = request.getParameter("previewTheme");
-        boolean preview = previewVersionId != null;
+        boolean preview = previewVersionId != null && !previewVersionId.isBlank();
         SiteThemeVersion theme;
         if (preview) {
             if (!previewTokenService.verify(previewVersionId, request.getParameter("token"))) {
                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.setHeader("Cache-Control", "no-store");
                 response.setContentType("text/plain;charset=UTF-8");
                 response.getWriter().write("预览链接无效或已过期");
                 return;
             }
             theme = ensureContract(themeService.previewVersion(previewVersionId));
         } else {
-            theme = themeService.activeVersion();
-            theme = theme == null ? null : ensureContract(theme);
+            SiteThemeVersion active = themeService.activeVersion();
+            theme = active == null ? null : ensureContract(active);
         }
 
         SiteResponse site = settingService.publicSite();
+        String themeId = theme == null ? "default" : theme.getThemeId();
+        int themeVersionNo = theme == null ? 0 : theme.getVersionNo();
+        int themeContract = theme == null ? ThemeService.RUNTIME_CONTRACT : theme.getContract();
+
+        String etag = "\"" + themeId + "-" + themeVersionNo + "-"
+                + settingService.currentVersion() + "-" + assetBase() + "-" + SHELL_VERSION + "\"";
+        String cacheControl = preview
+                ? "no-store"
+                : "public, max-age=0, s-maxage=60, stale-while-revalidate=600";
+
+        response.setHeader("ETag", etag);
+        response.setHeader("Cache-Control", cacheControl);
+        response.setHeader("CDN-Cache-Control", cacheControl);
+        if (!preview && etag.equals(request.getHeader("If-None-Match"))) {
+            response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
+            return;
+        }
+
         String html = theme == null ? defaultHtml() : theme.getHtml();
         String css = theme == null ? defaultCss() : theme.getCss();
-        String themeId = theme == null ? "default" : theme.getThemeId();
-
-        String boot = bootJson(site, request);
 
         response.setContentType("text/html;charset=UTF-8");
-        response.setHeader("Cache-Control", "no-store");
         response.setHeader("Content-Security-Policy", csp());
+        response.setHeader("Referrer-Policy", preview ? "no-referrer" : "strict-origin-when-cross-origin");
         if (preview) {
             response.setHeader("X-Robots-Tag", "noindex");
         }
         response.getWriter().write(render(
                 html,
                 STYLE_BREAKOUT.matcher(css).replaceAll("<\\\\/style"),
-                boot,
+                bootJson(site, themeId, themeVersionNo, themeContract),
                 site,
                 themeId,
+                themeContract,
                 preview));
     }
 
@@ -105,7 +128,7 @@ public class BlogPageController {
     }
 
     private String render(String themeHtml, String themeCss, String bootJson, SiteResponse site,
-            String themeId, boolean preview) {
+            String themeId, int themeContract, boolean preview) {
         String favicon = site.faviconUrl() == null ? "/favicon.svg" : escape(site.faviconUrl());
         String title = site.name() == null || site.name().isBlank() ? "Simple Notes" : site.name();
         return """
@@ -132,14 +155,13 @@ public class BlogPageController {
                       } catch (e) { /* 隐私模式下忽略 */ }
                     })();
                   </script>
-                  <link rel="stylesheet" href="/blog/runtime.css" />
-                  <style>%s</style>
-                  <script type="importmap">{"imports":{"vue":"/blog/vendor/vue.esm-browser.prod.js","vue-router":"/blog/vendor/vue-router.esm-browser.prod.js"}}</script>
+                  <style>[v-cloak]{display:none}</style>
+                  <style id="blog-theme">%s</style>
                 </head>
-                <body data-theme-id="%s"%s>
+                <body data-theme-id="%s" data-runtime-contract="%s"%s>
+                <noscript><p style="padding:24px;text-align:center;font:14px/1.7 system-ui,sans-serif">需要启用 JavaScript 才能加载文章内容。</p></noscript>
                 %s
-                <script src="/blog/vendor/markdown-it.min.js"></script>
-                <script type="module" src="/blog/runtime.js"></script>
+                <script type="module" src="%s/runtime.js"></script>
                 </body>
                 </html>
                 """.formatted(
@@ -149,28 +171,59 @@ public class BlogPageController {
                 bootJson,
                 themeCss,
                 escape(themeId),
+                themeContract,
                 preview ? " data-preview=\"1\"" : "",
-                themeHtml);
+                themeHtml,
+                escape(assetBase()));
     }
 
-    private String bootJson(SiteResponse site, HttpServletRequest request) {
+    private String bootJson(SiteResponse site, String themeId, int themeVersionNo, int themeContract) {
         Map<String, Object> boot = new LinkedHashMap<>();
         boot.put("site", site);
         boot.put("themeMode", site.themeMode());
         boot.put("adminOrigin", siteProperties.getAdminOrigin());
-        boot.put("path", request.getRequestURI());
+        boot.put("contract", ThemeService.RUNTIME_CONTRACT);
+        Map<String, Object> theme = new LinkedHashMap<>();
+        theme.put("id", themeId);
+        theme.put("versionNo", themeVersionNo);
+        theme.put("contract", themeContract);
+        boot.put("theme", theme);
         String json = objectMapper.writeValueAsString(boot);
         // 防止配置值中出现 </script> 提前闭合
         return json.replace("</", "<\\/");
     }
 
     private String csp() {
+        String assetOrigin = originOf(assetBase());
+        String extra = assetOrigin == null ? "" : " " + assetOrigin;
+        String ws = assetOrigin == null ? "" : " " + assetOrigin.replaceFirst("^http", "ws");
         return "default-src 'self'; "
-                + "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
-                + "style-src 'self' 'unsafe-inline'; "
+                + "script-src 'self' 'unsafe-inline' 'unsafe-eval'" + extra + "; "
+                + "style-src 'self' 'unsafe-inline'" + extra + "; "
                 + "img-src 'self' data:; "
-                + "connect-src 'self'; "
+                + "connect-src 'self'" + extra + ws + "; "
                 + "frame-ancestors 'self' " + siteProperties.getAdminOrigin();
+    }
+
+    private String assetBase() {
+        String value = siteProperties.getAssetBase() == null ? "" : siteProperties.getAssetBase().trim();
+        while (value.endsWith("/")) {
+            value = value.substring(0, value.length() - 1);
+        }
+        return value;
+    }
+
+    private static String originOf(String url) {
+        try {
+            URI uri = URI.create(url);
+            if (uri.getScheme() == null || uri.getHost() == null) {
+                return null;
+            }
+            return uri.getScheme() + "://" + uri.getHost()
+                    + (uri.getPort() < 0 ? "" : ":" + uri.getPort());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private static String escape(String value) {
