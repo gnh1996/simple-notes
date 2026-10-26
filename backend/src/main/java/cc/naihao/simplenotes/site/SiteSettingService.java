@@ -60,6 +60,8 @@ public class SiteSettingService {
     public SiteSettingsResponse adminView() {
         Map<String, Object> values = resolved();
         List<SiteSettingItem> items = SiteSettingCatalog.definitions().values().stream()
+                // 系统托管键（theme.id）不在站点设置中编辑，切换主题只走主题管理的应用 / 回滚
+                .filter(definition -> !SiteSettingCatalog.isManaged(definition.key()))
                 .map(definition -> new SiteSettingItem(
                         definition.key(),
                         definition.type().name(),
@@ -118,6 +120,10 @@ public class SiteSettingService {
         Instant now = Instant.now();
 
         for (Map.Entry<String, Object> entry : request.values().entrySet()) {
+            if (SiteSettingCatalog.isManaged(entry.getKey())) {
+                throw ApiException.badRequest(
+                        "配置项 " + entry.getKey() + " 由系统维护，请在主题管理中应用 / 回滚");
+            }
             SettingDefinition definition = SiteSettingCatalog.find(entry.getKey())
                     .orElseThrow(() -> ApiException.badRequest("未知配置项：" + entry.getKey()));
             String stored = normalize(definition, entry.getValue());

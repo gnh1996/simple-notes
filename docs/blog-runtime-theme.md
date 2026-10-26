@@ -1,6 +1,6 @@
 # 博客运行时与主题化设计（Blog Runtime & Theme）
 
-> **状态：v1.6 · 2026-10-26（首屏加载层 + 路由级取数：首屏不再出现整页骨架）**
+> **状态：v1.7 · 2026-10-26（主题切换收敛到主题管理，站点设置只读展示）**
 > 范围：博客前台从 Vue SPA 改为「后端组装页面 + 固定运行时 + 数据化主题」；runtime 仍由 Vite 构建，但产物在 Maven 打包时进入后端 jar，与页面、API 同源提供；含站点配置、独立页面、主题管理与 agent 预览链路
 > 关联：`docs/content-model.md`（内容与公开读取）、`docs/tech-stack.md`（选型）、`docs/markdown-dialect.md`（方言）、`docs/auth-rbac.md`（权限码与菜单）
 > 非目标：SSR / 预渲染、评论、图片派生、RSS / sitemap、主题市场、多作者
@@ -206,13 +206,14 @@ SitePage    { slug, title, content, updatedAt }   // /p/:slug 与 /about
 | `home.pageSize` | NUMBER | `10` | 是 | 1–50 |
 | `footer.text` | STRING | `''` | 是 | 页脚文案 |
 | `theme.mode` | ENUM | `system` | 是 | `system / light / dark` |
-| `theme.id` | STRING | `''` | 是 | 当前生效主题；空 = 内置默认主题 |
+| `theme.id` | STRING | `''` | 是 | 当前生效主题；空 = 内置默认主题。**系统托管**：只由主题管理写入 |
 | `theme.overrides` | JSON | `{}` | 是 | 仅允许 §3.6 的 CSS 变量名 |
 
 规则：
 
 - 值为空 = 使用默认值；**空表必须等价于当前线上表现**。
 - 未注册的键：读取忽略、写入拒绝（400）。
+- **系统托管键**：`theme.id` 不在管理端站点设置中展示 / 提交；写入只允许主题管理的「应用 / 回滚」（见 §7.1）。绕过该接口直接提交 `theme.id` 返回 400。
 - 仅 `公开 = 是` 的键进入 `__BLOG_BOOT__`；未来私有键不得透出。
 - 键名属于契约，改名 = 破坏性变更。
 
@@ -419,6 +420,7 @@ create table site_theme_version (
 - 当前生效主题 = `site_setting` 的 `theme.id` + 该主题的 `active_version_id`。
 - 回滚 = 移动 `active_version_id`。
 - 内置默认主题不存库；表为空时使用它。
+- `theme.id` 与 `active_version_id` 必须一起变更，唯一写入点是主题管理的 `activate`；`PUT /api/admin/site/settings` 不接受 `theme.id`（400），站点设置页只读展示当前主题名称。
 
 ### 6.2 站点配置（KV）
 
@@ -477,6 +479,8 @@ create unique index uk_site_page_slug on site_page (lower(slug)) where delete_fl
 - 列表：主题名 / 当前版本 / 契约版本 / 是否生效 / 更新时间。
 - 编辑：`theme.html` + `theme.css` 双编辑区（或从 agent 结果填入）。
 - 流程：保存草稿版本 → 校验 → 预览 → 应用 / 回滚。
+- **切换主题的唯一入口**：选中目标主题 → 选版本 → 「应用」。应用会同时写入 `site_theme.active_version_id` 与 `site_setting.theme.id`，两者不可分开修改。
+- 非线上主题保留自己的 `activeVersionId`（便于切回），但只有 `isActiveSiteTheme` 为真时才显示「已应用」并禁用按钮。
 - 权限：`admin:theme`（菜单 + 读 + 预览）、`admin:theme:write`、`admin:theme:activate`。
 
 ### 7.2 预览协议
@@ -505,6 +509,8 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 ### 7.3 站点设置
 
 分组表单：品牌 / 作者 / 社交 / 导航 / 首页 / 页脚 / 主题。保存前做注册表校验，订阅式即时预览（复用主题预览 iframe）。
+
+「主题」分组中的**当前主题只读**：展示主题名称与生效版本号（无 `admin:theme` 权限时显示"由主题管理维护"），并提供跳转到主题管理的入口；切换 / 回滚只在主题管理执行。`theme.id` 不属于可提交配置项。
 
 ### 7.4 agent 集成（P2）
 
@@ -688,3 +694,4 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 2026-10-25 | v1.4 实现 | runtime 的 Markdown 渲染由 markdown-it 改为 **Lute**（`@simple-notes/markdown` + `method.min.js`，不打包完整编辑器）；与 admin 共用 `vditorMarkdown` 与 DOMPurify；Vditor 资源自托管在 `/blog/vditor`；主题 CSS 适配 `.callout` / KaTeX / 任务列表；方言 v2 |
 | 2026-10-26 | v1.5 实现 | **页面路由归 runtime**：`BlogPageController` 的 8 条页面映射收敛为一条 catch-all（`SHELL_PATH`，排除 `/api`、`/blog`、`/v3`、`/error`、`/favicon.svg`）；未知页面返回 `200 + 壳`，由 runtime 渲染 not-found；`SecurityConfig` 改为"`/api/**` 认证 + 非 API 的 GET 公开"，不再登记页面路径；新增 `startup/ApiPathValidator` 启动期校验（本项目 handler 必须在 `/api/` 下，壳控制器除外），补 `BlogShellRouteIntegrationTest`；数据库零迁移 |
 | 2026-10-26 | v1.6 实现 | **首屏去骨架**：壳内联 `[data-blog-boot]` 轻量加载层 + `[data-blog-progress]` 顶部进度条（`SHELL_VERSION` → 3）；runtime 改为 `beforeResolve` 取数、`afterEach` 一次性写入，`router.isReady()` 后挂载，首屏不再出现 `.bc-skeleton`；站内导航保留旧页面并中止上一笔请求；文章页 Lute 与正文请求并行、上下篇后台补取；标签 / 归档组件优先复用路由快照，消除重复请求与空态闪烁；主题可用 CSS 隐藏加载层，启动错误强制显示；数据库零迁移 |
+| 2026-10-26 | v1.7 实现 | **主题切换入口收敛**：`theme.id` 改为系统托管键，`PUT /api/admin/site/settings` 拒绝写入（400），站点设置只读展示当前主题名称 + 跳转主题管理；修复非线上主题被误标「已应用」导致「应用」按钮禁用（改为 `isActiveSiteTheme && activeVersionId`）；数据库零迁移 |

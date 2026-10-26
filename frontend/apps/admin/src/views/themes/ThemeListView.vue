@@ -34,6 +34,16 @@ const previewing = ref('')
 
 const selectedId = computed(() => selected.value?.id ?? '')
 
+/**
+ * 版本是否“已应用”：只有当前线上主题的生效版本才算。
+ * 非线上主题仍保留自己的 activeVersionId（用于切回时回滚到上次版本），
+ * 若只比较 activeVersionId，会把这些版本误标为已应用并禁用「应用」按钮，
+ * 导致无法切换回用过的主题。
+ */
+function isAppliedVersion(versionId: string): boolean {
+  return !!selected.value?.isActiveSiteTheme && versionId === selected.value.activeVersionId
+}
+
 async function loadThemes(): Promise<void> {
   loading.value = true
   try {
@@ -211,7 +221,7 @@ onMounted(loadThemes)
         </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag v-if="row.id === selected.activeVersionId" type="success" size="small">
+            <el-tag v-if="isAppliedVersion(row.id)" type="success" size="small">
               已应用
             </el-tag>
           </template>
@@ -223,7 +233,7 @@ onMounted(loadThemes)
             <el-button
               link
               type="success"
-              :disabled="row.id === selected.activeVersionId"
+              :disabled="isAppliedVersion(row.id)"
               @click="activate(row)"
             >
               应用

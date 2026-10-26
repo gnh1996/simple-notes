@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 站点配置注册表（docs/blog-runtime-theme.md §3.5 / §6.2）：键、类型、默认值、校验与公开范围的唯一来源。
@@ -32,6 +33,14 @@ public final class SiteSettingCatalog {
     private static final String DEFAULT_SOCIAL = """
             {"v":1,"items":[]}""";
 
+    /**
+     * 由系统内部维护、管理端不可直接编辑的键：写入只允许走各自的业务接口。
+     *
+     * <p>{@code theme.id} 必须与 {@code site_theme.active_version_id} 一起变更（见
+     * {@link ThemeService#activate}），因此不能作为普通站点配置提交。
+     */
+    private static final Set<String> MANAGED_KEYS = Set.of("theme.id");
+
     private static final Map<String, SettingDefinition> DEFINITIONS = build();
 
     private SiteSettingCatalog() {
@@ -43,6 +52,11 @@ public final class SiteSettingCatalog {
 
     public static Optional<SettingDefinition> find(String key) {
         return Optional.ofNullable(DEFINITIONS.get(key));
+    }
+
+    /** 是否为系统托管键：管理端只读，写入由对应业务接口负责 */
+    public static boolean isManaged(String key) {
+        return MANAGED_KEYS.contains(key);
     }
 
     /** 内置导航 key 对应的路径；未知 key 返回 null（由调用方过滤） */

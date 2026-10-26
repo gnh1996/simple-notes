@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import type { SitePageResponse, SiteSettingItem } from '@simple-notes/api'
+import type { SitePageResponse, SiteSettingItem, ThemeSummary } from '@simple-notes/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
-import { siteApi } from '@/api'
+import { siteApi, themeApi } from '@/api'
+import { useAuthStore } from '@/stores/auth'
 import { notifyError } from '@/utils/feedback'
+
+const auth = useAuthStore()
+const router = useRouter()
 
 const activeTab = ref<'settings' | 'pages'>('settings')
 
@@ -51,6 +56,42 @@ const groups = computed(() => {
   return [...map.entries()].map(([name, rows]) => ({ name, rows }))
 })
 
+// ---- 当前主题（只读） ----
+// 主题切换 / 回滚的唯一入口是主题管理的「应用」，这里只展示当前线上主题名称。
+const canManageTheme = computed(() => auth.can('admin:theme'))
+const activeTheme = ref<ThemeSummary | null>(null)
+const themeLoading = ref(false)
+const themeReadable = ref(false)
+
+const activeThemeLabel = computed(() => {
+  if (!canManageTheme.value) return '由主题管理维护（无查看权限）'
+  if (themeLoading.value) return '加载中…'
+  if (!themeReadable.value) return '由主题管理维护'
+  if (!activeTheme.value) return '内置默认主题'
+  const version = activeTheme.value.activeVersionNo ? ` · v${activeTheme.value.activeVersionNo}` : ''
+  return `${activeTheme.value.name}${version}`
+})
+
+async function loadActiveTheme(): Promise<void> {
+  if (!canManageTheme.value) return
+  themeLoading.value = true
+  try {
+    const themes = await themeApi.list()
+    themeReadable.value = true
+    activeTheme.value = themes.find((theme) => theme.isActiveSiteTheme) ?? null
+  } catch {
+    // 无 admin:theme 权限时后端返回 403：只降级展示，不影响其余配置
+    themeReadable.value = false
+    activeTheme.value = null
+  } finally {
+    themeLoading.value = false
+  }
+}
+
+function openThemes(): void {
+  void router.push('/themes')
+}
+
 function normalize(item: SettingRow): unknown {
   if (item.value === null || item.value === undefined) return ''
   if (item.type === 'JSON') return JSON.stringify(item.value, null, 2)
@@ -62,7 +103,10 @@ async function loadSettings(): Promise<void> {
   try {
     const result = await siteApi.settings()
     version.value = result.version ?? 0
-    items.value = (result.items ?? []).map(toRow)
+    items.value = (result.items ?? [])
+      .map(toRow)
+      // theme.id 由主题管理维护（旧后端仍可能返回），不进入表单与保存载荷
+      .filter((item) => item.key !== 'theme.id')
     for (const key of Object.keys(drafts)) delete drafts[key]
     for (const item of items.value) drafts[item.key] = normalize(item)
   } catch (error) {
@@ -186,7 +230,7 @@ async function removePage(page: any): Promise<void> {
 }
 
 onMounted(async () => {
-  await Promise.all([loadSettings(), loadPages()])
+  await Promise.all([loadSettings(), loadPages(), loadActiveTheme()])
 })
 </script>
 
@@ -214,6 +258,23 @@ onMounted(async () => {
               <h3 class="text-sm font-semibold text-[var(--el-text-color-primary)]">
                 {{ group.name }}
               </h3>
+
+              <div v-if="group.name === '主题'" class="grid gap-4 md:grid-cols-2">
+                <el-form-item label="当前主题" class="!mb-0">
+                  <div class="flex min-h-8 flex-wrap items-center gap-2">
+                    <span class="text-sm text-[var(--el-text-color-primary)]">
+                      {{ activeThemeLabel }}
+                    </span>
+                    <el-button v-if="canManageTheme" link type="primary" @click="openThemes">
+                      去主题管理预览 / 切换
+                    </el-button>
+                  </div>
+                  <p class="mt-1 text-xs text-[var(--el-text-color-secondary)]">
+                    切换与回滚只通过主题管理的「应用」操作，站点设置不直接修改当前主题。
+                  </p>
+                </el-form-item>
+              </div>
+
               <div class="grid gap-4 md:grid-cols-2">
                 <el-form-item
                   v-for="item in group.rows"

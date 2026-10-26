@@ -57,6 +57,14 @@ class SiteSettingCatalogTest {
     }
 
     @Test
+    @DisplayName("系统托管键：theme.id 只由主题管理写入，其余配置可编辑")
+    void managedKeys() {
+        assertThat(SiteSettingCatalog.isManaged("theme.id")).isTrue();
+        assertThat(SiteSettingCatalog.isManaged("theme.mode")).isFalse();
+        assertThat(SiteSettingCatalog.isManaged("site.name")).isFalse();
+    }
+
+    @Test
     @DisplayName("配置项按声明顺序排列（管理端分组展示依赖顺序）")
     void definitionsKeepOrder() {
         List<String> keys = List.copyOf(SiteSettingCatalog.definitions().keySet());
