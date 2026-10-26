@@ -56,6 +56,20 @@ const groups = computed(() => {
   return [...map.entries()].map(([name, rows]) => ({ name, rows }))
 })
 
+// 分组说明只做展示辅助：分组名与归属仍以后端注册表为准，未知分组自动省略说明
+const GROUP_HINTS: Record<string, string> = {
+  品牌: '站点名称、描述、公开地址与备案信息，用于页面标题、分享卡片与页脚。',
+  作者: '作者展示名、头像与简介，用于文章署名和关于页。',
+  导航: '顶部导航项、显隐与顺序，按 JSON 结构编辑。',
+  首页: '首页文章列表的默认展示数量。',
+  页脚: '页脚补充文案。',
+  主题: '默认明暗与主题 Token 覆盖；当前主题请在主题管理中切换。',
+}
+
+function groupHint(name: string): string | null {
+  return GROUP_HINTS[name] ?? null
+}
+
 // ---- 当前主题（只读） ----
 // 主题切换 / 回滚的唯一入口是主题管理的「应用」，这里只展示当前线上主题名称。
 const canManageTheme = computed(() => auth.can('admin:theme'))
@@ -253,14 +267,37 @@ onMounted(async () => {
 
           <el-skeleton v-if="loading" :rows="6" animated />
 
-          <div v-else class="space-y-6">
-            <section v-for="group in groups" :key="group.name" class="space-y-3">
-              <h3 class="text-sm font-semibold text-[var(--el-text-color-primary)]">
-                {{ group.name }}
-              </h3>
+          <el-form v-else label-position="top" class="space-y-4" @submit.prevent>
+            <section
+              v-for="group in groups"
+              :key="group.name"
+              class="rounded-lg border border-[var(--el-border-color-lighter)] p-4"
+            >
+              <header
+                class="mb-4 flex flex-wrap items-start justify-between gap-2 border-b border-[var(--el-border-color-lighter)] pb-2.5"
+              >
+                <div>
+                  <h3 class="text-sm font-semibold text-[var(--el-text-color-primary)]">
+                    {{ group.name }}
+                  </h3>
+                  <p
+                    v-if="groupHint(group.name)"
+                    class="mt-1 text-xs text-[var(--el-text-color-secondary)]"
+                  >
+                    {{ groupHint(group.name) }}
+                  </p>
+                </div>
+                <span class="ml-auto shrink-0 text-xs text-[var(--el-text-color-placeholder)]">
+                  {{ group.rows.length }} 项
+                </span>
+              </header>
 
-              <div v-if="group.name === '主题'" class="grid gap-4 md:grid-cols-2">
-                <el-form-item label="当前主题" class="!mb-0">
+              <div class="grid gap-x-6 gap-y-5 md:grid-cols-2">
+                <el-form-item
+                  v-if="group.name === '主题'"
+                  label="当前主题"
+                  class="!mb-0 md:col-span-2"
+                >
                   <div class="flex min-h-8 flex-wrap items-center gap-2">
                     <span class="text-sm text-[var(--el-text-color-primary)]">
                       {{ activeThemeLabel }}
@@ -273,14 +310,12 @@ onMounted(async () => {
                     切换与回滚只通过主题管理的「应用」操作，站点设置不直接修改当前主题。
                   </p>
                 </el-form-item>
-              </div>
 
-              <div class="grid gap-4 md:grid-cols-2">
                 <el-form-item
                   v-for="item in group.rows"
                   :key="item.key"
                   :label="item.label"
-                  class="!mb-0"
+                  :class="['!mb-0', item.type === 'JSON' ? 'md:col-span-2' : '']"
                 >
                   <el-select
                     v-if="item.allowedValues?.length"
@@ -309,13 +344,20 @@ onMounted(async () => {
                     :placeholder="item.defaultValue"
                   />
                   <el-input v-else v-model="drafts[item.key]" clearable />
-                  <p class="mt-1 text-xs text-[var(--el-text-color-secondary)]">
-                    {{ item.key }} · 默认值：{{ item.defaultValue || '（空）' }}
-                  </p>
+                  <div
+                    class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--el-text-color-secondary)]"
+                  >
+                    <code
+                      class="rounded bg-[var(--el-fill-color-light)] px-1 py-0.5 text-[11px]"
+                    >{{ item.key }}</code>
+                    <span v-if="item.type === 'JSON'">JSON 结构，默认使用内置模板</span>
+                    <span v-else-if="item.defaultValue">默认：{{ item.defaultValue }}</span>
+                    <span v-else>默认：空</span>
+                  </div>
                 </el-form-item>
               </div>
             </section>
-          </div>
+          </el-form>
         </el-card>
       </el-tab-pane>
 
