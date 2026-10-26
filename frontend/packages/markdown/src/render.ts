@@ -48,6 +48,11 @@ async function loadMethod(cdn: string): Promise<typeof VditorMethodType> {
   return methodPromise
 }
 
+/** 预加载 Lute 静态渲染方法：供调用方在数据请求期间并行预热，避免正文二次闪烁。 */
+export async function warmRender(cdn: string): Promise<void> {
+  await loadMethod(cdn)
+}
+
 /**
  * 博客发布侧渲染入口：Lute（与编辑器同一份配置）→ 清洗 → 高亮 / 数学 / Mermaid。
  *

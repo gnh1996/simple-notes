@@ -1,6 +1,6 @@
 # 博客运行时与主题化设计（Blog Runtime & Theme）
 
-> **状态：v1.5 · 2026-10-26（页面路由归 runtime：后端只做 history fallback）**
+> **状态：v1.6 · 2026-10-26（首屏加载层 + 路由级取数：首屏不再出现整页骨架）**
 > 范围：博客前台从 Vue SPA 改为「后端组装页面 + 固定运行时 + 数据化主题」；runtime 仍由 Vite 构建，但产物在 Maven 打包时进入后端 jar，与页面、API 同源提供；含站点配置、独立页面、主题管理与 agent 预览链路
 > 关联：`docs/content-model.md`（内容与公开读取）、`docs/tech-stack.md`（选型）、`docs/markdown-dialect.md`（方言）、`docs/auth-rbac.md`（权限码与菜单）
 > 非目标：SSR / 预渲染、评论、图片派生、RSS / sitemap、主题市场、多作者
@@ -146,6 +146,7 @@ SitePage    { slug, title, content, updatedAt }   // /p/:slug 与 /about
 - 字段**只增不减**；新增字段必须给默认值。
 - `content` 永远是 Markdown 原文，主题不得自行解析，必须用 `<blog-markdown>`。
 - 字段命名固定（`camelCase`）；改名为破坏性变更。
+- 首屏与站内跳转都由 runtime 在导航确认前取数（`beforeResolve`），确认后一次性写入（`afterEach`）。因此 `loading` 不是首屏必经态，**主题不要依赖骨架屏表达加载**；导航期间旧页面保持可见。
 
 ### 3.3 动作
 
@@ -170,8 +171,8 @@ SitePage    { slug, title, content, updatedAt }   // /p/:slug 与 /about
 | `<blog-toc>` | `selector?` | — | 否（读 DOM） |
 | `<blog-pager>` | `pager` | `go` | 否 |
 | `<blog-tag-chip>` | `tag` | — | 否 |
-| `<blog-tag-cloud>` | — | — | **是**（`/api/blog/tags`） |
-| `<blog-archives>` | — | — | **是**（`/api/blog/archives`） |
+| `<blog-tag-cloud>` | — | — | **按需**（优先复用路由快照） |
+| `<blog-archives>` | — | — | **按需**（优先复用路由快照） |
 | `<blog-search-box>` | `value?` | `search` | 否 |
 | `<blog-theme-toggle>` | — | — | 否 |
 | `<blog-image>` | `src`, `alt`, `ratio?` | — | 否（含灯箱） |
@@ -181,7 +182,7 @@ SitePage    { slug, title, content, updatedAt }   // /p/:slug 与 /about
 
 规则：
 
-- **可选数据不由 runtime 预取**：放 `<blog-tag-cloud>` 才请求 `/tags`，不放就零成本。
+- **可选数据默认不预取**：标签 / 归档页由路由守卫取核心数据，组件直接复用；非数据页放 `<blog-tag-cloud>` / `<blog-archives>` 时组件按需请求，不放就零成本。
 - 新增组件 = 纯增量，不升契约；删除 / 改 props = 破坏性变更。
 - 组件内部样式由 runtime.css 提供，主题可覆盖但不得破坏其行为。
 
@@ -245,7 +246,13 @@ DOM 钩子（只增不改）：
 [data-blog-header] [data-blog-nav] [data-blog-footer]
 [data-blog-post-card] [data-pinned] [data-has-cover]
 [data-blog-prose]                     Markdown 输出容器
+[data-blog-boot]                      首屏轻量加载层（壳内联，主题可 CSS 隐藏）
+[data-blog-progress]                  站内导航顶部进度条（壳内联）
+html[data-blog-ready="1"]             首屏数据已就绪，加载层淡出
+html[data-blog-navigating="1"]        路由取数中，顶部进度条可见
 ```
+
+首屏加载层由后端壳在主题 HTML 之前输出，基础样式内联在 `<head>`：`runtime.css` 随 JS 到达，赶不上首帧。它只取 `--blog-bg` 与 `--blog-text-muted` 两个变量，默认显示；主题若要纯空白首帧，可在 `theme.css` 写 `[data-blog-boot]{display:none}`。启动失败时 runtime 会以内联 `!important` 强制显示错误文案，主题的隐藏规则不会吞掉错误。
 
 ---
 
@@ -294,7 +301,7 @@ backend/src/main/resources/blog/default-theme/{theme.html,theme.css}   ← pnpm 
 | 类型 | 策略 |
 | --- | --- |
 | 核心（`state` / `posts` / `pager` / `post` / `prevPost` / `nextPost`） | runtime 必给，一次请求 |
-| 可选（`tags` / `archives`） | 组件自取，`v-if` 同时控制渲染与请求 |
+| 可选（`tags` / `archives`） | 标签 / 归档页由路由守卫预取；其他页面由组件按需自取，`v-if` 同时控制渲染与请求 |
 | 缺省页面 | 回落内置默认主题 |
 
 模板中禁止复杂逻辑；runtime 提供 `take(list, n)`、`pinned(list)` 等小工具。
@@ -334,17 +341,24 @@ GET /posts/hello
   → 组装 HTML：
        <script>window.__BLOG_BOOT__ = {site, themeMode, adminOrigin, contract, theme:{id,versionNo,contract}}</script>
        <style>[v-cloak]{display:none}</style>
+       <style id="blog-boot-style">/* 首屏加载层，内联 */</style>
        <style id="blog-theme">/* 主题 CSS，内联 */</style>
-       <body data-theme-id=…>/* 主题 HTML，原样注入 */</body>
+       <body data-theme-id=…>
+         [data-blog-boot]      /* 轻量加载层 */
+         [data-blog-progress]  /* 顶部进度条 */
+         /* 主题 HTML，原样注入 */
        <script type="module" src="/blog/runtime.js"></script>
   → 返回整页（ETag = 主题版本 + 配置版本 + 壳版本；s-maxage=60）
 ```
 
 - 主题 CSS 内联：避免二次请求与首帧闪烁；体积上限 256KB。
+- **首屏加载层**：壳在主题 HTML 之前输出 `[data-blog-boot]`，基础样式内联且排在主题 CSS 之前（主题可覆盖 / 隐藏）。runtime 在首次路由数据取好、Markdown 可渲染后置 `html[data-blog-ready="1"]`，加载层淡出；没有最短展示时间，也不做延迟阈值。
+- **路由级取数**：`router.beforeResolve` 先取目标页数据，导航确认后 `afterEach` 一次性写入 store。首屏 `router.isReady()` 因而包含首次取数，app 挂载时数据已就绪，不会出现 `.bc-skeleton`。站内跳转期间保留旧页面，只显示 `[data-blog-progress]` 顶部进度条；快速连点会中止上一笔请求。
+- **首屏挂载顺序**：`router.isReady()` → mount → 等 Markdown 首帧（文章 / 独立页）→ `removeCloak()` → `data-blog-ready=1`。
 - runtime 由 Vite 构建，Maven 在 `prepare-package` 把 `apps/blog/dist` 拷入 jar 的 `static/blog/`；入口名固定，chunk / 静态资源带内容哈希。
 - `runtime.js` 由后端以 `no-cache` 提供；`/blog/chunks/**`、`/blog/assets/**` 长缓存 + `immutable`（见 `BlogAssetCacheFilter`）。
 - 依赖自托管：Vue（含模板编译器）打进构建产物；Lute / hljs / KaTeX / Mermaid 作为 `/blog/vditor/**` 静态资源按需加载，**不使用公共 CDN**（可用性、CSP、供应链）。
-- runtime 基础样式（`runtime.css`）由构建产物内联注入；首帧只依赖主题 CSS，组件样式在挂载前生效。
+- runtime 基础样式（`runtime.css`）由构建产物内联注入；**首屏加载层样式不能放在 runtime.css**，必须由壳内联，否则 JS 到达前无样式。
 - 壳与路由无关：不注入 `path`，runtime 自己读 `location`，因此同一份壳可被所有路由复用。
 - **路由 fallback**：`BlogPageController` 只保留 `SHELL_PATH` 一条 catch-all（+ `/`），不再逐个登记页面；页面路由的唯一来源是 runtime 的路由表（`frontend/apps/blog/src/runtime.ts`）。
 - **单启动路径**：runtime 只从 `window.__BLOG_BOOT__` 启动；不存在客户端 bootstrap 分支。`GET /api/blog/bootstrap` 保留为调试 / agent / 未来桌面端的读取入口。
@@ -575,8 +589,9 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 
 | 项 | 标准 |
 | --- | --- |
-| 壳首帧 | 生产路径首屏即主题壳（无整页骨架）；暗色用户首帧不闪白 |
-| 降级 | runtime 加载失败时仍呈现主题壳 + `<noscript>` 提示；无横向滚动 |
+| 壳首帧 | 生产路径首屏即主题壳（无整页骨架）；数据就绪后加载层淡出，**不出现 `.bc-skeleton` 闪烁**；暗色用户首帧不闪白 |
+| 导航 | 站内跳转取数期间保留旧页面 + 顶部进度条；到达后一次性切换，无空态闪烁 |
+| 降级 | runtime 加载失败时仍呈现主题壳 + `<noscript>` 提示；脚本超时未启动时加载层给出错误；无横向滚动 |
 | 壳缓存 | 主题激活 / 站点配置保存后 ≤ 60s（或 purge 后立即）刷新可见 |
 | 单启动路径 | 深链直开、站内跳转、预览、暗色都走同一套后端壳启动；不存在客户端 bootstrap 分支 |
 | 打包 | `pnpm build:blog` → `mvn package` 后 jar 内存在 `static/blog/runtime.js`；缺失产物时构建失败 |
@@ -637,7 +652,8 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 前端发布随后端 | runtime 改动必须重打 jar | 当前规模可接受；若独立发布成为硬需求，再外置为方案 A/B |
 | 默认主题副本漂移 | packages 与后端兜底各一份 | `pnpm sync:theme` + `pnpm check:theme` 哈希校验 |
 | 壳缓存过期 | 主题激活后 CDN 仍给旧壳 | 先 `s-maxage=60`；需要即时生效时接 purge |
-| 首屏多一次请求 | 数据由 runtime 取 | 站点配置 / 主题已进壳；列表一次请求可接受 |
+| 首屏多一次请求 | 数据由 runtime 取 | 路由守卫在导航确认前取数，壳内加载层覆盖等待期；文章页的 Lute 与正文请求并行；列表仍只需一次请求 |
+| 加载层被主题覆盖 / 隐藏 | 主题 CSS 排在加载层样式之后 | 作为 §3.6 稳定钩子文档化；启动错误用内联 `!important` 强制显示 |
 
 开放问题：
 
@@ -671,3 +687,4 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 2026-10-25 | v1.3 实现（方案 C） | 收敛为单产物：Maven `prepare-package` 把 `apps/blog/dist` 拷入 jar 的 `static/blog/`，后端同源提供 `/blog/**`；删去 runtime 的 bootstrap 启动分支（`GET /api/blog/bootstrap` 降级为调试 / agent 接口）；`/blog/runtime.js` `no-cache`、哈希资源长缓存；生产不再需要 `BLOG_ASSET_BASE`；修复 `pnpm gen:api` 在 Windows 下的变量展开；数据库零迁移 |
 | 2026-10-25 | v1.4 实现 | runtime 的 Markdown 渲染由 markdown-it 改为 **Lute**（`@simple-notes/markdown` + `method.min.js`，不打包完整编辑器）；与 admin 共用 `vditorMarkdown` 与 DOMPurify；Vditor 资源自托管在 `/blog/vditor`；主题 CSS 适配 `.callout` / KaTeX / 任务列表；方言 v2 |
 | 2026-10-26 | v1.5 实现 | **页面路由归 runtime**：`BlogPageController` 的 8 条页面映射收敛为一条 catch-all（`SHELL_PATH`，排除 `/api`、`/blog`、`/v3`、`/error`、`/favicon.svg`）；未知页面返回 `200 + 壳`，由 runtime 渲染 not-found；`SecurityConfig` 改为"`/api/**` 认证 + 非 API 的 GET 公开"，不再登记页面路径；新增 `startup/ApiPathValidator` 启动期校验（本项目 handler 必须在 `/api/` 下，壳控制器除外），补 `BlogShellRouteIntegrationTest`；数据库零迁移 |
+| 2026-10-26 | v1.6 实现 | **首屏去骨架**：壳内联 `[data-blog-boot]` 轻量加载层 + `[data-blog-progress]` 顶部进度条（`SHELL_VERSION` → 3）；runtime 改为 `beforeResolve` 取数、`afterEach` 一次性写入，`router.isReady()` 后挂载，首屏不再出现 `.bc-skeleton`；站内导航保留旧页面并中止上一笔请求；文章页 Lute 与正文请求并行、上下篇后台补取；标签 / 归档组件优先复用路由快照，消除重复请求与空态闪烁；主题可用 CSS 隐藏加载层，启动错误强制显示；数据库零迁移 |

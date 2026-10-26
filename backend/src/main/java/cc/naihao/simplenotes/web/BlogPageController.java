@@ -40,7 +40,51 @@ import org.springframework.web.bind.annotation.GetMapping;
 public class BlogPageController {
 
     /** 壳模板结构版本：模板 / 注入数据变化时递增，避免 ETag 命中旧壳。 */
-    private static final int SHELL_VERSION = 2;
+    private static final int SHELL_VERSION = 3;
+
+    /**
+     * 首屏加载层样式：必须内联在壳里（runtime.css 随 JS 到达，赶不上首帧）。
+     * 排在主题 CSS 之前，主题可用 {@code [data-blog-boot]{display:none}} 选择纯空白首帧。
+     */
+    private static final String BOOT_STYLE = """
+            [data-blog-boot] {
+              position: fixed;
+              inset: 0;
+              z-index: 200;
+              display: grid;
+              place-items: center;
+              align-content: center;
+              gap: 12px;
+              background: var(--blog-bg, #fff);
+              color: var(--blog-text-muted, #8a8a8a);
+              font: 14px/1.7 system-ui, -apple-system, 'Segoe UI', sans-serif;
+              text-align: center;
+              opacity: 1;
+              transition: opacity 180ms ease, visibility 0s linear 180ms;
+            }
+            [data-blog-boot] .blog-boot-bar {
+              width: 120px;
+              height: 2px;
+              border-radius: 2px;
+              background: linear-gradient(90deg, transparent, currentColor, transparent);
+              background-size: 200% 100%;
+              animation: blog-boot-shimmer 1.2s linear infinite;
+              opacity: 0.7;
+            }
+            html[data-blog-ready='1'] [data-blog-boot] {
+              opacity: 0;
+              visibility: hidden;
+              pointer-events: none;
+            }
+            @keyframes blog-boot-shimmer {
+              from { background-position: 200% 0; }
+              to { background-position: -200% 0; }
+            }
+            @media (prefers-reduced-motion: reduce) {
+              [data-blog-boot] { transition: none; }
+              [data-blog-boot] .blog-boot-bar { animation: none; }
+            }
+            """;
 
     /**
      * 壳路由（docs/blog-runtime-theme.md §4.5）：除保留前缀外，任意非 API 的 GET 都落到同一份壳，
@@ -165,12 +209,34 @@ public class BlogPageController {
                     })();
                   </script>
                   <style>[v-cloak]{display:none}</style>
+                  <style id="blog-boot-style">%s</style>
                   <style id="blog-theme">%s</style>
                 </head>
                 <body data-theme-id="%s" data-runtime-contract="%s"%s>
-                <noscript><p style="padding:24px;text-align:center;font:14px/1.7 system-ui,sans-serif">需要启用 JavaScript 才能加载文章内容。</p></noscript>
+                <noscript>
+                  <style>[data-blog-boot],[data-blog-progress]{display:none}</style>
+                  <p style="padding:24px;text-align:center;font:14px/1.7 system-ui,sans-serif">需要启用 JavaScript 才能加载文章内容。</p>
+                </noscript>
+                <div id="blog-boot" data-blog-boot role="status" aria-live="polite">
+                  <span class="blog-boot-bar" aria-hidden="true"></span>
+                  <span>正在加载…</span>
+                </div>
+                <div id="blog-progress" data-blog-progress aria-hidden="true"></div>
                 %s
                 <script type="module" src="%s/runtime.js"></script>
+                <script>
+                  setTimeout(function () {
+                    var root = document.documentElement;
+                    if (root.dataset.blogReady === '1') return;
+                    var boot = document.getElementById('blog-boot');
+                    if (!boot || boot.hasAttribute('data-error') || root.dataset.blogRuntime === '1') return;
+                    boot.setAttribute('data-error', '1');
+                    boot.style.setProperty('display', 'grid', 'important');
+                    boot.style.setProperty('opacity', '1', 'important');
+                    boot.style.setProperty('visibility', 'visible', 'important');
+                    boot.textContent = '页面脚本加载失败，请刷新重试。';
+                  }, 12000);
+                </script>
                 </body>
                 </html>
                 """.formatted(
@@ -178,6 +244,7 @@ public class BlogPageController {
                 favicon,
                 escape(title),
                 bootJson,
+                BOOT_STYLE,
                 themeCss,
                 escape(themeId),
                 themeContract,

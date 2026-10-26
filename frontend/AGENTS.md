@@ -27,7 +27,7 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 > 设计与实现见 `docs/blog-runtime-theme.md`（v1.3 / 方案 C 已落地）。
 
 - **构建产物**：`apps/blog` 是 Vite + TS 的 runtime（无 SFC 依赖，组件模板在运行时编译）；产物入口固定为 `runtime.js`，Maven `prepare-package` 会拷入后端 jar 的 `static/blog/`
-- **首屏**：唯一启动路径 = 后端 `BlogPageController` 组装壳（站点配置 + 主题 HTML/CSS 内联）；runtime 只读 `window.__BLOG_BOOT__`，不再有客户端 bootstrap 启动分支
+- **首屏**：唯一启动路径 = 后端 `BlogPageController` 组装壳（站点配置 + 主题 HTML/CSS 内联）；runtime 只读 `window.__BLOG_BOOT__`，不再有客户端 bootstrap 启动分支。路由数据在 `beforeResolve` 取好、`afterEach` 一次性写入，壳内 `[data-blog-boot]` 加载层在 `data-blog-ready=1` 后淡出；主题可用 CSS 隐藏它
 - **路由**：页面路由的唯一来源是 `apps/blog/src/runtime.ts` 的 vue-router 表；后端只做 history fallback，新增路由**不要**改后端
 - 开发期：`mvn spring-boot:run` 默认启用 `dev` profile，`asset-base` 自动指向 Vite（`http://localhost:5174`）获得 HMR；生产 jar 不启用，固定 `/blog`
 - 主题来自数据库且**禁止携带脚本**；runtime 加载前必须再执行一次 `validateTheme`（保存时后端已校验）

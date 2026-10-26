@@ -40,7 +40,18 @@ class BlogShellRouteIntegrationTest extends IntegrationTestBase {
         mockMvc.perform(get(path))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
-                .andExpect(content().string(containsString("window.__BLOG_BOOT__")));
+                .andExpect(content().string(containsString("window.__BLOG_BOOT__")))
+                .andExpect(content().string(containsString("data-blog-boot")))
+                .andExpect(content().string(containsString("data-blog-progress")));
+    }
+
+    @Test
+    @DisplayName("壳内联首屏加载层：就绪后淡出，且错误可以强制显示")
+    void shellRendersBootLoader() throws Exception {
+        mockMvc.perform(get("/"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("html[data-blog-ready='1'] [data-blog-boot]")))
+                .andExpect(content().string(containsString("正在加载")));
     }
 
     @Test

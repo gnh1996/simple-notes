@@ -6,6 +6,7 @@ import {
   watch,
 } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
+import type { RouteLocationNormalized } from 'vue-router'
 
 import runtimeCss from './runtime.css?raw'
 
@@ -13,6 +14,7 @@ import { api } from './api'
 import { blogComponents } from './components'
 import { formatDate } from './format'
 import { openLightbox } from './lightbox'
+import { warmMarkdown } from './markdown'
 import {
   RUNTIME_CONTRACT,
   applyThemeCss,
@@ -25,6 +27,7 @@ import {
   applyColorMode,
   archiveGroups,
   archives,
+  archivesLoaded,
   colorMode,
   contentVersion,
   currentPath,
@@ -42,12 +45,16 @@ import {
   state,
   tag,
   tags,
+  tagsLoaded,
   toPager,
   toggleColorMode,
 } from './store'
+import type { BlogState } from './store'
 import type {
+  Archive,
   Boot,
   PageResult,
+  Pager,
   PostDetail,
   PostSummary,
   Site,
@@ -95,9 +102,15 @@ function escapeHtml(value: string): string {
 
 function showBootError(error: unknown): void {
   const text = error instanceof Error ? error.message : '站点加载失败'
-  const loading = document.getElementById('blog-dev-loading')
-  if (loading) {
-    loading.textContent = text
+  const boot = document.getElementById('blog-boot')
+  if (boot) {
+    // 主题可以用 CSS 隐藏加载层，但启动错误必须可见：内联 !important 兜底
+    boot.setAttribute('data-error', '1')
+    boot.setAttribute('role', 'alert')
+    boot.style.setProperty('display', 'grid', 'important')
+    boot.style.setProperty('opacity', '1', 'important')
+    boot.style.setProperty('visibility', 'visible', 'important')
+    boot.textContent = text
     return
   }
   document.body.insertAdjacentHTML(
@@ -170,26 +183,194 @@ const router = createRouter({
 
 const route = router.currentRoute
 
-/** 首页分页大小由站点配置决定；在启动时写入，供 load() 使用。 */
+/** 首页分页大小由站点配置决定；在启动时写入，供路由守卫取数使用。 */
 const pageSize = ref(10)
 
-router.afterEach(() => {
-  currentPath.value = route.value.fullPath
-})
+interface RouteData {
+  state: BlogState
+  message: string
+  posts: PostSummary[]
+  pager: Pager
+  post: PostDetail | null
+  prevPost: PostSummary | null
+  nextPost: PostSummary | null
+  tags: Tag[] | null
+  tag: Tag | null
+  archives: Archive[] | null
+  keyword: string
+  page: SitePage | null
+  searched: boolean
+}
 
-function applyPage(result: PageResult<PostSummary>): void {
-  posts.value = result.items || []
-  pager.value = toPager(result)
-  state.value = posts.value.length ? 'ready' : 'empty'
+function emptyRouteData(): RouteData {
+  return {
+    state: 'loading',
+    message: '',
+    posts: [],
+    pager: emptyPager(),
+    post: null,
+    prevPost: null,
+    nextPost: null,
+    tags: null,
+    tag: null,
+    archives: null,
+    keyword: '',
+    page: null,
+    searched: false,
+  }
+}
+
+function applyPage(data: RouteData, result: PageResult<PostSummary>): void {
+  data.posts = result.items || []
+  data.pager = toPager(result)
+  data.state = data.posts.length ? 'ready' : 'empty'
+}
+
+function errorRouteData(error: unknown): RouteData {
+  const data = emptyRouteData()
+  data.state = 'error'
+  data.message = error instanceof Error ? error.message : '加载失败'
+  return data
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError'
+}
+
+/**
+ * 路由取数（docs/blog-runtime-theme.md §5.1）：只组装快照，不写全局状态。
+ * 快照在导航确认（afterEach）后一次性应用，取数期间旧页面保持可见。
+ */
+async function loadRoute(to: RouteLocationNormalized, signal: AbortSignal): Promise<RouteData> {
+  const data = emptyRouteData()
+  const query = to.query
+
+  switch (to.name) {
+    case 'home': {
+      const result = await api<PageResult<PostSummary>>(
+        '/api/blog/posts',
+        {
+          page: Number(query.page) || 1,
+          size: pageSize.value || 10,
+        },
+        { signal },
+      )
+      applyPage(data, result)
+      break
+    }
+    case 'post': {
+      const slug = String(to.params.slug)
+      const [detail] = await Promise.all([
+        api<PostDetail>(`/api/blog/posts/${encodeURIComponent(slug)}`, undefined, { signal }),
+        // 正文渲染依赖 Lute；与正文请求并行，避免标题先出、正文后到
+        warmMarkdown().catch(() => undefined),
+      ])
+      data.post = detail
+      data.state = 'ready'
+      break
+    }
+    case 'tags': {
+      const rows = await api<Tag[]>('/api/blog/tags', undefined, { signal })
+      data.tags = rows
+      data.state = rows.length ? 'ready' : 'empty'
+      break
+    }
+    case 'tag-posts': {
+      const id = String(to.params.id)
+      const [allTags, result] = await Promise.all([
+        api<Tag[]>('/api/blog/tags', undefined, { signal }),
+        api<PageResult<PostSummary>>(
+          '/api/blog/posts',
+          {
+            page: Number(query.page) || 1,
+            tagId: id,
+          },
+          { signal },
+        ),
+      ])
+      data.tags = allTags
+      data.tag = allTags.find((item) => item.id === id) ?? null
+      applyPage(data, result)
+      break
+    }
+    case 'archives': {
+      const [archiveRows, all] = await Promise.all([
+        api<Archive[]>('/api/blog/archives', undefined, { signal }),
+        api<PageResult<PostSummary>>('/api/blog/posts', { page: 1, size: 100 }, { signal }),
+      ])
+      data.archives = archiveRows || []
+      applyPage(data, all)
+      break
+    }
+    case 'search': {
+      data.keyword = String(query.q || '')
+      if (!data.keyword) {
+        data.state = 'empty'
+        break
+      }
+      data.searched = true
+      const result = await api<PageResult<PostSummary>>(
+        '/api/blog/search',
+        {
+          q: data.keyword,
+          page: Number(query.page) || 1,
+          size: 20,
+        },
+        { signal },
+      )
+      applyPage(data, result)
+      break
+    }
+    case 'page': {
+      const slug = to.path === '/about' ? 'about' : String(to.params.slug)
+      const [sitePage] = await Promise.all([
+        api<SitePage>(`/api/blog/pages/${encodeURIComponent(slug)}`, undefined, { signal }),
+        warmMarkdown().catch(() => undefined),
+      ])
+      data.page = sitePage
+      data.state = 'ready'
+      break
+    }
+    default:
+      data.state = 'ready'
+  }
+  return data
+}
+
+function applyRouteData(data: RouteData): void {
+  state.value = data.state
+  message.value = data.message
+  posts.value = data.posts
+  pager.value = data.pager
+  post.value = data.post
+  prevPost.value = data.prevPost
+  nextPost.value = data.nextPost
+  tag.value = data.tag
+  keyword.value = data.keyword
+  page.value = data.page
+  searched.value = data.searched
+  // tags / archives 是可选数据：本次路由没取就保留缓存，避免组件误判“为空”
+  if (data.tags) {
+    tags.value = data.tags
+    tagsLoaded.value = true
+  }
+  if (data.archives) {
+    archives.value = data.archives
+    archivesLoaded.value = true
+  }
   contentVersion.value += 1
 }
 
-async function loadPost(slug: string): Promise<void> {
-  post.value = await api<PostDetail>(`/api/blog/posts/${encodeURIComponent(slug)}`)
-  prevPost.value = null
-  nextPost.value = null
+let neighborSequence = 0
+
+/** 上下篇不阻塞正文：导航确认后再补取，离开文章页则丢弃结果。 */
+async function loadNeighbors(slug: string): Promise<void> {
+  const sequence = ++neighborSequence
   try {
     const all = await api<PageResult<PostSummary>>('/api/blog/posts', { page: 1, size: 100 })
+    if (sequence !== neighborSequence || post.value?.slug !== slug) {
+      return
+    }
     const items = all.items || []
     const index = items.findIndex((item) => item.slug === slug)
     if (index >= 0) {
@@ -199,91 +380,64 @@ async function loadPost(slug: string): Promise<void> {
   } catch {
     /* 上下篇失败不影响正文 */
   }
-  state.value = 'ready'
-  contentVersion.value += 1
 }
 
-async function load(): Promise<void> {
-  state.value = 'loading'
-  message.value = ''
-  searched.value = false
-  post.value = null
-  page.value = null
-  const current = route.value
-  const query = current.query
+let booted = false
+let pendingData: RouteData | null = null
+let activeController: AbortController | null = null
+let navigationSequence = 0
 
-  try {
-    switch (current.name) {
-      case 'home': {
-        const result = await api<PageResult<PostSummary>>('/api/blog/posts', {
-          page: Number(query.page) || 1,
-          size: pageSize.value || 10,
-        })
-        applyPage(result)
-        break
-      }
-      case 'post':
-        await loadPost(String(current.params.slug))
-        break
-      case 'tags':
-        tags.value = await api<Tag[]>('/api/blog/tags')
-        state.value = tags.value.length ? 'ready' : 'empty'
-        break
-      case 'tag-posts': {
-        const id = String(current.params.id)
-        const [allTags, result] = await Promise.all([
-          api<Tag[]>('/api/blog/tags'),
-          api<PageResult<PostSummary>>('/api/blog/posts', {
-            page: Number(query.page) || 1,
-            tagId: id,
-          }),
-        ])
-        tags.value = allTags
-        tag.value = allTags.find((item) => item.id === id) ?? null
-        applyPage(result)
-        break
-      }
-      case 'archives': {
-        const [archiveRows, all] = await Promise.all([
-          api<Array<{ year: number; month: number; count: number }>>('/api/blog/archives'),
-          api<PageResult<PostSummary>>('/api/blog/posts', { page: 1, size: 100 }),
-        ])
-        archives.value = archiveRows || []
-        applyPage(all)
-        break
-      }
-      case 'search': {
-        keyword.value = String(query.q || '')
-        if (!keyword.value) {
-          posts.value = []
-          pager.value = emptyPager()
-          state.value = 'empty'
-          break
-        }
-        searched.value = true
-        const result = await api<PageResult<PostSummary>>('/api/blog/search', {
-          q: keyword.value,
-          page: Number(query.page) || 1,
-          size: 20,
-        })
-        applyPage(result)
-        break
-      }
-      case 'page': {
-        const slug = current.path === '/about' ? 'about' : String(current.params.slug)
-        page.value = await api<SitePage>(`/api/blog/pages/${encodeURIComponent(slug)}`)
-        state.value = 'ready'
-        contentVersion.value += 1
-        break
-      }
-      default:
-        state.value = 'ready'
-    }
-  } catch (error) {
-    state.value = 'error'
-    message.value = error instanceof Error ? error.message : '加载失败'
+function setNavigating(active: boolean): void {
+  if (active) {
+    document.documentElement.dataset.blogNavigating = '1'
+  } else {
+    delete document.documentElement.dataset.blogNavigating
   }
 }
+
+router.beforeResolve(async (to) => {
+  activeController?.abort()
+  const controller = new AbortController()
+  activeController = controller
+  const sequence = ++navigationSequence
+  if (booted) {
+    setNavigating(true)
+  }
+
+  try {
+    const data = await loadRoute(to, controller.signal)
+    if (sequence !== navigationSequence || controller.signal.aborted) {
+      return false
+    }
+    pendingData = data
+    return true
+  } catch (error) {
+    if (sequence !== navigationSequence || controller.signal.aborted || isAbortError(error)) {
+      return false
+    }
+    pendingData = errorRouteData(error)
+    return true
+  }
+})
+
+router.afterEach((to) => {
+  currentPath.value = to.fullPath
+  const data = pendingData
+  pendingData = null
+  if (data) {
+    applyRouteData(data)
+  }
+  activeController = null
+  setNavigating(false)
+  booted = true
+  if (to.name === 'post' && post.value) {
+    void loadNeighbors(post.value.slug)
+  }
+})
+
+router.onError(() => {
+  setNavigating(false)
+})
 
 // ---------------------------------------------------------------------------
 // 动作
@@ -320,8 +474,29 @@ function scrollToTop(): void {
 // ---------------------------------------------------------------------------
 
 let mountTemplate = ''
+let markdownRendered = false
+
+// 首帧是否等到正文真正渲染：博客正文由 Lute 异步输出，早于它揭开 cloak 会只剩标题
+window.addEventListener('blog:markdown-rendered', () => {
+  markdownRendered = true
+})
+
+function waitForInitialMarkdown(): Promise<void> {
+  if ((!post.value?.content && !page.value?.content) || markdownRendered) {
+    return Promise.resolve()
+  }
+  return new Promise((resolve) => {
+    const finish = (): void => {
+      window.removeEventListener('blog:markdown-rendered', finish)
+      resolve()
+    }
+    window.addEventListener('blog:markdown-rendered', finish, { once: true })
+    window.setTimeout(finish, 800)
+  })
+}
 
 async function main(): Promise<void> {
+  document.documentElement.dataset.blogRuntime = '1'
   applyRuntimeCss()
   let boot: Boot
   try {
@@ -348,7 +523,6 @@ async function main(): Promise<void> {
   const app = createApp({
     template: mountTemplate,
     setup() {
-      watch(() => route.value.fullPath, load, { immediate: true })
       return {
         site,
         nav: computed(() => site.value.nav || []),
@@ -388,7 +562,9 @@ async function main(): Promise<void> {
   await router.isReady()
   app.mount(root)
   await nextTick()
+  await waitForInitialMarkdown()
   removeCloak()
+  await nextTick()
   document.documentElement.dataset.blogReady = '1'
 
   // #app 自身的属性不在编译模板内：按契约补齐 DOM 钩子（§3.6）
@@ -491,4 +667,7 @@ document.addEventListener('click', (event) => {
 
 void main().catch((error) => {
   console.error('[blog] 启动失败', error)
+  if (document.documentElement.dataset.blogReady !== '1') {
+    showBootError(error)
+  }
 })

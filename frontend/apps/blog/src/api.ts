@@ -10,9 +10,15 @@ export class ApiError extends Error {
   }
 }
 
+export interface ApiOptions {
+  /** 路由切换时取消上一笔请求；中止后的 rejection 由调用方识别。 */
+  signal?: AbortSignal
+}
+
 export async function api<T>(
   path: string,
   params?: Record<string, string | number | null | undefined>,
+  options: ApiOptions = {},
 ): Promise<T> {
   const url = new URL(path, location.origin)
   if (params) {
@@ -25,6 +31,7 @@ export async function api<T>(
   const response = await fetch(url, {
     headers: { Accept: 'application/json' },
     credentials: 'same-origin',
+    signal: options.signal,
   })
   if (!response.ok) {
     let detail = `请求失败（${response.status}）`
