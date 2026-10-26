@@ -32,6 +32,8 @@
 ## 博客前台（壳组装，设计见 docs/blog-runtime-theme.md）
 
 - 后端只组装壳：注入 site + 主题 HTML/CSS + CSP / 缓存头；**不得在服务端执行主题模板**（不要引入 Thymeleaf / 服务端模板引擎渲染主题）
+- **页面路由归 runtime**：`BlogPageController` 只保留一条 catch-all（`SHELL_PATH`，排除 `/api`、`/blog`、`/v3`、`/error`、`/favicon.svg`）做 history fallback，不登记具体页面；新增前端路由不改后端。未知页面返回 `200 + 壳`（SEO 非目标，见设计文档 §4.5）
+- 因此安全规则是"`/api/**` 认证 + 非 API 的 GET 公开"：新增业务控制器**必须**挂在 `/api/` 下，`startup/ApiPathValidator` 启动期校验，漏写前缀直接启动失败
 - runtime 由 `frontend/apps/blog` 用 Vite 构建；Maven `prepare-package` 把 `dist` 拷入 jar 的 `static/blog/`，后端同源提供 `/blog/**`。**`mvn test` / `compile` 不依赖 dist，`mvn package` 依赖先执行 `pnpm build:blog`**
 - 壳 ETag = 主题版本 + 配置版本 + asset-base + `SHELL_VERSION`；非预览 `s-maxage=60`，预览 `no-store` + `no-referrer`
 - `/blog/runtime.js` 用 `no-cache`，`/blog/chunks/**`、`/blog/assets/**` 长缓存 + `immutable`（`BlogAssetCacheFilter`）

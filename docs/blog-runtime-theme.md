@@ -1,6 +1,6 @@
 # 博客运行时与主题化设计（Blog Runtime & Theme）
 
-> **状态：v1.3 · 2026-10-25（方案 C 收敛：runtime 随后端 jar 发布，单产物 / 单启动路径）**
+> **状态：v1.5 · 2026-10-26（页面路由归 runtime：后端只做 history fallback）**
 > 范围：博客前台从 Vue SPA 改为「后端组装页面 + 固定运行时 + 数据化主题」；runtime 仍由 Vite 构建，但产物在 Maven 打包时进入后端 jar，与页面、API 同源提供；含站点配置、独立页面、主题管理与 agent 预览链路
 > 关联：`docs/content-model.md`（内容与公开读取）、`docs/tech-stack.md`（选型）、`docs/markdown-dialect.md`（方言）、`docs/auth-rbac.md`（权限码与菜单）
 > 非目标：SSR / 预渲染、评论、图片派生、RSS / sitemap、主题市场、多作者
@@ -10,6 +10,7 @@
 | 决策点 | 结论 |
 | --- | --- |
 | 前台形态 | 保留 SPA 交互，**首屏由后端组装壳**：注入站点配置 + 主题 HTML/CSS，返回整页；runtime 由同源静态资源加载 |
+| 页面路由 | **归 runtime**：后端只做 history fallback（保留前缀之外任意 GET 返回同一壳），新增前端路由不改后端 |
 | 运行时归属 | runtime 是**构建产物**（Vite 构建、随代码发布、可评审、入口名固定 + chunk 哈希），Maven 打包时进入 jar 的 `static/blog/`，不存数据库 |
 | 主题归属 | 主题是**数据**（数据库中的不可变版本），由管理端 / agent 编辑，不发版即生效 |
 | 主题构成 | `theme.html` + `theme.css`，**零主题 JS**；行为与数据由 runtime 提供 |
@@ -313,6 +314,14 @@ backend/src/main/resources/blog/default-theme/{theme.html,theme.css}   ← pnpm 
 
 后端对以上路径统一 fallback 到同一 HTML 骨架；URL 结构对外是契约，不随主题变化。
 
+**fallback 规则（v1.5）**：后端不再逐个登记页面路径。除保留前缀（`/api`、`/blog`、`/v3`、`/error`、
+`/favicon.svg`）外，任意 GET 都返回同一壳（`BlogPageController.SHELL_PATH`），因此**新增前端路由无需改后端**。
+未知页面返回 `200 + 壳`，由 runtime 渲染 not-found；真 404 留待发布时预渲染落地后再引入（SEO 仍为非目标）。
+
+保留前缀的原因：`/api` 的未知路径必须是 401 / 404 JSON（不能退化成 HTML）；`/blog` 是 jar 内静态资源，
+catch-all 会抢占它（`RequestMappingHandlerMapping` 先于资源 handler）；`/v3`、`/error`、`/favicon.svg`
+分别是契约、错误分发与根静态文件。
+
 ---
 
 ## 5. 页面组装与安全
@@ -337,6 +346,7 @@ GET /posts/hello
 - 依赖自托管：Vue（含模板编译器）打进构建产物；Lute / hljs / KaTeX / Mermaid 作为 `/blog/vditor/**` 静态资源按需加载，**不使用公共 CDN**（可用性、CSP、供应链）。
 - runtime 基础样式（`runtime.css`）由构建产物内联注入；首帧只依赖主题 CSS，组件样式在挂载前生效。
 - 壳与路由无关：不注入 `path`，runtime 自己读 `location`，因此同一份壳可被所有路由复用。
+- **路由 fallback**：`BlogPageController` 只保留 `SHELL_PATH` 一条 catch-all（+ `/`），不再逐个登记页面；页面路由的唯一来源是 runtime 的路由表（`frontend/apps/blog/src/runtime.ts`）。
 - **单启动路径**：runtime 只从 `window.__BLOG_BOOT__` 启动；不存在客户端 bootstrap 分支。`GET /api/blog/bootstrap` 保留为调试 / agent / 未来桌面端的读取入口。
 
 ### 5.2 安全边界
@@ -344,6 +354,7 @@ GET /posts/hello
 | 项 | 措施 |
 | --- | --- |
 | 分域 | blog 与 admin 不同源；blog 不持有 admin 凭证 |
+| 匿名面 | 非 API 的 GET 一律公开（壳 fallback + jar 内静态资源），`/api/**` 要求会话。因此新增业务控制器**必须**挂在 `/api/` 下：`startup/ApiPathValidator` 在启动期扫描 handler，漏写前缀直接终止启动 |
 | CSP | `default-src 'self'; script-src 'self' 'unsafe-eval'`；主题 CSS 需 `style-src 'unsafe-inline'`；KaTeX 字体需 `font-src 'self' data:`；同源部署下无需放行资产域（开发期 `BLOG_ASSET_BASE` 指向 Vite 时自动把该 origin 加入 script/style/font/connect） |
 | `unsafe-eval` | Vue 运行时模板编译必需；靠零主题 JS + 校验 + 分域兜底 |
 | 模板校验 | 保存时后端校验；**加载时 runtime 再校验一次**（库内旧数据 / 被篡改数据不得直接进编译器）；见 §8 |
@@ -521,6 +532,7 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 方法 / 路径 | 说明 |
 | --- | --- |
 | `GET /`、`/posts/**`、`/tags/**`、`/archives`、`/search`、`/about`、`/p/**` | 返回组装后的壳（含 fallback；ETag + `s-maxage`，预览 `no-store`） |
+| `GET` 其他任意非保留路径（如新增前端路由） | 同样返回壳（`200 + 壳`，runtime 渲染 not-found）；保留前缀见 §4.5 |
 | `GET /blog/runtime.js`、`/blog/chunks/*`、`/blog/assets/*` | 后端从 jar 内 `static/blog/` 同源提供；入口 `no-cache`，哈希资源长缓存 |
 | `GET /api/blog/bootstrap` | 保留为调试 / agent / 未来桌面端的结构化读取入口：`{ site, theme, runtimeContract, adminOrigin, preview, settingVersion }`；**不再参与首屏启动**；支持 `previewTheme` + `token`，`no-store` |
 | `GET /api/blog/posts` | 已有；`page` / `size` / `tagId` / `year` / `month` |
@@ -619,6 +631,7 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 模板静默失败 | 引用不存在的键不会报错，页面只是变空 | 保存时静态校验 + 加载时再校验 + 预览必看 + 四态检查 |
 | `unsafe-eval` | 模板编译依赖 `new Function` | 分域 + 零主题 JS + CSP + 校验 |
 | 契约漂移 | 主题是数据，没有编译期 | 三张冻结表 + 版本门禁 + 双端校验 + 回归 |
+| 非 API 接口误公开 | 壳 fallback 要求"非 API 的 GET 一律公开"，漏写 `/api` 前缀的读接口会被匿名访问 | `startup/ApiPathValidator` 启动期校验：本项目 handler 必须在 `/api/` 下（壳控制器除外），否则启动失败 |
 | 主题质量参差 | agent 产出不稳定 | starter theme + 验收清单 + 截图回归（P3） |
 | 构建顺序耦合 | `mvn package` 需要先 `pnpm build:blog` | 缺失产物直接失败；CI 用 artifact 传递；`mvn test` 不依赖 dist |
 | 前端发布随后端 | runtime 改动必须重打 jar | 当前规模可接受；若独立发布成为硬需求，再外置为方案 A/B |
@@ -657,3 +670,4 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 2026-10-25 | v1.2 实现（方案 A） | runtime 改为独立 Vite 构建产物（TS，复用 `packages/shared` 方言与 hljs；入口固定 `runtime.js`），后端不再托管；壳支持 `asset-base`、ETag / `s-maxage`、预览 `no-store` / `no-referrer`；新增 `GET /api/blog/bootstrap` 与运行时双启动路径；默认主题收敛到 `packages/theme-starter`（后端兜底副本由 `pnpm sync:theme` 同步、`check:theme` 校验）；管理端新建主题复用 starter；数据库零迁移 |
 | 2026-10-25 | v1.3 实现（方案 C） | 收敛为单产物：Maven `prepare-package` 把 `apps/blog/dist` 拷入 jar 的 `static/blog/`，后端同源提供 `/blog/**`；删去 runtime 的 bootstrap 启动分支（`GET /api/blog/bootstrap` 降级为调试 / agent 接口）；`/blog/runtime.js` `no-cache`、哈希资源长缓存；生产不再需要 `BLOG_ASSET_BASE`；修复 `pnpm gen:api` 在 Windows 下的变量展开；数据库零迁移 |
 | 2026-10-25 | v1.4 实现 | runtime 的 Markdown 渲染由 markdown-it 改为 **Lute**（`@simple-notes/markdown` + `method.min.js`，不打包完整编辑器）；与 admin 共用 `vditorMarkdown` 与 DOMPurify；Vditor 资源自托管在 `/blog/vditor`；主题 CSS 适配 `.callout` / KaTeX / 任务列表；方言 v2 |
+| 2026-10-26 | v1.5 实现 | **页面路由归 runtime**：`BlogPageController` 的 8 条页面映射收敛为一条 catch-all（`SHELL_PATH`，排除 `/api`、`/blog`、`/v3`、`/error`、`/favicon.svg`）；未知页面返回 `200 + 壳`，由 runtime 渲染 not-found；`SecurityConfig` 改为"`/api/**` 认证 + 非 API 的 GET 公开"，不再登记页面路径；新增 `startup/ApiPathValidator` 启动期校验（本项目 handler 必须在 `/api/` 下，壳控制器除外），补 `BlogShellRouteIntegrationTest`；数据库零迁移 |

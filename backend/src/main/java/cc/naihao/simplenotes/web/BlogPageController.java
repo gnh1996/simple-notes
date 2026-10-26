@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.GetMapping;
  *   <li>主题版本由 {@code site_setting.theme.id} + {@code site_theme.active_version_id} 决定；</li>
  *   <li>未配置主题 / 契约不兼容时回落随代码发布的内置默认主题；</li>
  *   <li>壳与路由无关（runtime 自己读 location），因此 ETag 只需主题 + 配置 + 资产版本；</li>
+ *   <li>页面路由归 runtime：后端只做 history fallback（{@link #SHELL_PATH}），不登记具体页面；</li>
  *   <li>预览通过 {@code previewTheme} + 短期签名 token 选中草稿版本，且不进入任何缓存。</li>
  * </ul>
  */
@@ -40,6 +41,23 @@ public class BlogPageController {
 
     /** 壳模板结构版本：模板 / 注入数据变化时递增，避免 ETag 命中旧壳。 */
     private static final int SHELL_VERSION = 2;
+
+    /**
+     * 壳路由（docs/blog-runtime-theme.md §4.5）：除保留前缀外，任意非 API 的 GET 都落到同一份壳，
+     * 即 SPA 的 history fallback。页面路由由 runtime（{@code frontend/apps/blog/src/runtime.ts}）决定，
+     * 后端不再逐个登记——新增前端路由无需改后端。
+     *
+     * <p>排除段说明：
+     * <ul>
+     *   <li>{@code api}：未知 API 必须是 401 / 404 JSON，不能返回 HTML；</li>
+     *   <li>{@code blog}：jar 内 runtime 资源由静态资源 handler 提供，本 catch-all 会抢占它；</li>
+     *   <li>{@code v3} / {@code error} / {@code favicon.svg}：契约、错误分发与根静态文件。</li>
+     * </ul>
+     *
+     * <p>未知页面返回 200 + 壳，由 runtime 渲染 not-found（设计文档 §4.5 已声明 SEO 为非目标）；
+     * 将来做发布时预渲染时再升级为真 404。
+     */
+    static final String SHELL_PATH = "/{path:^(?!api$|blog$|v3$|error$|favicon\\.svg$).*$}";
 
     private static final Pattern STYLE_BREAKOUT = Pattern.compile("</style", Pattern.CASE_INSENSITIVE);
 
@@ -52,16 +70,7 @@ public class BlogPageController {
     private volatile String defaultHtml;
     private volatile String defaultCss;
 
-    @GetMapping({
-            "/",
-            "/posts/{slug}",
-            "/tags",
-            "/tags/{id}",
-            "/archives",
-            "/search",
-            "/about",
-            "/p/{slug}"
-    })
+    @GetMapping({"/", SHELL_PATH, SHELL_PATH + "/**"})
     public void page(HttpServletRequest request, HttpServletResponse response) throws IOException {
         String previewVersionId = request.getParameter("previewTheme");
         boolean preview = previewVersionId != null && !previewVersionId.isBlank();

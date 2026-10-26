@@ -30,8 +30,9 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  *   <li>三端统一 Bearer 凭证（无 Cookie / CSRF 面），服务端会话状态由 sys_user_session 承载，
  *       因此安全上下文不落 HttpSession（STATELESS）；</li>
  *   <li>路径域规则：{@code /api/auth/**} 除登录外要求会话；{@code /api/admin/**}、
- *       {@code /api/desktop/**} 要求会话；{@code /api/blog/**} 公开读匿名、其余要求会话；
- *       非 API 路径与未知 API 默认拒绝；</li>
+ *       {@code /api/desktop/**} 要求会话；{@code /api/blog/**}、{@code /api/media/**} 公开读匿名、
+ *       其余要求会话；非 API 的 GET 一律公开（博客壳对任意页面路由 fallback + jar 内静态资源），
+ *       非 GET 默认拒绝。非 /api 的业务接口由 {@code startup/ApiPathValidator} 启动期拦截；</li>
  *   <li>细粒度权限（权限码）由方法级 {@code @PreAuthorize("@authz.can(...)")} 逐接口声明，
  *       超管角色短路；</li>
  *   <li>401 / 403 统一 JSON 出口，与业务错误体一致。</li>
@@ -90,13 +91,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/blog/**").permitAll()
                         // 稳定媒体 URL 匿名可读（正文 / 封面引用）
                         .requestMatchers(HttpMethod.GET, "/api/media/**").permitAll()
-                        // 博客前台：组装壳 + jar 内 runtime 资源（docs/blog-runtime-theme.md §5）
-                        .requestMatchers(HttpMethod.GET, "/", "/posts/**", "/tags/**", "/archives",
-                                "/search", "/about", "/p/**", "/blog/**", "/favicon.svg")
-                        .permitAll()
                         // 三端接口域：要求已认证会话（client 一致性 + 权限码由过滤器 / 方法级校验）
                         .requestMatchers("/api/**").authenticated()
-                        // 默认拒绝：API 服务不承载静态资源，非 API 路径一律拒绝
+                        // 博客前台（docs/blog-runtime-theme.md §4.5 / §5.2）：壳对任意页面路由 fallback，
+                        // 路由本身归 runtime，因此不再逐个登记页面路径，只保留一条"非 API 的 GET 公开"。
+                        // 必须排在 /api/** 之后，否则 GET /api/admin/** 会被这条放行。
+                        .requestMatchers(HttpMethod.GET, "/**").permitAll()
+                        // 默认拒绝：非 API 的写请求与其余未声明路径一律拒绝
                         .anyRequest().denyAll())
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(authenticationEntryPoint)
