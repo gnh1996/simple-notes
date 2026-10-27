@@ -1,6 +1,6 @@
 # 博客运行时与主题化设计（Blog Runtime & Theme）
 
-> **状态：v1.7 · 2026-10-26（主题切换收敛到主题管理，站点设置只读展示）**
+> **状态：v1.9 · 2026-10-27（表达力扩展：`ui` 交互状态 + 组件具名 slot）**
 > 范围：博客前台从 Vue SPA 改为「后端组装页面 + 固定运行时 + 数据化主题」；runtime 仍由 Vite 构建，但产物在 Maven 打包时进入后端 jar，与页面、API 同源提供；含站点配置、独立页面、主题管理与 agent 预览链路
 > 关联：`docs/content-model.md`（内容与公开读取）、`docs/tech-stack.md`（选型）、`docs/markdown-dialect.md`（方言）、`docs/auth-rbac.md`（权限码与菜单）
 > 非目标：SSR / 预渲染、评论、图片派生、RSS / sitemap、主题市场、多作者
@@ -81,6 +81,10 @@ runtime（浏览器）
 
 契约是主题唯一可依赖的接口。**以下三张表（数据形状 / 配置键 / CSS 变量）在实现前冻结；组件与动作可以只增不改地扩展。**
 
+> **唯一登记处**：`frontend/apps/blog/src/contract.ts`。本文描述语义与边界，键名 / 组件 props / CSS 变量以该文件为准；两者冲突视为缺陷。
+> `pnpm check:contract` 会在 CI / `typecheck` 中校验「runtime 实际暴露面 == 契约登记」，并扫描默认主题，防止契约悄悄漂移（§3.7）。
+> `theme-contract.json` 是构建产物（`pnpm build:blog` 生成到 `apps/blog/dist/`），供管理端文档、未来的 agent 与外部工具消费，**不手工维护**。
+
 ### 3.1 契约版本
 
 ```text
@@ -122,7 +126,25 @@ theme.contract   = N
 | `tags` | `Tag[]` | 标签页 | 全部标签及已发布数量 |
 | `tag` | `Tag \| null` | 标签文章页 | 当前标签 |
 | `archives` | `Archive[]` | 归档页 | 年月及数量 |
+| `archiveGroups` | `ArchiveGroup[]` | 归档页 | 由当前列表按年月分组后的结果，供归档列表渲染 |
 | `keyword` | `string` | 搜索页 | 当前关键词 |
+| `searched` | `boolean` | 搜索页 | 是否已执行过搜索（区分"未搜"与"无结果"） |
+| `page` | `SitePage \| null` | 独立页面 | `/about` 与 `/p/:slug` 的正文 |
+| `ui` | `Record<string, unknown>` | 全部 | **主题自有的 UI 状态**（唯一可写数据），见下 |
+
+`ui` 是主题唯一可写的响应式对象，用来做不涉及业务的交互：抽屉开合、标签页切换、客户端筛选等。
+
+```html
+<button type="button" @click="ui.navOpen = !ui.navOpen" :aria-expanded="ui.navOpen ? 'true' : 'false'">菜单</button>
+<nav v-show="ui.navOpen">…</nav>
+<input v-model="ui.keyword" placeholder="页内筛选">
+<p>{{ posts.filter(item => item.title.includes(ui.keyword || '')).length }} 篇匹配</p>
+```
+
+- 键由主题自己起，值可存任意可序列化数据；**不持久化**（不进 localStorage / URL）。
+- **路由切换时清空**：避免"上一页开着的抽屉"跟到下一页；同页内的 hash 变化不清空。
+- 不要在里面放跨页业务状态（如登录态、筛选条件持久化）；需要持久化的用 URL query，需要业务数据的走 §3.2 的其他键。
+- 写入 `ui` 不会触发取数；它只影响渲染。
 
 ```text
 Site        { name, tagline, description, logoUrl, faviconUrl, baseUrl,
@@ -148,7 +170,7 @@ SitePage    { slug, title, content, updatedAt }   // /p/:slug 与 /about
 - 字段命名固定（`camelCase`）；改名为破坏性变更。
 - 首屏与站内跳转都由 runtime 在导航确认前取数（`beforeResolve`），确认后一次性写入（`afterEach`）。因此 `loading` 不是首屏必经态，**主题不要依赖骨架屏表达加载**；导航期间旧页面保持可见。
 
-### 3.3 动作
+### 3.3 动作与辅助函数
 
 | 动作 | 参数 | 说明 |
 | --- | --- | --- |
@@ -159,26 +181,54 @@ SitePage    { slug, title, content, updatedAt }   // /p/:slug 与 /about
 | `scrollToTop()` | — | 回到顶部 |
 | `openLightbox(src, alt)` | `string, string` | 打开图片灯箱 |
 
+辅助函数（只读，不含副作用）：
+
+| 函数 | 参数 | 说明 |
+| --- | --- | --- |
+| `isNavActive(to)` | `string` | 当前 URL 是否命中该导航项（含子路径），用于高亮 |
+| `formatDate(value)` | `string \| null \| undefined` | 站点统一的日期展示格式 |
+
 导航统一用 `<a href>`（history 路由由 runtime 接管），不提供 `navigate()`。
 
 ### 3.4 组件
 
-| 组件 | props | events | 自取数据 |
-| --- | --- | --- | --- |
-| `<blog-post-card>` | `post`, `variant?` | — | 否 |
-| `<blog-post-list>` | `posts`, `layout?` | — | 否 |
-| `<blog-markdown>` | `source` | — | 否 |
-| `<blog-toc>` | `selector?` | — | 否（读 DOM） |
-| `<blog-pager>` | `pager` | `go` | 否 |
-| `<blog-tag-chip>` | `tag` | — | 否 |
-| `<blog-tag-cloud>` | — | — | **按需**（优先复用路由快照） |
-| `<blog-archives>` | — | — | **按需**（优先复用路由快照） |
-| `<blog-search-box>` | `value?` | `search` | 否 |
-| `<blog-theme-toggle>` | — | — | 否 |
-| `<blog-image>` | `src`, `alt`, `ratio?` | — | 否（含灯箱） |
-| `<blog-back-to-top>` | — | — | 否 |
-| `<blog-reading-progress>` | — | — | 否 |
-| `<blog-state>` | `state`, `message?` | — | 否（四态占位） |
+| 组件 | props | events | slots | 自取数据 |
+| --- | --- | --- | --- | --- |
+| `<blog-post-card>` | `post` | — | `#default`（作用域 `post`） | 否 |
+| `<blog-markdown>` | `source` | — | — | 否 |
+| `<blog-toc>` | — | — | — | 否（读 DOM） |
+| `<blog-pager>` | `pager` | `go` | — | 否 |
+| `<blog-tag-chip>` | `tag` | — | — | 否 |
+| `<blog-tag-cloud>` | — | — | — | **按需**（优先复用路由快照） |
+| `<blog-archives>` | — | — | — | **按需**（优先复用路由快照） |
+| `<blog-search-box>` | `value?` | `search` | — | 否 |
+| `<blog-theme-toggle>` | — | — | — | 否 |
+| `<blog-image>` | `src`, `alt` | — | — | 否（含灯箱） |
+| `<blog-back-to-top>` | — | — | — | 否 |
+| `<blog-reading-progress>` | — | — | — | 否 |
+| `<blog-state>` | `state`, `message?` | — | — | 否（四态占位） |
+
+> props / slots 以 `contract.ts` 的 `CONTRACT_COMPONENTS` 为准（上表与其不一致视为缺陷）。`<blog-post-list>` 尚未实现，列表请用 `v-for` + `<blog-post-card>`。
+>
+> **样式接口（v1.8）**：每个组件对外暴露的 class 登记在 `contract.ts` 的 `parts`，属于公开接口、只增不改；`globalParts` 记录不属于组件但由 runtime 渲染的 class（如灯箱 `bc-lightbox`）。历史遗留的非 `bc-` 前缀 class（如归档的 `archive-index`）也已登记，同样承诺稳定。主题只能通过这些 class 定制组件外观，**不承诺其他内部结构**。组件模板输出的 class 与登记不一致（多或少）时 `pnpm check:contract` 直接失败。
+
+**具名 slot（v1.9）**：组件登记了哪些 slot、每个 slot 作用域提供什么变量，都在 `slots` 里；主题给槽位传内容即**整体替换**该组件内部结构，不传则用默认结构。
+
+```html
+<!-- 默认结构 -->
+<blog-post-card :post="item"></blog-post-card>
+
+<!-- 接管内部结构：外壳仍是 .bc-card，类名 / 数据属性照旧 -->
+<blog-post-card :post="item">
+  <template #default="{ post }">
+    <h2 class="my-title"><a :href="'/posts/' + post.slug">{{ post.title }}</a></h2>
+    <p class="my-summary">{{ post.summary }}</p>
+    <time class="my-time">{{ formatDate(post.firstPublishedAt) }}</time>
+  </template>
+</blog-post-card>
+```
+
+接管后，组件原本输出的 `parts` class 不再出现，主题须自行负责可访问性（标题层级、链接文本、焦点样式）。slot 是**公开接口、只增不改**：登记表里没有的槽位用了会自检失败，组件改了槽位名同样失败。
 
 规则：
 
@@ -255,6 +305,25 @@ html[data-blog-navigating="1"]        路由取数中，顶部进度条可见
 
 首屏加载层由后端壳在主题 HTML 之前输出，基础样式内联在 `<head>`：`runtime.css` 随 JS 到达，赶不上首帧。它只取 `--blog-bg` 与 `--blog-text-muted` 两个变量，默认显示；主题若要纯空白首帧，可在 `theme.css` 写 `[data-blog-boot]{display:none}`。启动失败时 runtime 会以内联 `!important` 强制显示错误文案，主题的隐藏规则不会吞掉错误。
 
+### 3.7 契约自检
+
+`frontend/scripts/theme-contract.mjs`（`pnpm check:contract`，已并入 `pnpm typecheck`）保证"文档说的契约"与"runtime 实际暴露的能力"一致：
+
+| 检查 | 失败含义 |
+| --- | --- |
+| `createTemplateContext()` 返回键 == `contract.ts` 的 data / helpers / actions | 暴露了没登记的能力，或登记了没实现的键 |
+| `blogComponents` 注册表 == `CONTRACT_COMPONENTS` | 组件新增 / 删除没同步契约 |
+| 组件模板输出的 class（含历史遗留的 `archive-index`）== 该组件的 `parts` | 组件改了内部结构却没更新样式接口（主题会静默失效） |
+| 组件模板声明的 slot + 作用域变量 == 该组件的 `slots` | 新增 / 改名 / 删掉槽位没同步契约（主题接管处会失效） |
+| `runtime.css` / 默认主题只使用已登记的 class | 样式化了主题无法发现的内部 class |
+| `runtime.css` 消费的 `--blog-*` ⊆ 已登记变量 | 组件样式依赖了未承诺的变量 |
+| 默认主题只使用已登记的组件 / 指令 / 标识符 | starter 用了契约外能力（会让照抄 starter 的主题走上未承诺路径） |
+| 能力 fixture（`scripts/fixtures/theme-capabilities.html`）通过 | 扫描器误判了合法写法（`ui` / 具名 slot / 箭头函数），会挡掉主题作者 |
+
+`--theme <file>` 可校验任意主题 HTML（如库内版本），`--emit` 生成 `apps/blog/dist/theme-contract.json`。
+
+约定：**新增模板键 / 组件 / 变量时，先改 `contract.ts`，再改 `template-context.ts` / `components.ts`**；顺序反了会在自检时报"已暴露但未登记"。
+
 ---
 
 ## 4. 主题模型
@@ -263,7 +332,7 @@ html[data-blog-navigating="1"]        路由取数中，顶部进度条可见
 
 - 主题必须提供 `<div id="app">` 根节点；模板由 runtime 编译。
 - **禁止** `<script>`、`v-html`、`window` / `fetch` / `eval` / `localStorage` 等表达式。
-- 允许：`v-if` / `v-for` / `v-show` / `:class` / `:style` / `@click`（只能调用 §3.3 的动作）、组件标签。
+- 允许：`v-if` / `v-for` / `v-show` / `v-model="ui.x"` / `:class` / `:style` / `@click`（只能调用 §3.3 的动作）、组件标签与具名 slot、表达式内的方法调用（`filter` / `slice` / `sort` 等）与箭头函数。
 - 主题可以只实现部分页面，缺失页面回落内置默认主题。
 
 ### 4.2 文件模型
@@ -292,10 +361,12 @@ backend/src/main/resources/blog/default-theme/{theme.html,theme.css}   ← pnpm 
 | --- | --- |
 | 任意 DOM 结构与区块顺序 | 新增页面类型 / 路由 |
 | 每页独立版式 | 新增领域数据（评论、阅读量） |
-| 导航形态（顶栏 / 侧栏 / 抽屉） | 新增交互行为（需 runtime 加组件） |
-| 条件渲染、循环、分组 | 修改 Markdown 方言 |
-| 明暗双套配色 | 引入第三方脚本 |
-| 响应式任意断点 | 修改 URL 结构 |
+| 导航形态（顶栏 / 侧栏 / 抽屉） | 新增网络请求 / 新数据源 |
+| 主题自有交互状态（抽屉、标签页、页内筛选，走 `ui`） | 修改 Markdown 方言 |
+| 条件渲染、循环、分组、页内派生计算 | 引入第三方脚本 |
+| 接管组件内部结构（具名 slot） | 修改 URL 结构 |
+| 明暗双套配色 | 跨页持久化的界面状态（`ui` 路由切换即清空） |
+| 响应式任意断点 | 主题间共享逻辑（没有 JS 模块） |
 
 ### 4.4 数据选择
 
@@ -305,7 +376,7 @@ backend/src/main/resources/blog/default-theme/{theme.html,theme.css}   ← pnpm 
 | 可选（`tags` / `archives`） | 标签 / 归档页由路由守卫预取；其他页面由组件按需自取，`v-if` 同时控制渲染与请求 |
 | 缺省页面 | 回落内置默认主题 |
 
-模板中禁止复杂逻辑；runtime 提供 `take(list, n)`、`pinned(list)` 等小工具。
+模板中禁止复杂逻辑；可用的只读辅助函数见 §3.3（`isNavActive`、`formatDate`），不存在 `take` / `pinned` 之类的模板工具。
 
 ### 4.5 路由
 
@@ -321,6 +392,7 @@ backend/src/main/resources/blog/default-theme/{theme.html,theme.css}   ← pnpm 
 | 其他 | 404 | — |
 
 后端对以上路径统一 fallback 到同一 HTML 骨架；URL 结构对外是契约，不随主题变化。
+`/about` 是 `/p/:slug` 的 alias（共用 `route.name = 'page'`）：vue-router 5 会丢弃同名路由中先注册的一条，因此不允许为两者各建一条同名记录（`pnpm check:contract` 会拦）。
 
 **fallback 规则（v1.5）**：后端不再逐个登记页面路径。除保留前缀（`/api`、`/blog`、`/v3`、`/error`、
 `/favicon.svg`）外，任意 GET 都返回同一壳（`BlogPageController.SHELL_PATH`），因此**新增前端路由无需改后端**。
@@ -680,6 +752,7 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | `frontend/AGENTS.md` | `apps/blog` 为 Vite 构建的 runtime（TS，无 SFC 依赖）；产物在 Maven 打包时进入后端 jar；共享方言与默认主题位置 |
 | `docs/content-model.md` | §9.2 前台信息架构改为「后端组装壳 + 运行时」；§10 补充 Markdown 渲染归属 |
 | `backend/AGENTS.md` | 记录 `site_theme_version` 不可变、`site_setting` 物理 upsert 两项审计例外；主题以 API / 壳下发，后端不执行主题模板；jar 内 runtime 的打包与缓存约定 |
+| `frontend/AGENTS.md` | 新增「契约单一来源」：主题能力只在 `apps/blog/src/contract.ts` 登记，改动后必须 `pnpm check:contract` 通过 |
 
 ---
 
@@ -695,3 +768,5 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 2026-10-26 | v1.5 实现 | **页面路由归 runtime**：`BlogPageController` 的 8 条页面映射收敛为一条 catch-all（`SHELL_PATH`，排除 `/api`、`/blog`、`/v3`、`/error`、`/favicon.svg`）；未知页面返回 `200 + 壳`，由 runtime 渲染 not-found；`SecurityConfig` 改为"`/api/**` 认证 + 非 API 的 GET 公开"，不再登记页面路径；新增 `startup/ApiPathValidator` 启动期校验（本项目 handler 必须在 `/api/` 下，壳控制器除外），补 `BlogShellRouteIntegrationTest`；数据库零迁移 |
 | 2026-10-26 | v1.6 实现 | **首屏去骨架**：壳内联 `[data-blog-boot]` 轻量加载层 + `[data-blog-progress]` 顶部进度条（`SHELL_VERSION` → 3）；runtime 改为 `beforeResolve` 取数、`afterEach` 一次性写入，`router.isReady()` 后挂载，首屏不再出现 `.bc-skeleton`；站内导航保留旧页面并中止上一笔请求；文章页 Lute 与正文请求并行、上下篇后台补取；标签 / 归档组件优先复用路由快照，消除重复请求与空态闪烁；主题可用 CSS 隐藏加载层，启动错误强制显示；数据库零迁移 |
 | 2026-10-26 | v1.7 实现 | **主题切换入口收敛**：`theme.id` 改为系统托管键，`PUT /api/admin/site/settings` 拒绝写入（400），站点设置只读展示当前主题名称 + 跳转主题管理；修复非线上主题被误标「已应用」导致「应用」按钮禁用（改为 `isActiveSiteTheme && activeVersionId`）；数据库零迁移 |
+| 2026-10-27 | v1.8 契约收敛 | **契约成为可执行产物**：新增 `apps/blog/src/contract.ts`（数据 / 辅助函数 / 动作 / 组件 / CSS 变量 / 允许指令的唯一登记处）与 `template-context.ts`（模板上下文由它统一构造）；`scripts/theme-contract.mjs` 守护"暴露面 == 登记面"，已并入 `pnpm typecheck`，`pnpm build:blog` 额外产出 `dist/theme-contract.json`；补齐文档漏项 `isNavActive` / `formatDate` / `archiveGroups` / `searched` / `page`；修正 §3.4 与实现不一致的 props（去掉从未实现的 `variant` / `selector` / `ratio` 与 `blog-post-list`）；修正 §4.4 中从未存在的 `take` / `pinned`；修复 `/about` 因与 `/p/:slug` 同名被 vue-router 5 丢弃而落入 404（改为 alias，并把路由名重复纳入自检）；**组件 `.bc-*` class 升级为公开样式接口**：`CONTRACT_COMPONENTS[].parts` + `CONTRACT_GLOBAL_PARTS`，自检双向校验"组件输出的 class == 登记"，`runtime.css` 与默认主题也不得样式化未登记 class；数据库零迁移 |
+| 2026-10-27 | v1.9 表达力扩展 | **`ui`**：主题唯一可写的响应式对象，用于抽屉 / 标签页 / 页内筛选；路由切换清空、不持久化，`v-model="ui.x"` 与直接赋值均可用；**具名 slot**：`<blog-post-card>` 增加 `#default`（作用域 `post`），传内容即整体接管卡片内部结构，`contract.ts` 的 `slots` 纳入自检双向校验（槽位名 + 作用域变量）；修复自检把箭头函数参数误判为未登记标识符（`posts.filter(item => …)` 恢复可用），slot 作用域变量同样按局部变量处理；文档补 §4.1 允许的表达式能力、§4.3 能力边界；数据库零迁移 |

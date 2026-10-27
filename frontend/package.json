@@ -18,7 +18,8 @@
     "gen:api": "pnpm --filter @simple-notes/api gen:api",
     "sync:theme": "node scripts/sync-theme-starter.mjs",
     "check:theme": "node scripts/sync-theme-starter.mjs --check",
-    "typecheck": "pnpm check:theme && pnpm -r --if-present typecheck"
+    "check:contract": "node scripts/theme-contract.mjs",
+    "typecheck": "pnpm check:theme && pnpm check:contract && pnpm -r --if-present typecheck"
   },
   "devDependencies": {
     "@vue/tsconfig": "catalog:",

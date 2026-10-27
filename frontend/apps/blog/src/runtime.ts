@@ -1,10 +1,4 @@
-import {
-  computed,
-  createApp,
-  nextTick,
-  ref,
-  watch,
-} from 'vue'
+import { createApp, nextTick, ref, watch } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteLocationNormalized } from 'vue-router'
 
@@ -12,11 +6,9 @@ import runtimeCss from './runtime.css?raw'
 
 import { api } from './api'
 import { blogComponents } from './components'
-import { formatDate } from './format'
-import { openLightbox } from './lightbox'
+import { RUNTIME_CONTRACT } from './contract'
 import { warmMarkdown } from './markdown'
 import {
-  RUNTIME_CONTRACT,
   applyThemeCss,
   injectThemeHtml,
   removeCloak,
@@ -25,10 +17,8 @@ import {
 } from './theme'
 import {
   applyColorMode,
-  archiveGroups,
   archives,
   archivesLoaded,
-  colorMode,
   contentVersion,
   currentPath,
   emptyPager,
@@ -47,9 +37,9 @@ import {
   tags,
   tagsLoaded,
   toPager,
-  toggleColorMode,
 } from './store'
 import type { BlogState } from './store'
+import { createTemplateContext } from './template-context'
 import type {
   Archive,
   Boot,
@@ -166,8 +156,9 @@ const router = createRouter({
     { path: '/tags/:id', name: 'tag-posts', component: Blank },
     { path: '/archives', name: 'archives', component: Blank },
     { path: '/search', name: 'search', component: Blank },
-    { path: '/about', name: 'page', component: Blank },
-    { path: '/p/:slug', name: 'page', component: Blank },
+    // /about 用 alias 合并到独立页面路由：theme 只认 route.name === 'page'（契约 §3.2），
+    // 若单独建一条同名路由，vue-router 5 会丢弃先注册的那条，导致 /about 落入 404。
+    { path: '/p/:slug', alias: '/about', name: 'page', component: Blank },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: Blank },
   ],
   scrollBehavior(to, _from, savedPosition) {
@@ -523,34 +514,7 @@ async function main(): Promise<void> {
   const app = createApp({
     template: mountTemplate,
     setup() {
-      return {
-        site,
-        nav: computed(() => site.value.nav || []),
-        route,
-        state,
-        message,
-        posts,
-        pager,
-        post,
-        prevPost,
-        nextPost,
-        tags,
-        tag,
-        archives,
-        archiveGroups,
-        keyword,
-        page,
-        searched,
-        colorMode,
-        go,
-        search,
-        isNavActive,
-        setColorMode,
-        toggleColorMode,
-        scrollToTop,
-        openLightbox,
-        formatDate,
-      }
+      return createTemplateContext({ site, route, go, search, isNavActive, scrollToTop })
     },
   })
 

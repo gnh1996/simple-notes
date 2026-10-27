@@ -32,6 +32,9 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 - 开发期：`mvn spring-boot:run` 默认启用 `dev` profile，`asset-base` 自动指向 Vite（`http://localhost:5174`）获得 HMR；生产 jar 不启用，固定 `/blog`
 - 主题来自数据库且**禁止携带脚本**；runtime 加载前必须再执行一次 `validateTheme`（保存时后端已校验）
 - 内置默认主题唯一源：`packages/theme-starter/`；后端兜底副本用 `pnpm sync:theme` 同步、`pnpm check:theme` 校验，禁止只改一边
+- **契约单一来源**：主题可见的数据 / 动作 / 辅助函数 / 组件 / CSS 变量 / 允许指令只在 `apps/blog/src/contract.ts` 登记；`template-context.ts` 与 `components.ts` 必须与之一致，`pnpm check:contract`（已并入 `typecheck`）会拦下"暴露了没登记 / 登记了没实现"；新增能力先改契约再改实现
+- **组件样式接口**：组件模板里的 class（`.bc-*`，以及历史遗留的 `archive-index`）是公开样式接口（`CONTRACT_COMPONENTS[].parts`）；改组件内部结构时不得改名或删除已登记的 class，新增 class 要同步登记，否则自检失败
+- **主题可写状态只有 `ui`**：抽屉 / 标签页 / 页内筛选等界面状态放 `ui`，路由切换即清空；不要把业务状态写进去。需要接管组件内部结构时用已登记的具名 slot（当前仅 `blog-post-card#default`），槽位与作用域变量同样在 `contract.ts` 登记
 - Markdown 方言从 `@simple-notes/markdown` 取（`createPreviewOptions` / `renderToElement` / `sanitizeHtml`），不得在 app 内另写一份配置；Lute 与 hljs 资源由 `pnpm sync:vditor` 自托管
 - 运行时只调用公开接口；依赖全部打进 bundle，**禁止引用公共 CDN**
 - 断点值与 `BREAKPOINTS` 保持一致（runtime 通过 CSS 媒体查询，不按 UA 判断）

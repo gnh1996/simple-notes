@@ -1,0 +1,64 @@
+<!--
+  契约能力 fixture（docs/blog-runtime-theme.md §3.7）
+  作用：锁住"合法的主题写法不会被自检误判"——`ui`、具名 slot、箭头函数、表达式方法调用。
+  规则：本文件必须只使用 contract.ts 登记过的数据 / 组件 / 指令 / 标识符；
+        新增表达力时在这里补一段，自检即随 `pnpm check:contract` 一起跑。
+-->
+<div id="app" :data-state="state">
+  <header>
+    <button type="button" @click="ui.drawer = !ui.drawer" :aria-expanded="ui.drawer ? 'true' : 'false'">
+      菜单
+    </button>
+    <nav v-show="ui.drawer">
+      <a v-for="item in nav" :key="item.key" :href="item.to" :class="{ active: isNavActive(item.to) }">
+        {{ item.label }}
+      </a>
+    </nav>
+  </header>
+
+  <main>
+    <blog-state v-if="state !== 'ready'" :state="state" :message="message"></blog-state>
+
+    <template v-else-if="route.name === 'home'">
+      <input v-model="ui.keyword" type="search" aria-label="页内筛选" />
+      <p>{{ posts.filter(item => item.title.includes(ui.keyword || '')).length }} / {{ posts.length }}</p>
+
+      <blog-post-card v-for="item in posts" :key="item.slug" :post="item">
+        <template #default="{ post }">
+          <h2><a :href="'/posts/' + post.slug">{{ post.title }}</a></h2>
+          <p>{{ post.summary }}</p>
+          <time>{{ formatDate(post.firstPublishedAt) }}</time>
+        </template>
+      </blog-post-card>
+
+      <blog-pager :pager="pager" @go="go"></blog-pager>
+    </template>
+
+    <template v-else-if="route.name === 'archives'">
+      <blog-archives></blog-archives>
+      <p v-for="group in archiveGroups" :key="group.key">{{ group.year }} / {{ group.month }}</p>
+    </template>
+
+    <template v-else-if="route.name === 'post'">
+      <h1>{{ post ? post.title : '' }}</h1>
+      <blog-markdown :source="post ? post.content : ''"></blog-markdown>
+      <blog-toc></blog-toc>
+      <blog-image :src="post && post.coverUrl ? post.coverUrl : ''" alt=""></blog-image>
+    </template>
+
+    <template v-else-if="route.name === 'tags'">
+      <blog-tag-cloud></blog-tag-cloud>
+    </template>
+
+    <template v-else-if="route.name === 'page'">
+      <h1>{{ page ? page.title : '' }}</h1>
+    </template>
+  </main>
+
+  <footer>
+    <blog-search-box :value="keyword" @search="search"></blog-search-box>
+    <blog-theme-toggle></blog-theme-toggle>
+    <blog-back-to-top></blog-back-to-top>
+    <blog-reading-progress></blog-reading-progress>
+  </footer>
+</div>

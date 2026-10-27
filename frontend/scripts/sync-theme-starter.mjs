@@ -19,8 +19,10 @@ const targetDir = join(here, '..', '..', 'backend', 'src', 'main', 'resources', 
 const files = ['theme.html', 'theme.css']
 const check = process.argv.includes('--check')
 
+/** 归一化行尾再比对：Windows 检出（core.autocrlf）不应让副本校验误报漂移。 */
 function digest(content) {
-  return createHash('sha256').update(content).digest('hex')
+  const text = Buffer.isBuffer(content) ? content.toString('utf8') : content
+  return createHash('sha256').update(text.replace(/\r\n/g, '\n')).digest('hex')
 }
 
 for (const file of files) {

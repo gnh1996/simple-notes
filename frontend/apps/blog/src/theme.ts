@@ -3,9 +3,6 @@ import starterHtml from '@simple-notes/theme-starter/theme.html?raw'
 
 import type { ThemePayload, ThemeValidationResult } from './types'
 
-/** 运行时契约版本（docs/blog-runtime-theme.md §3.1）：与后端 ThemeService 同步。 */
-export const RUNTIME_CONTRACT = 1
-
 /** 内置默认主题：runtime 兜底 + 主题契约不兼容时的回退（随构建发布）。 */
 export const starterTheme: ThemePayload = {
   id: 'default',
