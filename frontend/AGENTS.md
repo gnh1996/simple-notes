@@ -26,13 +26,13 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 
 > 设计与实现见 `docs/blog-runtime-theme.md`（v1.3 / 方案 C 已落地）。
 
-- **构建产物**：`apps/blog` 是 Vite + TS 的 runtime（无 SFC 依赖，组件模板在运行时编译）；产物入口固定为 `runtime.js`，Maven `prepare-package` 会拷入后端 jar 的 `static/blog/`
+- **构建产物**：`apps/blog` 是 Vite + TS 的 runtime；产物入口固定为 `runtime.js`，Maven `prepare-package` 会拷入后端 jar 的 `static/blog/`。**主题模板是运行时数据，必须保留 Vue 运行时编译器**（`vue` alias 指向 `vue/dist/vue.esm-bundler.js`，不要改成 runtime-only）；组件统一是 `.vue` 单文件组件（构建期编译，模板进 `vue-tsc` 类型检查）
 - **首屏**：唯一启动路径 = 后端 `BlogPageController` 组装壳（站点配置 + 主题 HTML/CSS 内联）；runtime 只读 `window.__BLOG_BOOT__`，不再有客户端 bootstrap 启动分支。路由数据在 `beforeResolve` 取好、`afterEach` 一次性写入，壳内 `[data-blog-boot]` 加载层在 `data-blog-ready=1` 后淡出；主题可用 CSS 隐藏它
 - **路由**：页面路由的唯一来源是 `apps/blog/src/runtime.ts` 的 vue-router 表；后端只做 history fallback，新增路由**不要**改后端
 - 开发期：`mvn spring-boot:run` 默认启用 `dev` profile，`asset-base` 自动指向 Vite（`http://localhost:5174`）获得 HMR；生产 jar 不启用，固定 `/blog`
 - 主题来自数据库且**禁止携带脚本**；runtime 加载前必须再执行一次 `validateTheme`（保存时后端已校验）
 - 内置默认主题唯一源：`packages/theme-starter/`；后端兜底副本用 `pnpm sync:theme` 同步、`pnpm check:theme` 校验，禁止只改一边
-- **契约单一来源**：主题可见的数据 / 动作 / 辅助函数 / 组件 / CSS 变量 / 允许指令只在 `apps/blog/src/contract.ts` 登记；`template-context.ts` 与 `components.ts` 必须与之一致，`pnpm check:contract`（已并入 `typecheck`）会拦下"暴露了没登记 / 登记了没实现"；新增能力先改契约再改实现
+- **契约单一来源**：主题可见的数据 / 动作 / 辅助函数 / 组件 / CSS 变量 / 允许指令只在 `apps/blog/src/contract.ts` 登记；`template-context.ts` 与 `components/*.vue`（注册表 `components/index.ts`，一个组件一个文件，组件内禁止 `<style>`）必须与之一致，`pnpm check:contract`（已并入 `typecheck`）会拦下"暴露了没登记 / 登记了没实现"；新增能力先改契约再改实现
 - **组件样式接口**：组件模板里的 class（`.bc-*`，以及历史遗留的 `archive-index`）是公开样式接口（`CONTRACT_COMPONENTS[].parts`）；改组件内部结构时不得改名或删除已登记的 class，新增 class 要同步登记，否则自检失败
 - **主题可写状态只有 `ui`**：抽屉 / 标签页 / 页内筛选等界面状态放 `ui`，路由切换即清空；不要把业务状态写进去。需要接管组件内部结构时用已登记的具名 slot（当前仅 `blog-post-card#default`），槽位与作用域变量同样在 `contract.ts` 登记
 - Markdown 方言从 `@simple-notes/markdown` 取（`createPreviewOptions` / `renderToElement` / `sanitizeHtml`），不得在 app 内另写一份配置；Lute 与 hljs 资源由 `pnpm sync:vditor` 自托管

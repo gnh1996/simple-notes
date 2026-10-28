@@ -1,5 +1,6 @@
 import { fileURLToPath, URL } from 'node:url'
 
+import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 
 // https://vite.dev/config/
@@ -9,6 +10,8 @@ export default defineConfig({
   // 产物由后端壳以 `<asset-base>/runtime.js` 引用，块间相对路径即可
   base: './',
   plugins: [
+    // 组件可以是 .vue（单文件组件试点）；主题模板仍走运行时编译，vue alias 不动
+    vue(),
     {
       // 后端壳固定引用 /runtime.js；开发期把它接到 Vite 的 TS 入口
       name: 'blog-dev-runtime-entry',

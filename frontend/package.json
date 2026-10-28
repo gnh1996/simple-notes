@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@vue/tsconfig": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vue": "catalog:"
   }
 }

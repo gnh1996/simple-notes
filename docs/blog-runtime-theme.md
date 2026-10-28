@@ -1,6 +1,6 @@
 # 博客运行时与主题化设计（Blog Runtime & Theme）
 
-> **状态：v1.9 · 2026-10-27（表达力扩展：`ui` 交互状态 + 组件具名 slot）**
+> **状态：v1.12 · 2026-10-28（组件全量迁移为单文件组件）**
 > 范围：博客前台从 Vue SPA 改为「后端组装页面 + 固定运行时 + 数据化主题」；runtime 仍由 Vite 构建，但产物在 Maven 打包时进入后端 jar，与页面、API 同源提供；含站点配置、独立页面、主题管理与 agent 预览链路
 > 关联：`docs/content-model.md`（内容与公开读取）、`docs/tech-stack.md`（选型）、`docs/markdown-dialect.md`（方言）、`docs/auth-rbac.md`（权限码与菜单）
 > 非目标：SSR / 预渲染、评论、图片派生、RSS / sitemap、主题市场、多作者
@@ -232,8 +232,9 @@ SitePage    { slug, title, content, updatedAt }   // /p/:slug 与 /about
 
 规则：
 
+- **一个组件一个文件，且一律是 `.vue` 单文件组件**：`apps/blog/src/components/` 下按组件命名（`blog-post-card` → `post-card.vue`，即去掉 `blog-` 前缀），注册表集中在 `components/index.ts` 且值必须是组件标识符（自检按标识符定位文件）。模板由构建期编译，因此进 `vue-tsc` 类型检查（`template` 字符串做不到）；**禁止 `<style>`**，样式一律留 `runtime.css`（`.bc-*` 是公开样式接口，组件内自带样式会让主题按 `parts` 覆盖静默失效）。`scripts/theme-contract.mjs` 按 `index.ts` 的导入解析每个组件文件，用 `vue/compiler-sfc` 读 `<template>` 扫描：非 `.vue` 文件、未注册的文件、含 `<style>` 的文件都会报错。
 - **可选数据默认不预取**：标签 / 归档页由路由守卫取核心数据，组件直接复用；非数据页放 `<blog-tag-cloud>` / `<blog-archives>` 时组件按需请求，不放就零成本。
-- 新增组件 = 纯增量，不升契约；删除 / 改 props = 破坏性变更。
+- 新增组件 = 纯增量，不升契约；删除 / 改 props = 破坏性变更（落一个新组件文件 + 在 `index.ts` 注册 + 在 `contract.ts` 登记）。
 - 组件内部样式由 runtime.css 提供，主题可覆盖但不得破坏其行为。
 
 ### 3.5 注入的站点配置键（KV 契约）
@@ -312,8 +313,11 @@ html[data-blog-navigating="1"]        路由取数中，顶部进度条可见
 | 检查 | 失败含义 |
 | --- | --- |
 | `createTemplateContext()` 返回键 == `contract.ts` 的 data / helpers / actions | 暴露了没登记的能力，或登记了没实现的键 |
-| `blogComponents` 注册表 == `CONTRACT_COMPONENTS` | 组件新增 / 删除没同步契约 |
-| 组件模板输出的 class（含历史遗留的 `archive-index`）== 该组件的 `parts` | 组件改了内部结构却没更新样式接口（主题会静默失效） |
+| `blogComponents` 注册表（`components/index.ts`）== `CONTRACT_COMPONENTS` | 组件新增 / 删除没同步契约 |
+| 组件模板输出的 class（含历史遗留的 `archive-index`）== 该组件的 `parts` | 组件改了内部结构却没更新样式接口（主题会静默失效）；报错会指向具体组件文件 |
+| 组件文件不含 `<style>` 块 | 组件样式脱离了 `runtime.css`，主题按 `parts` 覆盖会静默失效 |
+| 组件文件一律是 `.vue` | 退回 template 字符串写法，模板失去 `vue-tsc` 类型检查 |
+| `components/` 下每个文件都已在 `index.ts` 注册 | 组件写了但主题用不到（漏注册） |
 | 组件模板声明的 slot + 作用域变量 == 该组件的 `slots` | 新增 / 改名 / 删掉槽位没同步契约（主题接管处会失效） |
 | `runtime.css` / 默认主题只使用已登记的 class | 样式化了主题无法发现的内部 class |
 | `runtime.css` 消费的 `--blog-*` ⊆ 已登记变量 | 组件样式依赖了未承诺的变量 |
@@ -322,7 +326,7 @@ html[data-blog-navigating="1"]        路由取数中，顶部进度条可见
 
 `--theme <file>` 可校验任意主题 HTML（如库内版本），`--emit` 生成 `apps/blog/dist/theme-contract.json`。
 
-约定：**新增模板键 / 组件 / 变量时，先改 `contract.ts`，再改 `template-context.ts` / `components.ts`**；顺序反了会在自检时报"已暴露但未登记"。
+约定：**新增模板键 / 组件 / 变量时，先改 `contract.ts`，再改 `template-context.ts` / `components/index.ts` + 新增组件文件**；顺序反了会在自检时报"已暴露但未登记"。
 
 ---
 
@@ -749,7 +753,7 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | --- | --- |
 | `docs/tech-stack.md` | 博客前台 Markdown 渲染由 md-editor-v3 `MdPreview` 改为运行时内置 `markdown-it`（方言一致）；2026-10-25 起进一步改为 **Lute**（与 admin 同引擎） |
 | `docs/markdown-dialect.md` | 明确方言的唯一浏览器实现位于 blog runtime；admin 使用 Vditor/Lute（方言 v2） |
-| `frontend/AGENTS.md` | `apps/blog` 为 Vite 构建的 runtime（TS，无 SFC 依赖）；产物在 Maven 打包时进入后端 jar；共享方言与默认主题位置 |
+| `frontend/AGENTS.md` | `apps/blog` 为 Vite 构建的 runtime（TS + 单文件组件；Vue 运行时编译器保留给主题模板）；产物在 Maven 打包时进入后端 jar；共享方言与默认主题位置 |
 | `docs/content-model.md` | §9.2 前台信息架构改为「后端组装壳 + 运行时」；§10 补充 Markdown 渲染归属 |
 | `backend/AGENTS.md` | 记录 `site_theme_version` 不可变、`site_setting` 物理 upsert 两项审计例外；主题以 API / 壳下发，后端不执行主题模板；jar 内 runtime 的打包与缓存约定 |
 | `frontend/AGENTS.md` | 新增「契约单一来源」：主题能力只在 `apps/blog/src/contract.ts` 登记，改动后必须 `pnpm check:contract` 通过 |
@@ -770,3 +774,6 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 2026-10-26 | v1.7 实现 | **主题切换入口收敛**：`theme.id` 改为系统托管键，`PUT /api/admin/site/settings` 拒绝写入（400），站点设置只读展示当前主题名称 + 跳转主题管理；修复非线上主题被误标「已应用」导致「应用」按钮禁用（改为 `isActiveSiteTheme && activeVersionId`）；数据库零迁移 |
 | 2026-10-27 | v1.8 契约收敛 | **契约成为可执行产物**：新增 `apps/blog/src/contract.ts`（数据 / 辅助函数 / 动作 / 组件 / CSS 变量 / 允许指令的唯一登记处）与 `template-context.ts`（模板上下文由它统一构造）；`scripts/theme-contract.mjs` 守护"暴露面 == 登记面"，已并入 `pnpm typecheck`，`pnpm build:blog` 额外产出 `dist/theme-contract.json`；补齐文档漏项 `isNavActive` / `formatDate` / `archiveGroups` / `searched` / `page`；修正 §3.4 与实现不一致的 props（去掉从未实现的 `variant` / `selector` / `ratio` 与 `blog-post-list`）；修正 §4.4 中从未存在的 `take` / `pinned`；修复 `/about` 因与 `/p/:slug` 同名被 vue-router 5 丢弃而落入 404（改为 alias，并把路由名重复纳入自检）；**组件 `.bc-*` class 升级为公开样式接口**：`CONTRACT_COMPONENTS[].parts` + `CONTRACT_GLOBAL_PARTS`，自检双向校验"组件输出的 class == 登记"，`runtime.css` 与默认主题也不得样式化未登记 class；数据库零迁移 |
 | 2026-10-27 | v1.9 表达力扩展 | **`ui`**：主题唯一可写的响应式对象，用于抽屉 / 标签页 / 页内筛选；路由切换清空、不持久化，`v-model="ui.x"` 与直接赋值均可用；**具名 slot**：`<blog-post-card>` 增加 `#default`（作用域 `post`），传内容即整体接管卡片内部结构，`contract.ts` 的 `slots` 纳入自检双向校验（槽位名 + 作用域变量）；修复自检把箭头函数参数误判为未登记标识符（`posts.filter(item => …)` 恢复可用），slot 作用域变量同样按局部变量处理；文档补 §4.1 允许的表达式能力、§4.3 能力边界；数据库零迁移 |
+| 2026-10-28 | v1.10 组件拆分 | `apps/blog/src/components.ts`（13 个组件 373 行）拆为**一个组件一个文件**：`apps/blog/src/components/<组件名>.ts` + `index.ts` 注册表（值仍为组件标识符）；`scripts/theme-contract.mjs` 改为遍历目录收集 `defineComponent` 模板，注册表取自 `index.ts`，自检报错定位到具体组件文件，并新增"组件文件里没有 `defineComponent`"与"组件标识符跨文件重复"两项守护；契约、`parts` / `slots` 校验口径不变，`runtime.ts` 的 `./components` 入口不变；数据库零迁移 |
+| 2026-10-28 | v1.11 试点 | **单文件组件试点**：`@vitejs/plugin-vue` 接入 `apps/blog`（catalog 已有，构建期依赖），`<blog-pager>` 改为 `components/pager.vue`（`<script setup>` + `<template>`），其余组件仍是 `.ts` template 字符串；自检改为按 `index.ts` 的导入定位组件文件，`.vue` 用 `vue/compiler-sfc` 读 `<template>` 扫描（`parts` / `slots` 规则不变），并新增两项守护：组件文件含 `<style>` 直接失败、`components/` 下未注册的文件直接失败。收益是 SFC 模板进 `vue-tsc` 类型检查（template 字符串做不到）；代价：Vue 运行时编译器仍不能去掉（主题用），构建产物 +0.07 kB。**未决策是否全量迁移**，其余组件维持现状 |
+| 2026-10-28 | v1.12 全量迁移 | 剩余 12 个组件全部改为 `.vue`（`<script setup lang="ts">` + `<template>`，`defineOptions` 保留原组件名），blog 组件统一为单文件组件；自检删除 template 字符串分支，改为**只认 `.vue`**（新增守护：注册进 `index.ts` 但不是 `.vue` 直接失败），`parts` / `slots` / `<style>` / 未注册文件四条校验口径不变；模板进入 `vue-tsc` 类型检查（实测 `tag-cloud.vue` 里 `item.ct` 会被 TS2339 拦下）。构建产物 `runtime.js` 298.36 → 298.55 kB（gzip 104.15 → 104.56 kB）；Vue 运行时编译器仍保留（主题模板需要）；数据库零迁移 |

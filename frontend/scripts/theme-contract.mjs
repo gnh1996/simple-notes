@@ -14,10 +14,11 @@
  *   node scripts/theme-contract.mjs --theme <file>  # 额外校验任意主题 HTML（调试用，如库内主题）
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import ts from 'typescript'
+import { parse as parseSfc } from 'vue/compiler-sfc'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '..')
@@ -140,57 +141,43 @@ const exposed = new Set(returnObjectKeys(contextSource, 'createTemplateContext')
 diffSets('模板上下文', exposed, TEMPLATE_KEYS, 'apps/blog/src/template-context.ts')
 
 // ---------------------------------------------------------------------------
-// 2. 组件注册表 == 契约
+// 2. 组件注册表 == 契约（一个组件一个文件，注册表在 components/index.ts）
 // ---------------------------------------------------------------------------
 
-const componentsSource = await readSource(path.join(blogSrc, 'components.ts'))
-const registered = new Set(objectLiteralKeys(componentsSource, 'blogComponents'))
-diffSets('组件注册表', registered, CONTRACT_COMPONENT_NAMES, 'apps/blog/src/components.ts')
+const componentsDir = path.join(blogSrc, 'components')
+const registryFile = path.join(componentsDir, 'index.ts')
+const registrySource = await readSource(registryFile)
+const registered = new Set(objectLiteralKeys(registrySource, 'blogComponents'))
+diffSets('组件注册表', registered, CONTRACT_COMPONENT_NAMES, 'apps/blog/src/components/index.ts')
 
 // ---------------------------------------------------------------------------
 // 3. 组件样式接口（parts）：组件实际输出的 class == 登记的可覆盖 class
 // ---------------------------------------------------------------------------
 
-/** 组件注册表 → 组件标识符 → defineComponent 的 template 字符串 */
-function componentTemplates(source) {
+/** `components/index.ts` 的 `blogComponents`：契约名 → 组件标识符 */
+function componentRegistry(source) {
   const registry = new Map()
-  const templates = new Map()
 
   walk(source, (node) => {
-    if (!ts.isVariableStatement(node)) {
+    if (registry.size || !ts.isVariableStatement(node)) {
       return
     }
     for (const declaration of node.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name)) {
+      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== 'blogComponents') {
         continue
       }
-      const initializer = declaration.initializer
-      if (declaration.name.text === 'blogComponents' && initializer && ts.isObjectLiteralExpression(initializer)) {
-        for (const property of initializer.properties) {
+      if (declaration.initializer && ts.isObjectLiteralExpression(declaration.initializer)) {
+        for (const property of declaration.initializer.properties) {
           const key = propertyName(property)
           if (key && property.initializer && ts.isIdentifier(property.initializer)) {
             registry.set(key, property.initializer.text)
           }
         }
       }
-      if (
-        initializer &&
-        ts.isCallExpression(initializer) &&
-        ts.isIdentifier(initializer.expression) &&
-        initializer.expression.text === 'defineComponent'
-      ) {
-        const argument = initializer.arguments[0]
-        if (argument && ts.isObjectLiteralExpression(argument)) {
-          const templateProperty = argument.properties.find((property) => propertyName(property) === 'template')
-          if (templateProperty?.initializer && ts.isStringLiteralLike(templateProperty.initializer)) {
-            templates.set(declaration.name.text, templateProperty.initializer.text)
-          }
-        }
-      }
     }
   })
 
-  return { registry, templates }
+  return registry
 }
 
 function emittedParts(template) {
@@ -216,30 +203,119 @@ function emittedSlots(template) {
   return slots
 }
 
-const { registry, templates } = componentTemplates(componentsSource)
+const registry = componentRegistry(registrySource)
 const publicParts = new Set(contract.CONTRACT_GLOBAL_PARTS)
+
+/** components/index.ts 的相对导入：局部名 → 说明符（含 `import type` 之外的具名 / 默认导入） */
+function componentImports(source) {
+  const imports = new Map()
+  walk(source, (node) => {
+    if (!ts.isImportDeclaration(node) || !node.moduleSpecifier) {
+      return
+    }
+    const specifier = ts.isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : ''
+    if (!specifier.startsWith('.') || !node.importClause) {
+      return
+    }
+    if (node.importClause.name) {
+      imports.set(node.importClause.name.text, specifier)
+    }
+    const bindings = node.importClause.namedBindings
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) {
+        imports.set(element.name.text, specifier)
+      }
+    }
+  })
+  return imports
+}
+
+/**
+ * 单文件组件的 template：SFC 的 `<style>` 一律不允许（`.bc-*` 是公开样式接口，
+ * 组件样式只能留在 runtime.css，否则主题按 parts 覆盖会静默失效）。
+ */
+function vueTemplate(file, text) {
+  const { descriptor, errors: sfcErrors } = parseSfc(text, { filename: file })
+  if (sfcErrors.length) {
+    errors.push(`${rel(file)} 解析失败 → ${sfcErrors[0].message}`)
+    return null
+  }
+  if (descriptor.styles.length) {
+    errors.push(`${rel(file)} 含 <style> 块：组件样式必须写在 runtime.css（.bc-* 是公开样式接口）`)
+  }
+  if (!descriptor.template) {
+    errors.push(`${rel(file)} 缺少 <template>（组件模板是样式接口校验的来源）`)
+    return null
+  }
+  return descriptor.template.content
+}
+
+const componentFiles = (await readdir(componentsDir, { withFileTypes: true }))
+  .filter((entry) => entry.isFile() && entry.name !== 'index.ts')
+  .map((entry) => path.join(componentsDir, entry.name))
+  .sort()
+
+const knownFiles = new Set(componentFiles)
+
+/** `./pager` → ./pager.vue | ./pager/index.vue；带扩展名时按原样 */
+function resolveComponentFile(specifier) {
+  const base = path.resolve(componentsDir, specifier)
+  return [base, `${base}.vue`, path.join(base, 'index.vue')].find((candidate) => knownFiles.has(candidate))
+}
+
+const imports = componentImports(registrySource)
+const templates = new Map()
+const templateOwners = new Map()
+const usedFiles = new Set()
+
+for (const [key, identifier] of registry) {
+  const specifier = imports.get(identifier)
+  const file = specifier ? resolveComponentFile(specifier) : undefined
+  if (!file) {
+    errors.push(`无法定位组件 ${key} 的文件（index.ts 需从 components/ 内导入 ${identifier}）`)
+    continue
+  }
+  usedFiles.add(file)
+  const owner = rel(file)
+  if (!file.endsWith('.vue')) {
+    errors.push(`${owner} 不是 .vue：blog 组件统一用单文件组件（组件内禁止 <style>，样式留 runtime.css）`)
+    continue
+  }
+  const template = vueTemplate(file, await readText(file))
+  if (!template) {
+    continue
+  }
+  templates.set(key, template)
+  templateOwners.set(key, owner)
+}
+
+for (const file of componentFiles) {
+  if (!usedFiles.has(file)) {
+    errors.push(`${rel(file)} 未在 components/index.ts 注册（组件文件必须挂到注册表，否则主题用不到）`)
+  }
+}
 
 for (const [key, entry] of Object.entries(CONTRACT_COMPONENTS)) {
   entry.parts.forEach((part) => publicParts.add(part))
-  const identifier = registry.get(key)
-  const template = identifier ? templates.get(identifier) : null
+  const template = templates.get(key)
+  const where = templateOwners.get(key) ?? 'apps/blog/src/components/index.ts'
   if (!template) {
     errors.push(`无法解析组件 ${key} 的模板（脚本需要随实现更新）`)
     continue
   }
   const declaredParts = new Set(entry.parts)
   const actualParts = emittedParts(template)
-  diffSets(`组件 ${key} 的 parts`, actualParts, declaredParts, 'apps/blog/src/components.ts')
+  diffSets(`组件 ${key} 的 parts`, actualParts, declaredParts, where)
 
   const actualSlots = emittedSlots(template)
   const declaredSlots = new Map(entry.slots.map((slot) => [slot.name, new Set(slot.provides)]))
-  diffSets(`组件 ${key} 的 slots`, new Set(actualSlots.keys()), new Set(declaredSlots.keys()), 'apps/blog/src/components.ts')
+  diffSets(`组件 ${key} 的 slots`, new Set(actualSlots.keys()), new Set(declaredSlots.keys()), where)
   for (const [name, provided] of declaredSlots) {
     const emitted = actualSlots.get(name)
     if (!emitted) {
       continue
     }
-    diffSets(`组件 ${key} 的 slot #${name} 作用域`, emitted, provided, 'apps/blog/src/components.ts')
+    diffSets(`组件 ${key} 的 slot #${name} 作用域`, emitted, provided, where)
   }
 }
 
