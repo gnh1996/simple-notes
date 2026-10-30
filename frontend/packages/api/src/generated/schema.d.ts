@@ -1010,6 +1010,7 @@ export interface components {
             coverAttachmentId?: string;
             tags?: string[];
             pinned?: boolean;
+            authoredAt?: string;
         };
         PostDetail: {
             id: string;
@@ -1033,6 +1034,8 @@ export interface components {
             firstPublishedAt?: string;
             /** Format: date-time */
             lastPublishedAt?: string;
+            /** Format: date-time */
+            authoredAt?: string;
             /** Format: date-time */
             draftModifiedAt?: string;
             /** Format: date-time */
@@ -1184,6 +1187,7 @@ export interface components {
             coverAttachmentId?: string;
             tags?: string[];
             pinned?: boolean;
+            authoredAt?: string;
         };
         PublishRequest: {
             /** Format: int64 */
@@ -1268,6 +1272,12 @@ export interface components {
             pinned: boolean;
             /** Format: date-time */
             firstPublishedAt: string;
+            /** Format: date-time */
+            lastPublishedAt: string;
+            /** Format: date-time */
+            authoredAt?: string;
+            /** Format: date-time */
+            displayAt: string;
             /** Format: int32 */
             readingMinutes: number;
         };
@@ -1278,13 +1288,20 @@ export interface components {
             summary: string;
             coverUrl?: string;
             tags: components["schemas"]["TagBrief"][];
+            pinned: boolean;
             authorName: string;
             /** Format: date-time */
             firstPublishedAt: string;
             /** Format: date-time */
             lastPublishedAt: string;
+            /** Format: date-time */
+            authoredAt?: string;
+            /** Format: date-time */
+            displayAt: string;
             /** Format: int32 */
             readingMinutes: number;
+            prevPost?: components["schemas"]["PublishedPostSummary"];
+            nextPost?: components["schemas"]["PublishedPostSummary"];
         };
         BlogBootstrapResponse: {
             site: components["schemas"]["SiteResponse"];
@@ -1413,6 +1430,8 @@ export interface components {
             firstPublishedAt?: string;
             /** Format: date-time */
             lastPublishedAt?: string;
+            /** Format: date-time */
+            authoredAt?: string;
             /** Format: date-time */
             createTime?: string;
             /** Format: date-time */
@@ -2823,6 +2842,9 @@ export interface operations {
                 page?: number;
                 size?: number;
                 q?: string;
+                pinnedFirst?: boolean;
+                direction?: string;
+                sortBy?: string;
             };
             header?: never;
             path?: never;
@@ -2849,6 +2871,9 @@ export interface operations {
                 tagId?: string;
                 year?: number;
                 month?: number;
+                pinnedFirst?: boolean;
+                direction?: string;
+                sortBy?: string;
             };
             header?: never;
             path?: never;
@@ -2869,7 +2894,15 @@ export interface operations {
     };
     detail: {
         parameters: {
-            query?: never;
+            query?: {
+                pinnedFirst?: boolean;
+                direction?: string;
+                sortBy?: string;
+                tagId?: string;
+                year?: number;
+                month?: number;
+                q?: string;
+            };
             header?: never;
             path: {
                 slug: string;
@@ -2938,7 +2971,10 @@ export interface operations {
     };
     archives: {
         parameters: {
-            query?: never;
+            query?: {
+                direction?: string;
+                sortBy?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

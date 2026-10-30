@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 
-import type { Archive, Pager, PostDetail, PostSummary, SitePage, Tag } from './types'
+import type { Archive, ListSort, Pager, PostDetail, PostSummary, SitePage, SortField, Tag } from './types'
 
 /** 运行时状态：主题只能读取，不能写（契约 §3.2）。 */
 
@@ -13,6 +13,8 @@ export const pager = ref<Pager>(emptyPager())
 export const post = ref<PostDetail | null>(null)
 export const prevPost = ref<PostSummary | null>(null)
 export const nextPost = ref<PostSummary | null>(null)
+/** 当前列表 / 详情上下文解析后的排序参数（只读）。 */
+export const listSort = ref<ListSort>({ pinnedFirst: true, direction: 'desc', sortBy: 'displayAt' })
 export const tags = ref<Tag[]>([])
 /** 标签 / 归档是否已由路由快照或组件请求填充：供组件区分“未加载”与“确实为空”。 */
 export const tagsLoaded = ref(false)
@@ -45,24 +47,28 @@ export function toPager(result: { page?: number; size?: number; total?: number }
   }
 }
 
+export function postDate(post: PostSummary, sortBy: SortField = listSort.value.sortBy): string {
+  return post[sortBy] || post.displayAt
+}
+
 export const archiveGroups = computed(() => {
+  const sortBy = listSort.value.sortBy
   const groups = new Map<
     string,
     { key: string; year: number; month: number; posts: PostSummary[] }
   >()
   for (const item of posts.value) {
-    const date = item.firstPublishedAt ? new Date(item.firstPublishedAt) : null
+    const value = postDate(item, sortBy)
+    const date = value ? new Date(value) : null
     if (!date || Number.isNaN(date.getTime())) {
       continue
     }
-    const key = `${date.getFullYear()}-${date.getMonth() + 1}`
+    // 与后端 /api/blog/archives 一致：年月按 UTC 计算。
+    const year = date.getUTCFullYear()
+    const month = date.getUTCMonth() + 1
+    const key = `${year}-${month}`
     if (!groups.has(key)) {
-      groups.set(key, {
-        key,
-        year: date.getFullYear(),
-        month: date.getMonth() + 1,
-        posts: [],
-      })
+      groups.set(key, { key, year, month, posts: [] })
     }
     groups.get(key)?.posts.push(item)
   }

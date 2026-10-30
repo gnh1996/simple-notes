@@ -41,6 +41,14 @@ export interface TagBrief {
   name: string
 }
 
+export type SortField = 'displayAt' | 'firstPublishedAt' | 'lastPublishedAt'
+
+export interface ListSort {
+  pinnedFirst: boolean
+  direction: 'asc' | 'desc'
+  sortBy: SortField
+}
+
 export interface PostSummary {
   slug: string
   title: string
@@ -49,13 +57,17 @@ export interface PostSummary {
   tags: TagBrief[]
   pinned: boolean
   firstPublishedAt: string
+  lastPublishedAt: string
+  authoredAt: string | null
+  displayAt: string
   readingMinutes: number
 }
 
 export interface PostDetail extends PostSummary {
   content: string
   authorName: string
-  lastPublishedAt: string
+  prevPost: PostSummary | null
+  nextPost: PostSummary | null
 }
 
 export interface Tag {

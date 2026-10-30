@@ -30,6 +30,7 @@ public record PostDetail(
         String publishedTitle,
         Instant firstPublishedAt,
         Instant lastPublishedAt,
+        Instant authoredAt,
         Instant draftModifiedAt,
         Instant createTime,
         Instant updateTime,

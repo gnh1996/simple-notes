@@ -19,6 +19,7 @@ import cc.naihao.simplenotes.web.dto.UpdatePostRequest;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -107,6 +108,7 @@ public class PostService {
         note.setCoverAttachmentId(coverId);
         note.setOwnerId(principal.userId());
         note.setPinned(shortFlag(request.pinned()));
+        note.setAuthoredAt(parseAuthoredAt(request.authoredAt()));
         note.setPublishStatus(PublishStatus.DRAFT);
         note.setDraftModifiedAt(Instant.now());
         note.setCreateBy(principal.userId());
@@ -165,6 +167,11 @@ public class PostService {
 
         if (request.pinned() != null) {
             note.setPinned(shortFlag(request.pinned()));
+        }
+
+        // 创作时间是运营 / 展示字段：立即生效，不计入 draft_modified_at。
+        if (request.authoredAt() != null) {
+            note.setAuthoredAt(parseAuthoredAt(request.authoredAt()));
         }
 
         boolean tagsChanged = false;
@@ -251,6 +258,7 @@ public class PostService {
                 revision == null ? null : revision.getTitle(),
                 note.getFirstPublishedAt(),
                 note.getLastPublishedAt(),
+                note.getAuthoredAt(),
                 note.getDraftModifiedAt(),
                 note.getCreateTime(),
                 note.getUpdateTime(),
@@ -270,6 +278,7 @@ public class PostService {
                 publishService.hasChanges(note, revision),
                 note.getFirstPublishedAt(),
                 note.getLastPublishedAt(),
+                note.getAuthoredAt(),
                 note.getCreateTime(),
                 note.getUpdateTime(),
                 note.getVersion());
@@ -325,6 +334,18 @@ public class PostService {
             return null;
         }
         return value.trim();
+    }
+
+    /** 创作时间：空白 = 清空；其他值必须是 ISO-8601。 */
+    private Instant parseAuthoredAt(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(value.trim());
+        } catch (DateTimeParseException ex) {
+            throw ApiException.badRequest("authoredAt 必须是 ISO-8601 时间");
+        }
     }
 
     private String publicUrl(Note note) {

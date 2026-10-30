@@ -1,6 +1,6 @@
 # 内容模型设计（随手记 + 博客）
 
-> **状态：v1.1 · 2026-10-23（Web 端已实现；v1.1 增加标签管理）**
+> **状态：v1.4 · 2026-10-28（Web 端已实现；v1.4 增加创作时间与公开列表排序上下文）**
 > 范围：随手记与博客文章的统一内容模型、发布快照、数据表草案、权限码、API 契约与 Web 端范围
 > 关联：`docs/auth-rbac.md`（权限体系）、`docs/markdown-dialect.md`（Markdown 方言）、`docs/tech-stack.md`（技术选型）
 > 非目标：评论、桌面端同步、SEO / SSR、多作者、定时发布、分类 / 系列、笔记分享 —— 见 §13
@@ -109,8 +109,9 @@ POST / UNPUBLISHED（后台保留，公开不可见）
 | `cover_attachment_id` | `varchar(36)` NULL | FK `attachment`；文章封面，记事本必须为 NULL |
 | `publish_status` | `varchar(16)` NULL | `DRAFT` / `PUBLISHED` / `UNPUBLISHED`；记事本必须为 NULL |
 | `published_revision_id` | `varchar(36)` NULL | FK `note_revision`；当前公开快照指针 |
-| `first_published_at` | `timestamptz` NULL | 首次发布时间；文章日期与列表排序使用 |
-| `last_published_at` | `timestamptz` NULL | 最近一次发布时间 |
+| `first_published_at` | `timestamptz` NULL | 首次发布时间（本站）；系统写入 |
+| `last_published_at` | `timestamptz` NULL | 最近一次发布时间（本站）；系统写入 |
+| `authored_at` | `timestamptz` NULL | 仅 `POST`：创作时间 / 搬运文章的原始日期；可空，公开展示优先使用，NULL 回落 `first_published_at` |
 | `draft_modified_at` | `timestamptz` NULL | 草稿最近修改时间；用于判断「有未发布更改」 |
 | `version` | `bigint` NOT NULL DEFAULT 0 | 乐观锁版本号；JPA `@Version` |
 | 审计七件套 | 沿用 `BaseEntity` | `create_time` / `update_time` / `delete_time` / 操作人 / `delete_flag` |
@@ -120,6 +121,8 @@ POST / UNPUBLISHED（后台保留，公开不可见）
 - `content` 只存 Markdown，不存渲染后的 HTML，保持 `docs/markdown-dialect.md` 的约定。
 - `slug` 在首次发布时生成，之后不可修改；不引入 slug 历史 / 301（后续需要再设计）。
 - `pinned` 不参与发布快照：置顶是首页运营行为，允许立即生效。
+- `authored_at` 是运营 / 展示字段，不参与发布快照：修改立即影响公开展示、列表排序与归档，**不触发「有未发布更改」**；笔记必须为 `NULL`（数据库约束 + Service 校验）。
+- 公开文章日期统一为 `displayAt = authoredAt ?? firstPublishedAt`（计算值，不落库）：展示、默认排序、归档分组都使用它；`firstPublishedAt` / `lastPublishedAt` 仍表示本站的真实发布事件。
 - 不提供“归档”：随手记定位云端记事本，修改内容是常态；收纳需求由软删除 + 回收站覆盖。文章下架仍用 `publish_status = UNPUBLISHED`。
 - `version` 用于 Web 多标签页并发编辑和未来桌面同步；BaseEntity 目前没有，需在 `Note` 实体上单独声明。
 
@@ -419,6 +422,7 @@ POST:
    - `slug`（仅首次发布写入）；
    - `first_published_at`（仅首次）；
    - `last_published_at = now()`。
+   - `authored_at` 不随发布改写：它是可编辑的展示日期，首次发布只写 `first_published_at`。
 7. 返回后台文章详情（含公开 URL、快照信息）。
 
 并发说明：同一文章的发布串行化由 `version` + 唯一约束 `(note_id, revision_no)` 共同兜底；冲突返回 409。
@@ -454,7 +458,7 @@ hasUnpublishedChanges =
 ```
 
 - 对文章而言，任何草稿变更（标题、正文、摘要、封面、标签、slug）都必须更新 `draft_modified_at`；标签关联变化时由 Service 显式 touch `note`。笔记不使用 `draft_modified_at`（数据库约束要求为 NULL）。
-- 仅修改 `pinned` 不算内容变更，不触发「有未发布更改」。
+- 仅修改 `pinned` 或 `authored_at` 不算内容变更，不触发「有未发布更改」。
 - 前端按钮文案：`DRAFT` →「发布」；`PUBLISHED` 无更改 →「已发布」；`PUBLISHED` 有更改 →「更新发布」；`UNPUBLISHED` →「重新发布」。
 
 ---
@@ -479,6 +483,8 @@ note.delete_flag = 0
 | slug | `note.slug`（首次发布后稳定） |
 | 作者 | `note.owner_id` → `sys_user.nickname` |
 | 首次 / 最近发布时间 | `note.first_published_at` / `last_published_at` |
+| 创作时间 | `note.authored_at`（可空，运营字段） |
+| 展示日期 | `displayAt = coalesce(note.authored_at, note.first_published_at)`（计算值）；公开列表、详情、归档统一使用 |
 | 置顶 | `note.pinned`（运营字段，立即生效） |
 
 规则：
@@ -486,6 +492,7 @@ note.delete_flag = 0
 - 草稿、`UNPUBLISHED`、已删除文章一律 404；不在公开接口暴露“存在但未发布”的信息。
 - v1 不提供公开草稿预览 / 预览 token；后台编辑器内的预览使用当前草稿，并明确提示“线上仍是已发布版本”。
 - 公开列表不返回正文；详情返回快照 Markdown。
+- 公开列表 / 搜索 / 归档 / 详情上下篇统一支持排序参数 `pinnedFirst` / `direction` / `sortBy`，规则见 §6.4。
 - 公开搜索只搜索已发布 revision 的标题 / 正文；不得命中草稿内容。
 - RSS / sitemap（如实现）只包含已发布文章。
 - 公开响应不得包含 `owner_id`、内部状态、审计字段、附件 storage key 等内部信息；作者只暴露昵称 / 展示名。
@@ -531,6 +538,8 @@ note.delete_flag = 0
 
 不提供 `POST /api/admin/posts/{id}/demote` 或任何 `POST → NOTE` 接口。
 
+`POST` / `PUT` 请求新增可选字段 `authoredAt`（ISO-8601 字符串）：`null` 表示不修改，空串表示清除；列表 / 详情响应返回 `authoredAt`。它不是内容变更，不更新 `draft_modified_at`，也不要求「更新发布」。
+
 ### 6.3 admin：标签管理
 
 | 方法 / 路径 | 权限 | 说明 |
@@ -551,16 +560,32 @@ note.delete_flag = 0
 
 | 方法 / 路径 | 说明 |
 | --- | --- |
-| `GET /api/blog/posts` | 已发布文章列表；参数 `page` / `size` / `tagId` / `year` / `month`；返回摘要，不返回正文 |
-| `GET /api/blog/posts/{slug}` | 已发布文章详情；正文来自发布快照 |
+| `GET /api/blog/posts` | 已发布文章列表；参数 `page` / `size` / `tagId` / `year` / `month` / `pinnedFirst` / `direction` / `sortBy`；`year` / `month` 跟随 `sortBy` 字段；返回摘要，不返回正文 |
+| `GET /api/blog/posts/{slug}` | 已发布文章详情；正文来自发布快照；额外参数 `pinnedFirst` / `direction` / `sortBy` / `tagId` / `year` / `month` / `q` 用于计算 `prevPost` / `nextPost` |
 | `GET /api/blog/tags` | 标签及已发布文章数量 |
-| `GET /api/blog/archives` | 按年月归档 |
-| `GET /api/blog/search?q=` | 搜索已发布快照的标题 / 正文 |
+| `GET /api/blog/archives` | 全量年月索引；参数 `sortBy` / `direction`，按所选字段统计与排序；月内文章走 `/api/blog/posts?year=&month=` |
+| `GET /api/blog/search?q=` | 搜索已发布快照的标题 / 正文；额外支持 `pinnedFirst` / `direction` / `sortBy` |
 | `GET /api/blog/feed.xml` | RSS（P1） |
 | `GET /api/blog/sitemap.xml` | 站点地图（P1） |
 | `GET /api/media/{id}` | 稳定媒体 URL；返回 / 重定向到对象存储（具体形态随附件设计定） |
 
 公开接口匿名可访问，不要求 `entry:blog`；`entry:blog` 只用于未来评论 / 登录互动。`feed.xml` / `sitemap.xml` 为非 JSON 出参，不纳入 TypeScript 生成客户端，需要时由 blog 前端直接请求。
+
+**排序参数（v1.4）**：
+
+| 参数 | 值 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `pinnedFirst` | `true` / `false` | `true` | 是否先按置顶分组；`true` 时置顶永远在前，与 `direction` 无关 |
+| `direction` | `asc` / `desc` | `desc` | 只作用于时间字段，不翻转置顶 |
+| `sortBy` | `displayAt` / `firstPublishedAt` / `lastPublishedAt` | `displayAt` | 时间字段白名单；未来新增字段时追加值 |
+
+- 不限制参数组合：`pinnedFirst=true + direction=asc` 表示“置顶组在前，组内按时间正序”，按文档语义执行即可。
+- 值不做组合白名单，但**字段值必须校验**：未知 `sortBy` / `direction` 返回 400，不能把字符串直接拼进查询。
+- `sortBy=displayAt` 使用 `coalesce(authored_at, first_published_at)`；对未设置 `authored_at` 的文章与 `firstPublishedAt` 等价。
+- 归档采用**按月查看 + 月内分页**：`/api/blog/archives` 只出年月索引；未带 `year` / `month` 时不请求文章列表（页面 `state=empty`，提示选择月份）；带 `year` / `month` 时由 `/api/blog/posts` 取该月文章，`page` / `size` 在月内分页。`year` / `month` 过滤跟随 `sortBy` 字段，不是固定 `firstPublishedAt`。
+- `direction` 同时决定年月索引顺序与月内文章顺序；左侧计数与月内 `total` 同源同字段。
+- 详情页的 `prevPost` / `nextPost` 按同一组参数计算；若当前文章不在筛选集合内（如手动改 `tagId` / `q`），忽略筛选并按所选排序计算相邻项。
+- 搜索页的上下篇携带 `q`，使用与 `/api/blog/search` 相同的标题 / 正文匹配条件，保证停留在搜索结果内。
 
 ### 6.5 DTO 与错误
 
@@ -568,6 +593,7 @@ note.delete_flag = 0
 - `kind`、`publish_status`、`published_revision_id` 不出现在普通更新请求中。
 - 更新 / 发布请求都带 `version`；冲突返回 409。
 - 列表 DTO 不含正文；公开列表不含任何内部字段。
+- 公开摘要 / 详情新增 `lastPublishedAt`、`authoredAt`（可空）、`displayAt`（非空）；`displayAt` / `lastPublishedAt` 列入 `@Schema(requiredProperties)`，`authoredAt` 不列入（生成端按可空处理）；后台 DTO 同步返回 `authoredAt`。
 - 建议错误码：
 
 | 场景 | HTTP | 语义码 |
@@ -750,7 +776,7 @@ note.delete_flag = 0
 | `/` | 首页文章流 / 置顶 |
 | `/posts/:slug` | 文章详情 |
 | `/tags/:id` | 标签文章列表 |
-| `/archives` | 年月归档 |
+| `/archives` | 年月索引；`?year=&month=` 为月内分页视图 |
 | `/search` | 搜索 |
 | `/about` | 关于页（v1 静态内容可接受） |
 
@@ -779,11 +805,13 @@ note.delete_flag = 0
 - 文章后台搜索：标题 / 摘要 / 正文草稿，限定 `kind=POST`。
 - 公开搜索：只查 `PUBLISHED` 文章的发布快照，不得查草稿。
 - v1 中文搜索使用 `ILIKE '%keyword%'`；数据量增长后再评估 `pg_trgm`，不引入 `zhparser`。
-- 归档按 `first_published_at` 的年月分组；标签计数只统计已发布文章。
+- 归档采用「月份索引 + 月内分页」：`/api/blog/archives` 按 `sortBy` 所选字段统计年月（默认 `displayAt = coalesce(authored_at, first_published_at)`），月内文章由 `/api/blog/posts?year=&month=&page=&size=` 分页；`year` / `month` 过滤跟随 `sortBy` 字段，年月统一按 UTC 计算，前后端保持同一口径；标签计数只统计已发布文章。
 - 列表默认排序：
   - 笔记：`pinned DESC, update_time DESC`；
   - 后台文章：`update_time DESC`；
-  - 公开首页：`pinned DESC, first_published_at DESC`。
+  - 公开首页 / 标签 / 搜索：`pinnedFirst=true, direction=desc, sortBy=displayAt`；
+  - 公开归档索引：`pinnedFirst=false, direction=desc, sortBy=displayAt`（可由主题改 query）；
+  - 公开归档月视图：在索引参数上增加 `year` / `month`，`page` / `size` 在月内分页。
 
 ---
 
@@ -791,12 +819,13 @@ note.delete_flag = 0
 
 ### 12.1 Flyway
 
-- **实现状态**：V2–V5 已落地并通过 Testcontainers 集成测试；后续结构变更走新迁移。
+- **实现状态**：V2–V10 已落地；后续结构变更走新迁移。
 - `V1__init_auth_rbac.sql` 已冻结，不改。
 - `V2__init_content.sql`：`note_folder`、`tag`、`attachment`、`note`、`note_revision`、`note_tag`、`note_revision_tag`、索引、约束、`published_revision_id` 外键。
 - `V3__add_content_permissions.sql`：内容域 `sys_menu` 节点；id 用 `gen_random_uuid()`，父节点按 code 子查询，不手填 UUID。
 - `V4__add_tag_permissions.sql`：标签管理 `admin:tag` 菜单与动作节点。
 - `V5__drop_note_status.sql`：移除笔记归档字段 `note.status`，重建不依赖它的 `ck_note_note_only` / `ck_note_post_only` 约束。
+- `V10__add_note_authored_at.sql`（v1.4，已执行）：新增 `note.authored_at`、`kind=NOTE` 时为空约束、公开 `displayAt` 表达式索引（`coalesce(authored_at, first_published_at)`）；`last_published_at` 排序索引按需追加。
 - 建表顺序：`note_folder` / `tag` / `attachment` → `note` → `note_revision` → 关联表 → `alter table note add constraint fk_note_published_revision`。
 
 ### 12.2 后端
@@ -813,6 +842,8 @@ note.delete_flag = 0
   - `AttachmentService`：上传、删除保护、稳定 URL。
 - Controller：`AdminNoteController`、`AdminPostController`、`AdminTrashController`、`AdminMediaController`、`BlogPostController`、`BlogTaxonomyController`、`MediaController`。
 - 公开 DTO 与后台 DTO 分开；公开详情从 revision 组装。
+- 排序：`BlogSortField`（`displayAt` / `firstPublishedAt` / `lastPublishedAt`）+ `pinnedFirst` / `direction`；`BlogService` 统一生成 `OrderSpecifier`，列表、搜索、归档、详情相邻项共用；`year` / `month` 过滤也使用同一时间字段表达式。
+- 相邻项：按当前文章在排序中的位置取严格前一条 / 后一条（`limit 1`），排序尾部用 `note.id` 兜底；不再拉 100 条列表由前端推导；搜索上下文复用 `containsIgnoreCase(title/content)` 条件。
 - 回收站查询需要绕过实体级 `@SQLRestriction("delete_flag = 0")`：用专用 Repository + 原生 SQL / `JdbcTemplate`（例外已记录到 `backend/AGENTS.md`）。桌面同步未来的墓碑读取同理。
 - 新增 `Perms` 常量并保证启动对账通过。
 
@@ -845,7 +876,12 @@ note.delete_flag = 0
 12. 标签管理：联想选项、使用量、改名影响公开快照、分配 / 移除草稿、force 删除；
 12. 权限码与菜单启动对账；
 13. `version` 冲突返回 409；
-14. 回收站查询能读到软删除行，普通查询读不到。
+14. 回收站查询能读到软删除行，普通查询读不到；
+15. `authoredAt` 为空时公开展示回落 `firstPublishedAt`，设置后覆盖展示、默认排序与归档；笔记写入 `authoredAt` 被拒；
+16. `pinnedFirst` / `direction` / `sortBy` 组合：首页 / 标签 / 归档 / 搜索排序，以及详情上下篇方向与筛选上下文；
+17. 搜索上下篇携带 `q`，仍停留在搜索结果内；
+18. 归档月视图：月份索引计数、`year` / `month` 过滤与月内 `total` 使用同一 `sortBy` 字段；月内分页不截断、跨页计数一致；
+19. 未知 `sortBy` / `direction` 返回 400。
 
 ---
 
@@ -875,3 +911,4 @@ note.delete_flag = 0
 | 2026-10-24 | v1.3 博客运行时与主题化 | 前台改为「后端组装骨架 + 无构建 runtime + 数据化主题」（`docs/blog-runtime-theme.md`）；Markdown 渲染由 `MdPreview` 改为 runtime 内置 `markdown-it`（方言一致性由 fixture 双向验证）；新增站点配置、独立页面、主题版本与预览能力；内容模型与发布快照不变 |
 | 2026-10-25 | v1.3.1 方案 A | blog runtime 改为独立 Vite 构建产物（部署在同域静态路径 / CDN），后端只组装壳；新增 `GET /api/blog/bootstrap`；Markdown 方言与 hljs 复用 `packages/shared`；默认主题收敛到 `packages/theme-starter`；内容模型与发布快照不变 |
 | 2026-10-25 | v1.3.2 方案 C | 收敛为单产物：Maven 打包时把 blog dist 拷入 jar 的 `static/blog/`，后端同源提供 `/blog/**`；runtime 只保留壳注入单启动路径；`GET /api/blog/bootstrap` 降级为调试 / agent 接口；内容模型与发布快照不变 |
+| 2026-10-28 | v1.4 创作时间与排序上下文 | 新增 `note.authored_at`（运营字段，不参与快照）；公开日期统一为 `displayAt = authoredAt ?? firstPublishedAt`；公开列表 / 搜索 / 归档 / 详情上下篇支持 `pinnedFirst` / `direction` / `sortBy`（字段白名单、不限制组合）；归档改为「月份索引 + 月内分页」，`year` / `month` 跟随 `sortBy`；搜索上下篇携带 `q`；`V10` 迁移已执行 |

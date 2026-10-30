@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 
 import { api } from '../api'
-import { archives, archivesLoaded } from '../store'
+import { archives, archivesLoaded, listSort } from '../store'
 import type { Archive } from '../types'
 
 defineOptions({ name: 'BlogArchives' })
@@ -18,7 +18,10 @@ onMounted(async () => {
   }
   loading.value = true
   try {
-    archives.value = await api<Archive[]>('/api/blog/archives')
+    archives.value = await api<Archive[]>('/api/blog/archives', {
+      direction: listSort.value.direction,
+      sortBy: listSort.value.sortBy,
+    })
     archivesLoaded.value = true
   } catch {
     failed.value = true

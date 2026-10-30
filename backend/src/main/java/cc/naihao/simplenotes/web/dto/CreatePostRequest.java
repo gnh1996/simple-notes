@@ -25,5 +25,8 @@ public record CreatePostRequest(
 
         List<@Size(max = 32, message = "标签最长 32 个字符") String> tags,
 
-        Boolean pinned) {
+        Boolean pinned,
+
+        /** ISO-8601；null / 空白表示不设置创作时间 */
+        String authoredAt) {
 }

@@ -850,8 +850,13 @@ img {
   color: var(--blog-text-muted);
 }
 
-.archive-index a:hover {
+.archive-index a:hover,
+.archive-index a.active {
   color: var(--blog-accent);
+}
+
+.archive-list .bc-pager {
+  margin-top: 24px;
 }
 
 @media (min-width: 900px) {

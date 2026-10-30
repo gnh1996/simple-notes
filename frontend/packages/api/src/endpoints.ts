@@ -112,7 +112,22 @@ export interface PostListQuery {
   hasUnpublishedChanges?: boolean
 }
 
-export interface PublishedPostListQuery {
+export type BlogSortField = 'displayAt' | 'firstPublishedAt' | 'lastPublishedAt'
+
+export interface BlogListSortQuery {
+  pinnedFirst?: boolean
+  direction?: 'asc' | 'desc'
+  sortBy?: BlogSortField
+}
+
+export interface PublishedPostDetailQuery extends BlogListSortQuery {
+  tagId?: string
+  year?: number
+  month?: number
+  q?: string
+}
+
+export interface PublishedPostListQuery extends BlogListSortQuery {
   page?: number
   size?: number
   tagId?: string
@@ -305,10 +320,11 @@ export function createBlogApi(client: ApiClient) {
   return {
     list: (query: PublishedPostListQuery = {}) =>
       client.get<PageResponsePublishedPostSummary>(`/blog/posts${queryString(query)}`),
-    detail: (slug: string) =>
-      client.get<PublishedPostDetail>(`/blog/posts/${encodeURIComponent(slug)}`),
+    detail: (slug: string, query: PublishedPostDetailQuery = {}) =>
+      client.get<PublishedPostDetail>(`/blog/posts/${encodeURIComponent(slug)}${queryString(query)}`),
     tags: () => client.get<TagCountResponse[]>('/blog/tags'),
-    archives: () => client.get<ArchiveResponse[]>('/blog/archives'),
+    archives: (query: BlogListSortQuery = {}) =>
+      client.get<ArchiveResponse[]>(`/blog/archives${queryString(query)}`),
     search: (query: PublishedPostListQuery & { q?: string } = {}) =>
       client.get<PageResponsePublishedPostSummary>(`/blog/search${queryString(query)}`),
     site: () => client.get<SiteResponse>('/blog/site'),

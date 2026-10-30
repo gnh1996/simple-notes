@@ -33,6 +33,7 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 - 主题来自数据库且**禁止携带脚本**；runtime 加载前必须再执行一次 `validateTheme`（保存时后端已校验）
 - 内置默认主题唯一源：`packages/theme-starter/`；后端兜底副本用 `pnpm sync:theme` 同步、`pnpm check:theme` 校验，禁止只改一边
 - **契约单一来源**：主题可见的数据 / 动作 / 辅助函数 / 组件 / CSS 变量 / 允许指令只在 `apps/blog/src/contract.ts` 登记；`template-context.ts` 与 `components/*.vue`（注册表 `components/index.ts`，一个组件一个文件，组件内禁止 `<style>`）必须与之一致，`pnpm check:contract`（已并入 `typecheck`）会拦下"暴露了没登记 / 登记了没实现"；新增能力先改契约再改实现
+- **排序上下文**：列表 / 详情共享 `pinnedFirst` / `direction` / `sortBy`（`displayAt` / `firstPublishedAt` / `lastPublishedAt`）；runtime 暴露只读 `listSort` 与 `postDate(post)`，进入详情时自动携带来源列表的 `tagId` / `year` / `month` / `q`；归档为**月份索引 + 月内分页**（无 `year` / `month` 时不请求文章列表）
 - **组件样式接口**：组件模板里的 class（`.bc-*`，以及历史遗留的 `archive-index`）是公开样式接口（`CONTRACT_COMPONENTS[].parts`）；改组件内部结构时不得改名或删除已登记的 class，新增 class 要同步登记，否则自检失败
 - **主题可写状态只有 `ui`**：抽屉 / 标签页 / 页内筛选等界面状态放 `ui`，路由切换即清空；不要把业务状态写进去。需要接管组件内部结构时用已登记的具名 slot（当前仅 `blog-post-card#default`），槽位与作用域变量同样在 `contract.ts` 登记
 - Markdown 方言从 `@simple-notes/markdown` 取（`createPreviewOptions` / `renderToElement` / `sanitizeHtml`），不得在 app 内另写一份配置；Lute 与 hljs 资源由 `pnpm sync:vditor` 自托管

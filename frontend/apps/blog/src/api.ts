@@ -17,7 +17,7 @@ export interface ApiOptions {
 
 export async function api<T>(
   path: string,
-  params?: Record<string, string | number | null | undefined>,
+  params?: Record<string, string | number | boolean | null | undefined>,
   options: ApiOptions = {},
 ): Promise<T> {
   const url = new URL(path, location.origin)

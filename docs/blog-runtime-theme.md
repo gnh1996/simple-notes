@@ -1,6 +1,6 @@
 # 博客运行时与主题化设计（Blog Runtime & Theme）
 
-> **状态：v1.12 · 2026-10-28（组件全量迁移为单文件组件）**
+> **状态：v1.13 · 2026-10-28（列表排序上下文与创作时间：已实现）**
 > 范围：博客前台从 Vue SPA 改为「后端组装页面 + 固定运行时 + 数据化主题」；runtime 仍由 Vite 构建，但产物在 Maven 打包时进入后端 jar，与页面、API 同源提供；含站点配置、独立页面、主题管理与 agent 预览链路
 > 关联：`docs/content-model.md`（内容与公开读取）、`docs/tech-stack.md`（选型）、`docs/markdown-dialect.md`（方言）、`docs/auth-rbac.md`（权限码与菜单）
 > 非目标：SSR / 预渲染、评论、图片派生、RSS / sitemap、主题市场、多作者
@@ -122,14 +122,15 @@ theme.contract   = N
 | `posts` | `PostSummary[]` | 首页 / 标签 / 归档 / 搜索 | 当前页列表 |
 | `pager` | `Pager` | 同 `posts` | 分页 |
 | `post` | `PostDetail` | 文章详情 | 正文为 Markdown 原文 |
-| `prevPost` / `nextPost` | `PostSummary \| null` | 文章详情 | 按首次发布时间排序 |
+| `prevPost` / `nextPost` | `PostSummary \| null` | 文章详情 | 按当前列表排序上下文取相邻项（见 §4.5） |
 | `tags` | `Tag[]` | 标签页 | 全部标签及已发布数量 |
 | `tag` | `Tag \| null` | 标签文章页 | 当前标签 |
-| `archives` | `Archive[]` | 归档页 | 年月及数量 |
-| `archiveGroups` | `ArchiveGroup[]` | 归档页 | 由当前列表按年月分组后的结果，供归档列表渲染 |
+| `archives` | `Archive[]` | 归档页 | 全量年月及数量，作为月份索引 |
+| `archiveGroups` | `ArchiveGroup[]` | 归档页 | 由当前页按所选时间字段分组；月视图下通常只有当前月，主题优先使用 `posts` + `pager` |
 | `keyword` | `string` | 搜索页 | 当前关键词 |
 | `searched` | `boolean` | 搜索页 | 是否已执行过搜索（区分"未搜"与"无结果"） |
 | `page` | `SitePage \| null` | 独立页面 | `/about` 与 `/p/:slug` 的正文 |
+| `listSort` | `{ pinnedFirst: boolean; direction: 'asc' \| 'desc'; sortBy: SortField }` | 全部 | 当前解析后的排序上下文（只读）；详情页为继承或默认值 |
 | `ui` | `Record<string, unknown>` | 全部 | **主题自有的 UI 状态**（唯一可写数据），见下 |
 
 `ui` 是主题唯一可写的响应式对象，用来做不涉及业务的交互：抽屉开合、标签页切换、客户端筛选等。
@@ -152,10 +153,12 @@ Site        { name, tagline, description, logoUrl, faviconUrl, baseUrl,
 Author      { name, avatarUrl, bio }
 SocialLink  { type, label, url }
 NavItem     { key, label, to, external }
+SortField   = 'displayAt' | 'firstPublishedAt' | 'lastPublishedAt'
 PostSummary { slug, title, summary, coverUrl, tags: TagBrief[], pinned,
-              firstPublishedAt, readingMinutes }
+              firstPublishedAt, lastPublishedAt, authoredAt, displayAt, readingMinutes }
 PostDetail  { slug, title, content, summary, coverUrl, tags: TagBrief[],
-              authorName, firstPublishedAt, lastPublishedAt, readingMinutes }
+              authorName, firstPublishedAt, lastPublishedAt, authoredAt, displayAt,
+              readingMinutes }
 Tag         { id, name, count }
 TagBrief    { id, name }
 Archive     { year, month, count }
@@ -168,6 +171,8 @@ SitePage    { slug, title, content, updatedAt }   // /p/:slug 与 /about
 - 字段**只增不减**；新增字段必须给默认值。
 - `content` 永远是 Markdown 原文，主题不得自行解析，必须用 `<blog-markdown>`。
 - 字段命名固定（`camelCase`）；改名为破坏性变更。
+- `displayAt = authoredAt ?? firstPublishedAt`，是文章在博客上的展示日期；`firstPublishedAt` / `lastPublishedAt` 是本站真实发布事件，`authoredAt` 可空。
+- `listSort` 是 runtime 解析后的只读上下文（`pinnedFirst` / `direction` / `sortBy`）；主题做排序切换时用 URL query，不要写 `ui`。
 - 首屏与站内跳转都由 runtime 在导航确认前取数（`beforeResolve`），确认后一次性写入（`afterEach`）。因此 `loading` 不是首屏必经态，**主题不要依赖骨架屏表达加载**；导航期间旧页面保持可见。
 
 ### 3.3 动作与辅助函数
@@ -187,6 +192,7 @@ SitePage    { slug, title, content, updatedAt }   // /p/:slug 与 /about
 | --- | --- | --- |
 | `isNavActive(to)` | `string` | 当前 URL 是否命中该导航项（含子路径），用于高亮 |
 | `formatDate(value)` | `string \| null \| undefined` | 站点统一的日期展示格式 |
+| `postDate(post)` | `PostSummary` | 返回当前列表排序字段对应的日期字符串；`sortBy=displayAt` 时即 `displayAt`。详情正文的主日期仍建议直接用 `post.displayAt` |
 
 导航统一用 `<a href>`（history 路由由 runtime 接管），不提供 `navigate()`。
 
@@ -223,7 +229,7 @@ SitePage    { slug, title, content, updatedAt }   // /p/:slug 与 /about
   <template #default="{ post }">
     <h2 class="my-title"><a :href="'/posts/' + post.slug">{{ post.title }}</a></h2>
     <p class="my-summary">{{ post.summary }}</p>
-    <time class="my-time">{{ formatDate(post.firstPublishedAt) }}</time>
+    <time class="my-time">{{ formatDate(postDate(post)) }}</time>
   </template>
 </blog-post-card>
 ```
@@ -376,7 +382,8 @@ backend/src/main/resources/blog/default-theme/{theme.html,theme.css}   ← pnpm 
 
 | 类型 | 策略 |
 | --- | --- |
-| 核心（`state` / `posts` / `pager` / `post` / `prevPost` / `nextPost`） | runtime 必给，一次请求 |
+| 核心（`state` / `posts` / `pager` / `post` / `prevPost` / `nextPost`） | runtime 必给，一次请求；上下篇由详情接口按排序上下文返回，不再单独拉列表 |
+| 排序上下文（`listSort`） | 由 URL query 解析（`pinnedFirst` / `direction` / `sortBy`），列表与详情共用 |
 | 可选（`tags` / `archives`） | 标签 / 归档页由路由守卫预取；其他页面由组件按需自取，`v-if` 同时控制渲染与请求 |
 | 缺省页面 | 回落内置默认主题 |
 
@@ -390,10 +397,21 @@ backend/src/main/resources/blog/default-theme/{theme.html,theme.css}   ← pnpm 
 | `/posts/:slug` | 文章详情 | `post` + `prevPost` / `nextPost` |
 | `/tags` | 标签 | `tags` |
 | `/tags/:id` | 标签文章 | `tags` + `tag` + `posts` + `pager` |
-| `/archives` | 归档 | `archives` + `posts` + `pager` |
+| `/archives` | 归档索引；`?year=&month=` 为月视图 | `archives` + 当前月 `posts` + `pager` |
 | `/search` | 搜索 | `keyword` + `posts` + `pager` |
 | `/about`、`/p/:slug` | 独立页面 | `page` |
 | 其他 | 404 | — |
+
+**排序 query（v1.13）**：首页 / 标签 / 归档 / 搜索都接受 `pinnedFirst`（`true|false`，默认 `true`）、`direction`（`asc|desc`，默认 `desc`）、`sortBy`（`displayAt|firstPublishedAt|lastPublishedAt`，默认 `displayAt`）。
+
+- 归档路由默认 `pinnedFirst=false`；其余列表默认 `true`。
+- `direction` 只作用于时间字段；`pinnedFirst=true` 时置顶始终在前，二者不互相翻转。
+- 不限制参数组合，但未知字段 / 方向返回 400。
+- **归档按月查看 + 月内分页**：未带 `year` / `month` 时只展示年月索引；带 `year` / `month` 时用 `/api/blog/posts?year=&month=&page=&size=` 取该月文章，`pager` 在月内翻页，左侧计数与列表天然一致。`year` / `month` 过滤跟随 `sortBy` 字段（`displayAt` 用 `coalesce(authoredAt, firstPublishedAt)`），不是固定 `firstPublishedAt`。
+- 未选月份时只请求 `/api/blog/archives`，`posts=[]`、`pager.total=0`、`state='empty'`，提示选择月份，**不请求** `/api/blog/posts`；选中月份无文章时同样为 `empty`。`go(page)` 会保留 `year` / `month` / 排序 query。
+- 进入详情时，runtime 把当前列表的 `pinnedFirst` / `direction` / `sortBy`（以及标签页的 `tagId`、归档筛选的 `year` / `month`、搜索页的 `q`）附加到 `/posts/:slug`；详情默认值与首页相同。
+- 搜索页的上下篇携带 `q`，使用与搜索列表相同的标题 / 正文匹配条件，保证停留在搜索结果内。
+- 新标签页 / 直接打开详情会丢上下文，按默认值计算上下篇。
 
 后端对以上路径统一 fallback 到同一 HTML 骨架；URL 结构对外是契约，不随主题变化。
 `/about` 是 `/p/:slug` 的 alias（共用 `route.name = 'page'`）：vue-router 5 会丢弃同名路由中先注册的一条，因此不允许为两者各建一条同名记录（`pnpm check:contract` 会拦）。
@@ -631,9 +649,9 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | `GET` 其他任意非保留路径（如新增前端路由） | 同样返回壳（`200 + 壳`，runtime 渲染 not-found）；保留前缀见 §4.5 |
 | `GET /blog/runtime.js`、`/blog/chunks/*`、`/blog/assets/*` | 后端从 jar 内 `static/blog/` 同源提供；入口 `no-cache`，哈希资源长缓存 |
 | `GET /api/blog/bootstrap` | 保留为调试 / agent / 未来桌面端的结构化读取入口：`{ site, theme, runtimeContract, adminOrigin, preview, settingVersion }`；**不再参与首屏启动**；支持 `previewTheme` + `token`，`no-store` |
-| `GET /api/blog/posts` | 已有；`page` / `size` / `tagId` / `year` / `month` |
-| `GET /api/blog/posts/{slug}` | 已有 |
-| `GET /api/blog/tags`、`/api/blog/archives`、`/api/blog/search` | 已有 |
+| `GET /api/blog/posts` | 已有；`page` / `size` / `tagId` / `year` / `month` / `pinnedFirst` / `direction` / `sortBy`；`year` / `month` 跟随 `sortBy` 字段 |
+| `GET /api/blog/posts/{slug}` | 已有；额外接受 `pinnedFirst` / `direction` / `sortBy` / `tagId` / `year` / `month` / `q` 计算 `prevPost` / `nextPost` |
+| `GET /api/blog/tags`、`/api/blog/archives`、`/api/blog/search` | 已有；`/archives` 返回全量月份索引并支持 `sortBy` / `direction`，`/search` 支持完整排序参数 |
 | `GET /api/blog/pages/{slug}` | 新增：独立页面 |
 | `GET /api/blog/site` | 新增：站点公开配置（供预览 / 未来的桌面端复用） |
 | `GET /api/media/{id}` | 已有 |
@@ -754,9 +772,9 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | `docs/tech-stack.md` | 博客前台 Markdown 渲染由 md-editor-v3 `MdPreview` 改为运行时内置 `markdown-it`（方言一致）；2026-10-25 起进一步改为 **Lute**（与 admin 同引擎） |
 | `docs/markdown-dialect.md` | 明确方言的唯一浏览器实现位于 blog runtime；admin 使用 Vditor/Lute（方言 v2） |
 | `frontend/AGENTS.md` | `apps/blog` 为 Vite 构建的 runtime（TS + 单文件组件；Vue 运行时编译器保留给主题模板）；产物在 Maven 打包时进入后端 jar；共享方言与默认主题位置 |
-| `docs/content-model.md` | §9.2 前台信息架构改为「后端组装壳 + 运行时」；§10 补充 Markdown 渲染归属 |
+| `docs/content-model.md` | §9.2 前台信息架构改为「后端组装壳 + 运行时」；§10 补充 Markdown 渲染归属；v1.4 排序参数、`authored_at` 与 `displayAt` 规则 |
 | `backend/AGENTS.md` | 记录 `site_theme_version` 不可变、`site_setting` 物理 upsert 两项审计例外；主题以 API / 壳下发，后端不执行主题模板；jar 内 runtime 的打包与缓存约定 |
-| `frontend/AGENTS.md` | 新增「契约单一来源」：主题能力只在 `apps/blog/src/contract.ts` 登记，改动后必须 `pnpm check:contract` 通过 |
+| `frontend/AGENTS.md` | 新增「契约单一来源」：主题能力只在 `apps/blog/src/contract.ts` 登记，改动后必须 `pnpm check:contract` 通过；v1.13 契约新增只读 `listSort` 与辅助函数 `postDate`，主题排序切换走 URL query，运行时把列表上下文附加到详情链接 |
 
 ---
 
@@ -777,3 +795,4 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 2026-10-28 | v1.10 组件拆分 | `apps/blog/src/components.ts`（13 个组件 373 行）拆为**一个组件一个文件**：`apps/blog/src/components/<组件名>.ts` + `index.ts` 注册表（值仍为组件标识符）；`scripts/theme-contract.mjs` 改为遍历目录收集 `defineComponent` 模板，注册表取自 `index.ts`，自检报错定位到具体组件文件，并新增"组件文件里没有 `defineComponent`"与"组件标识符跨文件重复"两项守护；契约、`parts` / `slots` 校验口径不变，`runtime.ts` 的 `./components` 入口不变；数据库零迁移 |
 | 2026-10-28 | v1.11 试点 | **单文件组件试点**：`@vitejs/plugin-vue` 接入 `apps/blog`（catalog 已有，构建期依赖），`<blog-pager>` 改为 `components/pager.vue`（`<script setup>` + `<template>`），其余组件仍是 `.ts` template 字符串；自检改为按 `index.ts` 的导入定位组件文件，`.vue` 用 `vue/compiler-sfc` 读 `<template>` 扫描（`parts` / `slots` 规则不变），并新增两项守护：组件文件含 `<style>` 直接失败、`components/` 下未注册的文件直接失败。收益是 SFC 模板进 `vue-tsc` 类型检查（template 字符串做不到）；代价：Vue 运行时编译器仍不能去掉（主题用），构建产物 +0.07 kB。**未决策是否全量迁移**，其余组件维持现状 |
 | 2026-10-28 | v1.12 全量迁移 | 剩余 12 个组件全部改为 `.vue`（`<script setup lang="ts">` + `<template>`，`defineOptions` 保留原组件名），blog 组件统一为单文件组件；自检删除 template 字符串分支，改为**只认 `.vue`**（新增守护：注册进 `index.ts` 但不是 `.vue` 直接失败），`parts` / `slots` / `<style>` / 未注册文件四条校验口径不变；模板进入 `vue-tsc` 类型检查（实测 `tag-cloud.vue` 里 `item.ct` 会被 TS2339 拦下）。构建产物 `runtime.js` 298.36 → 298.55 kB（gzip 104.15 → 104.56 kB）；Vue 运行时编译器仍保留（主题模板需要）；数据库零迁移 |
+| 2026-10-28 | v1.13 排序上下文 | **公开列表排序上下文**：`pinnedFirst` / `direction` / `sortBy`（`displayAt` / `firstPublishedAt` / `lastPublishedAt`）；列表与归档按 URL query 取数，详情上下篇由详情接口按同一上下文计算（不再拉 100 条列表）；runtime 注入只读 `listSort` 与 `postDate(post)`，归档改为**按月查看 + 月内分页**（月份索引 + `year` / `month` + `page` / `size`），`year` / `month` 过滤跟随 `sortBy`；主题可通过 `<a href="?direction=asc">` 切换；搜索上下篇携带 `q`；数据库新增 `note.authored_at`（见 `docs/content-model.md` v1.4）；V10 已执行，契约自检 29 键通过 |

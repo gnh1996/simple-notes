@@ -43,6 +43,7 @@ const form = reactive({
   publicUrl: '',
   firstPublishedAt: null as string | null,
   lastPublishedAt: null as string | null,
+  authoredAt: '',
   version: 0,
 })
 
@@ -116,6 +117,7 @@ function resetForm(): void {
   form.publicUrl = ''
   form.firstPublishedAt = null
   form.lastPublishedAt = null
+  form.authoredAt = ''
   form.version = 0
   dirty.value = false
   lastSavedAt.value = null
@@ -137,6 +139,7 @@ function applyPost(post: PostDetail): void {
   form.publicUrl = post.publicUrl ?? ''
   form.firstPublishedAt = post.firstPublishedAt ?? null
   form.lastPublishedAt = post.lastPublishedAt ?? null
+  form.authoredAt = post.authoredAt ?? ''
   form.version = post.version
   lastSavedAt.value = formatDateTime(post.updateTime || post.createTime)
   dirty.value = false
@@ -163,6 +166,7 @@ watch(
     coverAttachmentId: form.coverAttachmentId,
     tags: [...form.tags],
     pinned: form.pinned,
+    authoredAt: form.authoredAt,
   }),
   scheduleAutoSave,
 )
@@ -201,6 +205,7 @@ async function save(silent = false): Promise<PostDetail | null> {
       coverAttachmentId: form.coverAttachmentId || undefined,
       tags: form.tags,
       pinned: form.pinned,
+      authoredAt: form.authoredAt || '',
     }
     const post = isNew.value
       ? await postApi.create(common)
@@ -431,6 +436,20 @@ onBeforeUnmount(() => {
 
           <el-form-item label="置顶">
             <el-switch v-model="form.pinned" />
+          </el-form-item>
+
+          <el-form-item label="创作时间">
+            <el-date-picker
+              v-model="form.authoredAt"
+              type="datetime"
+              value-format="YYYY-MM-DDTHH:mm:ssZ"
+              placeholder="留空则使用首次发布时间"
+              clearable
+              class="w-full"
+            />
+            <el-text size="small" type="info">
+              用于博客展示、排序与归档；保存后立即生效
+            </el-text>
           </el-form-item>
 
           <el-form-item label="发布时间">

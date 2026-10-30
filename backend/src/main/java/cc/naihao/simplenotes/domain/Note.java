@@ -72,6 +72,10 @@ public class Note extends BaseEntity {
     @Column(name = "last_published_at")
     private Instant lastPublishedAt;
 
+    /** 仅 POST：创作时间 / 搬运文章的原始日期；运营字段，不参与发布快照 */
+    @Column(name = "authored_at")
+    private Instant authoredAt;
+
     /** 草稿最近修改时间；用于 hasUnpublishedChanges */
     @Column(name = "draft_modified_at")
     private Instant draftModifiedAt;

@@ -19,6 +19,7 @@ public record PostSummary(
         boolean hasUnpublishedChanges,
         Instant firstPublishedAt,
         Instant lastPublishedAt,
+        Instant authoredAt,
         Instant createTime,
         Instant updateTime,
         long version) {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatDate } from '../format'
+import { postDate } from '../store'
 import type { PostSummary } from '../types'
 
 defineOptions({ name: 'BlogPostCard' })
@@ -22,7 +23,7 @@ defineProps<{ post: PostSummary }>()
       <div class="bc-card-body">
         <div class="bc-card-meta">
           <span v-if="post.pinned" class="bc-card-pin">置顶</span>
-          <time>{{ formatDate(post.firstPublishedAt) }}</time>
+          <time>{{ formatDate(postDate(post)) }}</time>
           <span>约 {{ post.readingMinutes }} 分钟</span>
         </div>
         <h2 class="bc-card-title"><a :href="'/posts/' + post.slug">{{ post.title }}</a></h2>

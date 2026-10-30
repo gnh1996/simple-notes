@@ -23,6 +23,7 @@ import {
   currentPath,
   emptyPager,
   keyword,
+  listSort,
   message,
   nextPost,
   page,
@@ -43,12 +44,14 @@ import { createTemplateContext } from './template-context'
 import type {
   Archive,
   Boot,
+  ListSort,
   PageResult,
   Pager,
   PostDetail,
   PostSummary,
   Site,
   SitePage,
+  SortField,
   Tag,
 } from './types'
 
@@ -177,9 +180,52 @@ const route = router.currentRoute
 /** 首页分页大小由站点配置决定；在启动时写入，供路由守卫取数使用。 */
 const pageSize = ref(10)
 
+const SORT_FIELDS: SortField[] = ['displayAt', 'firstPublishedAt', 'lastPublishedAt']
+const LIST_ROUTE_NAMES = new Set(['home', 'tag-posts', 'archives', 'search', 'post'])
+
+function queryString(value: unknown): string {
+  if (Array.isArray(value)) {
+    return typeof value[0] === 'string' ? value[0] : ''
+  }
+  return typeof value === 'string' ? value : ''
+}
+
+/** 解析列表 / 详情排序上下文；未提供时使用路由默认值。 */
+function resolveListSort(query: RouteLocationNormalized['query'], pinnedDefault = true): ListSort {
+  const rawSort = queryString(query.sortBy)
+  const sortBy = SORT_FIELDS.includes(rawSort as SortField)
+    ? (rawSort as SortField)
+    : 'displayAt'
+  const direction = queryString(query.direction) === 'asc' ? 'asc' : 'desc'
+  const rawPinned = queryString(query.pinnedFirst)
+  const pinnedFirst = rawPinned === 'false' ? false : rawPinned === 'true' ? true : pinnedDefault
+  return { pinnedFirst, direction, sortBy }
+}
+
+function sortParams(sort: ListSort): Record<string, string | boolean> {
+  return {
+    pinnedFirst: sort.pinnedFirst,
+    direction: sort.direction,
+    sortBy: sort.sortBy,
+  }
+}
+
+function validPeriod(query: RouteLocationNormalized['query']): { year: number; month: number } | null {
+  const year = Number(queryString(query.year))
+  const month = Number(queryString(query.month))
+  if (!Number.isInteger(year) || year < 1 || year > 9999) {
+    return null
+  }
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    return null
+  }
+  return { year, month }
+}
+
 interface RouteData {
   state: BlogState
   message: string
+  listSort: ListSort
   posts: PostSummary[]
   pager: Pager
   post: PostDetail | null
@@ -197,6 +243,7 @@ function emptyRouteData(): RouteData {
   return {
     state: 'loading',
     message: '',
+    listSort: { pinnedFirst: true, direction: 'desc', sortBy: 'displayAt' },
     posts: [],
     pager: emptyPager(),
     post: null,
@@ -238,11 +285,14 @@ async function loadRoute(to: RouteLocationNormalized, signal: AbortSignal): Prom
 
   switch (to.name) {
     case 'home': {
+      const sort = resolveListSort(query, true)
+      data.listSort = sort
       const result = await api<PageResult<PostSummary>>(
         '/api/blog/posts',
         {
           page: Number(query.page) || 1,
           size: pageSize.value || 10,
+          ...sortParams(sort),
         },
         { signal },
       )
@@ -251,12 +301,32 @@ async function loadRoute(to: RouteLocationNormalized, signal: AbortSignal): Prom
     }
     case 'post': {
       const slug = String(to.params.slug)
+      const sort = resolveListSort(query, true)
+      data.listSort = sort
+      const detailParams: Record<string, string | number | boolean | undefined> = {
+        ...sortParams(sort),
+      }
+      const tagId = queryString(query.tagId)
+      if (tagId) {
+        detailParams.tagId = tagId
+      }
+      const period = validPeriod(query)
+      if (period) {
+        detailParams.year = period.year
+        detailParams.month = period.month
+      }
+      const keyword = queryString(query.q)
+      if (keyword) {
+        detailParams.q = keyword
+      }
       const [detail] = await Promise.all([
-        api<PostDetail>(`/api/blog/posts/${encodeURIComponent(slug)}`, undefined, { signal }),
+        api<PostDetail>(`/api/blog/posts/${encodeURIComponent(slug)}`, detailParams, { signal }),
         // 正文渲染依赖 Lute；与正文请求并行，避免标题先出、正文后到
         warmMarkdown().catch(() => undefined),
       ])
       data.post = detail
+      data.prevPost = detail.prevPost ?? null
+      data.nextPost = detail.nextPost ?? null
       data.state = 'ready'
       break
     }
@@ -268,6 +338,8 @@ async function loadRoute(to: RouteLocationNormalized, signal: AbortSignal): Prom
     }
     case 'tag-posts': {
       const id = String(to.params.id)
+      const sort = resolveListSort(query, true)
+      data.listSort = sort
       const [allTags, result] = await Promise.all([
         api<Tag[]>('/api/blog/tags', undefined, { signal }),
         api<PageResult<PostSummary>>(
@@ -275,6 +347,7 @@ async function loadRoute(to: RouteLocationNormalized, signal: AbortSignal): Prom
           {
             page: Number(query.page) || 1,
             tagId: id,
+            ...sortParams(sort),
           },
           { signal },
         ),
@@ -285,16 +358,44 @@ async function loadRoute(to: RouteLocationNormalized, signal: AbortSignal): Prom
       break
     }
     case 'archives': {
-      const [archiveRows, all] = await Promise.all([
-        api<Archive[]>('/api/blog/archives', undefined, { signal }),
-        api<PageResult<PostSummary>>('/api/blog/posts', { page: 1, size: 100 }, { signal }),
-      ])
+      const sort = resolveListSort(query, false)
+      data.listSort = sort
+      const archiveRows = await api<Archive[]>(
+        '/api/blog/archives',
+        { direction: sort.direction, sortBy: sort.sortBy },
+        { signal },
+      )
       data.archives = archiveRows || []
-      applyPage(data, all)
+      const period = validPeriod(query)
+      if (!period) {
+        // 未选月份：只渲染年月索引，不请求文章列表。
+        data.posts = []
+        data.pager = emptyPager()
+        data.state = 'empty'
+        data.message = '请选择月份查看归档'
+        break
+      }
+      const result = await api<PageResult<PostSummary>>(
+        '/api/blog/posts',
+        {
+          page: Number(query.page) || 1,
+          size: pageSize.value || 10,
+          year: period.year,
+          month: period.month,
+          ...sortParams(sort),
+        },
+        { signal },
+      )
+      applyPage(data, result)
+      if (!data.posts.length) {
+        data.message = '该月暂无文章'
+      }
       break
     }
     case 'search': {
       data.keyword = String(query.q || '')
+      const sort = resolveListSort(query, true)
+      data.listSort = sort
       if (!data.keyword) {
         data.state = 'empty'
         break
@@ -306,6 +407,7 @@ async function loadRoute(to: RouteLocationNormalized, signal: AbortSignal): Prom
           q: data.keyword,
           page: Number(query.page) || 1,
           size: 20,
+          ...sortParams(sort),
         },
         { signal },
       )
@@ -331,6 +433,7 @@ async function loadRoute(to: RouteLocationNormalized, signal: AbortSignal): Prom
 function applyRouteData(data: RouteData): void {
   state.value = data.state
   message.value = data.message
+  listSort.value = data.listSort
   posts.value = data.posts
   pager.value = data.pager
   post.value = data.post
@@ -350,27 +453,6 @@ function applyRouteData(data: RouteData): void {
     archivesLoaded.value = true
   }
   contentVersion.value += 1
-}
-
-let neighborSequence = 0
-
-/** 上下篇不阻塞正文：导航确认后再补取，离开文章页则丢弃结果。 */
-async function loadNeighbors(slug: string): Promise<void> {
-  const sequence = ++neighborSequence
-  try {
-    const all = await api<PageResult<PostSummary>>('/api/blog/posts', { page: 1, size: 100 })
-    if (sequence !== neighborSequence || post.value?.slug !== slug) {
-      return
-    }
-    const items = all.items || []
-    const index = items.findIndex((item) => item.slug === slug)
-    if (index >= 0) {
-      nextPost.value = index > 0 ? items[index - 1] : null
-      prevPost.value = index < items.length - 1 ? items[index + 1] : null
-    }
-  } catch {
-    /* 上下篇失败不影响正文 */
-  }
 }
 
 let booted = false
@@ -421,9 +503,6 @@ router.afterEach((to) => {
   activeController = null
   setNavigating(false)
   booted = true
-  if (to.name === 'post' && post.value) {
-    void loadNeighbors(post.value.slug)
-  }
 })
 
 router.onError(() => {
@@ -595,6 +674,37 @@ async function main(): Promise<void> {
   reply({ type: 'blog-preview:ready' })
 }
 
+/** 当前列表上下文：进入详情时携带，保证上下篇仍按同一列表计算。 */
+function listContextParams(): Record<string, string> {
+  const params: Record<string, string> = {}
+  const sort = listSort.value
+  if (!sort.pinnedFirst) {
+    params.pinnedFirst = 'false'
+  }
+  if (sort.direction !== 'desc') {
+    params.direction = sort.direction
+  }
+  if (sort.sortBy !== 'displayAt') {
+    params.sortBy = sort.sortBy
+  }
+  const tagId =
+    queryString(route.value.query.tagId) ||
+    (route.value.name === 'tag-posts' ? String(route.value.params.id ?? '') : '')
+  if (tagId) {
+    params.tagId = tagId
+  }
+  const period = validPeriod(route.value.query)
+  if (period) {
+    params.year = String(period.year)
+    params.month = String(period.month)
+  }
+  const keyword = queryString(route.value.query.q)
+  if (keyword) {
+    params.q = keyword
+  }
+  return params
+}
+
 // 站内链接交给 history 路由，保留原生 <a> 语义
 document.addEventListener('click', (event) => {
   const target = event.target
@@ -624,6 +734,14 @@ document.addEventListener('click', (event) => {
     url.pathname.startsWith('/node_modules/')
   if (internalAsset) {
     return
+  }
+  if (LIST_ROUTE_NAMES.has(String(route.value.name ?? '')) && url.pathname.startsWith('/posts/')) {
+    const context = listContextParams()
+    for (const [key, value] of Object.entries(context)) {
+      if (!url.searchParams.has(key)) {
+        url.searchParams.set(key, value)
+      }
+    }
   }
   event.preventDefault()
   router.push(url.pathname + url.search + url.hash)

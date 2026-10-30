@@ -64,7 +64,7 @@
           <h1 class="post-title">{{ post.title }}</h1>
           <p class="post-meta">
             <span>{{ post.authorName }}</span>
-            <time>{{ formatDate(post.firstPublishedAt) }}</time>
+            <time>{{ formatDate(post.displayAt) }}</time>
             <span>约 {{ post.readingMinutes }} 分钟</span>
           </p>
           <div v-if="post.tags.length" class="post-tags">
@@ -119,32 +119,32 @@
       </section>
     </template>
 
-    <!-- 归档 -->
+    <!-- 归档：月份索引 + 月内分页 -->
     <template v-else-if="route.name === 'archives'">
       <section class="page-head">
         <p class="eyebrow">Archive</p>
         <h1>归档</h1>
-        <p>按发布时间浏览全部文章。</p>
+        <p>选择月份查看已发布文章。</p>
       </section>
-      <blog-state v-if="state !== 'ready' || !posts.length"
-                  :state="state === 'ready' ? 'empty' : state" :message="message"></blog-state>
-      <div v-else class="archive-layout">
+      <div class="archive-layout">
         <aside class="archive-index">
           <a v-for="a in archives" :key="a.year + '-' + a.month"
-             :href="'#y' + a.year + 'm' + a.month">
+             :class="{ active: route.query.year == a.year && route.query.month == a.month }"
+             :href="'/archives?year=' + a.year + '&month=' + a.month + '&pinnedFirst=' + listSort.pinnedFirst + '&direction=' + listSort.direction + '&sortBy=' + listSort.sortBy">
             {{ a.year }} 年 {{ a.month }} 月 <span>{{ a.count }}</span>
           </a>
         </aside>
         <div class="archive-list">
-          <section v-for="group in archiveGroups" :key="group.key"
-                   :id="'y' + group.year + 'm' + group.month" class="archive-group">
-            <h2>{{ group.year }} 年 {{ group.month }} 月</h2>
+          <blog-state v-if="state !== 'ready'" :state="state" :message="message"></blog-state>
+          <section v-else class="archive-group">
+            <h2>{{ route.query.year }} 年 {{ route.query.month }} 月</h2>
             <ul>
-              <li v-for="p in group.posts" :key="p.slug">
+              <li v-for="p in posts" :key="p.slug">
                 <a :href="'/posts/' + p.slug">{{ p.title }}</a>
-                <time>{{ formatDate(p.firstPublishedAt) }}</time>
+                <time>{{ formatDate(postDate(p)) }}</time>
               </li>
             </ul>
+            <blog-pager :pager="pager" @go="go"></blog-pager>
           </section>
         </div>
       </div>

@@ -74,6 +74,11 @@ export const CONTRACT_DATA = {
   keyword: { shape: 'string', routes: ['search'] },
   searched: { shape: 'boolean', routes: ['search'] },
   page: { shape: 'SitePage | null', routes: ['page'] },
+  listSort: {
+    shape: "{ pinnedFirst: boolean; direction: 'asc' | 'desc'; sortBy: SortField }",
+    routes: 'all',
+    note: '当前列表 / 详情上下文解析后的排序参数（只读）',
+  },
   ui: {
     shape: 'Record<string, unknown>',
     routes: 'all',
@@ -85,6 +90,7 @@ export const CONTRACT_DATA = {
 export const CONTRACT_HELPERS = {
   isNavActive: { signature: '(to: string): boolean' },
   formatDate: { signature: '(value: string | null | undefined): string' },
+  postDate: { signature: '(post: PostSummary): string' },
 } as const satisfies Record<string, FunctionEntry>
 
 export const CONTRACT_ACTIONS = {

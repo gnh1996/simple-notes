@@ -29,5 +29,8 @@ public record UpdatePostRequest(
 
         List<@Size(max = 32, message = "标签最长 32 个字符") String> tags,
 
-        Boolean pinned) {
+        Boolean pinned,
+
+        /** ISO-8601；null 表示不修改，空白表示清除 */
+        String authoredAt) {
 }
