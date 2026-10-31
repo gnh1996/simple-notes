@@ -9,7 +9,7 @@ import { rebuildMenuRoutes } from '@/router'
  * 认证 / 身份 store（docs/auth-rbac.md §6.2）：
  *
  * - 凭证存 localStorage（key `sn.auth.admin`），请求由 api 层注入 Bearer；
- * - `me` 一次性拉取身份 + root + codes + roles + 服务端菜单树（可见菜单的唯一来源）；
+ * - `GET /api/auth/me` 一次性拉取身份 + root + codes + roles + 服务端菜单树（可见菜单的唯一来源）；
  * - 菜单树 → 动态路由由路由层 `rebuildMenuRoutes` 处理，本 store 只持有数据。
  */
 export const useAuthStore = defineStore('auth', () => {
@@ -21,8 +21,10 @@ export const useAuthStore = defineStore('auth', () => {
   const codes = ref<string[]>([])
   const roles = ref<RoleBrief[]>([])
   const menus = ref<MenuNode[]>([])
-  /** me 是否已成功拉取（F5 直连深链时守卫等它完成后才放行） */
+  /** 身份是否已成功拉取（F5 直连深链时守卫等它完成后才放行） */
   const ready = ref(false)
+  /** 身份拉取（`/api/auth/me`）是否失败过；成功或重置会话时清除，守卫据此跳过重试 */
+  const meError = ref(false)
   const loginLoading = ref(false)
 
   const displayName = computed(() => user.value?.nickname || user.value?.username || '')
@@ -47,20 +49,28 @@ export const useAuthStore = defineStore('auth', () => {
       }
       token.value = response.token
       storeToken(response.token)
+      // 新凭证 = 新会话，上一次身份拉取的失败结果不再适用
+      meError.value = false
     } finally {
       loginLoading.value = false
     }
   }
 
   async function fetchMe(): Promise<void> {
-    const me = await authApi.me()
-    user.value = me.user ?? null
-    root.value = me.root ?? false
-    entries.value = me.entries ?? []
-    codes.value = me.codes ?? []
-    roles.value = me.roles ?? []
-    menus.value = me.menus ?? []
-    ready.value = true
+    try {
+      const me = await authApi.me()
+      user.value = me.user ?? null
+      root.value = me.root ?? false
+      entries.value = me.entries ?? []
+      codes.value = me.codes ?? []
+      roles.value = me.roles ?? []
+      menus.value = me.menus ?? []
+      ready.value = true
+      meError.value = false
+    } catch (error) {
+      meError.value = true
+      throw error
+    }
   }
 
   /** 退出登录（服务端撤销当前会话；失败也照常清理本地状态） */
@@ -92,6 +102,7 @@ export const useAuthStore = defineStore('auth', () => {
     roles.value = []
     menus.value = []
     ready.value = false
+    meError.value = false
   }
 
   return {
@@ -103,6 +114,7 @@ export const useAuthStore = defineStore('auth', () => {
     roles,
     menus,
     ready,
+    meError,
     loginLoading,
     displayName,
     can,

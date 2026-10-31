@@ -24,8 +24,9 @@ export function clearStoredToken(): void {
 /**
  * 401：会话失效 → 清凭证回登录页。
  *
- * 只在"已有凭证"时触发（登录接口自身的 401 = 凭据错误，由登录页展示，不在此处理）。
- * 动态 import 规避与 store / router 的循环依赖；并发 401 用标记去重。
+ * 只在"已有凭证"时触发；并发 401 用标记去重。当前已在登录页时不跳转、不提示
+ * "会话失效"——此时的 401 来自登录接口本身，凭据错误由登录页展示。
+ * 动态 import 规避与 store / router 的循环依赖。
  */
 let redirecting = false
 async function handleUnauthorized(): Promise<void> {
@@ -38,8 +39,9 @@ async function handleUnauthorized(): Promise<void> {
     ])
     const auth = useAuthStore()
     if (!auth.token) return
+    const onLogin = router.currentRoute.value.name === 'Login'
     auth.reset()
-    if (router.currentRoute.value.name !== 'Login') {
+    if (!onLogin) {
       await router.replace({
         name: 'Login',
         query: { redirect: router.currentRoute.value.fullPath },

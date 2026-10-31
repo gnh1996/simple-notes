@@ -133,26 +133,43 @@ export function rebuildMenuRoutes(menus: MenuNode[]): void {
 /**
  * 路由守卫（只做会话层判断，无路由级权限判断——"页面是否注册"即权限结论）：
  *
- * - 已登录访问登录页 → 回首页；
  * - 未登录 → 登录页（带 redirect）；
- * - 有凭证但 me 未拉取（F5 直连深链）→ 先取 me 注册路由，再重匹配放行。
+ * - 有凭证但身份未拉取（F5 直连深链）→ 先调 `/api/auth/me` 注册路由，再重匹配放行；
+ * - 登录页：有凭证则确认身份后回首页，避免已登录用户重复登录。
  */
 router.beforeEach(async (to) => {
   const { useAuthStore } = await import('@/stores/auth')
   const auth = useAuthStore()
 
   if (to.meta.public) {
-    if (to.name === 'Login' && auth.token) return { path: '/' }
+    if (to.name === 'Login' && auth.token) {
+      // 有凭证：先确认身份，成功才回首页；失败则留在登录页。
+      // meError 保护：上一次身份拉取已失败就不再重试，否则 /login ⇄ / 会无限重定向。
+      if (auth.ready) return { path: '/' }
+      if (!auth.meError) {
+        try {
+          await auth.fetchMe()
+          rebuildMenuRoutes(auth.menus)
+          return { path: '/' }
+        } catch {
+          return true
+        }
+      }
+    }
     return true
   }
   if (!auth.token) {
     return { name: 'Login', query: to.fullPath === '/' ? undefined : { redirect: to.fullPath } }
   }
   if (!auth.ready) {
+    // 上一次身份拉取（`/api/auth/me`）失败过：本次导航不再重试，直接回登录页（重新登录 / 刷新后再试）
+    if (auth.meError) {
+      return { name: 'Login', query: { redirect: to.fullPath } }
+    }
     try {
       await auth.fetchMe()
     } catch {
-      // 凭证无效（401 由 api 层清理并跳转；此处兜底）
+      // 凭证无效（401 由 api 层清理并跳转）或服务端不可达：兜底回登录页
       return { name: 'Login', query: { redirect: to.fullPath } }
     }
     rebuildMenuRoutes(auth.menus)
