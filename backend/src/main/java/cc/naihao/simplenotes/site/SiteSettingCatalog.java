@@ -1,10 +1,12 @@
 package cc.naihao.simplenotes.site;
 
+import cc.naihao.simplenotes.common.ApiException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * 站点配置注册表（docs/blog-runtime-theme.md §3.5 / §6.2）：键、类型、默认值、校验与公开范围的唯一来源。
@@ -41,6 +43,20 @@ public final class SiteSettingCatalog {
      */
     private static final Set<String> MANAGED_KEYS = Set.of("theme.id");
 
+    /**
+     * 主题可覆盖的 CSS 变量（docs/blog-runtime-theme.md §3.6）；与前端
+     * {@code contract.ts} 的 {@code CONTRACT_CSS_VARS} 保持同名。
+     */
+    public static final Set<String> THEME_OVERRIDE_KEYS = Set.of(
+            "--blog-accent", "--blog-accent-contrast", "--blog-bg", "--blog-surface",
+            "--blog-text", "--blog-text-muted", "--blog-border", "--blog-radius",
+            "--blog-font-sans", "--blog-font-mono", "--blog-prose-size",
+            "--blog-prose-line-height", "--blog-content-width", "--blog-gap", "--blog-code-bg");
+
+    /** CSS 变量值的保守白名单：不允许分号 / 花括号 / 协议冒号 / url() 等可逃逸写法。 */
+    private static final Pattern SAFE_CSS_VALUE = Pattern.compile(
+            "^[\\p{L}\\p{N}#\\s,.'\"()%+*/_-]+$");
+
     private static final Map<String, SettingDefinition> DEFINITIONS = build();
 
     private SiteSettingCatalog() {
@@ -57,6 +73,36 @@ public final class SiteSettingCatalog {
     /** 是否为系统托管键：管理端只读，写入由对应业务接口负责 */
     public static boolean isManaged(String key) {
         return MANAGED_KEYS.contains(key);
+    }
+
+    /**
+     * 校验 {@code theme.overrides}：只允许 §3.6 的变量名，值为安全的颜色 / 长度 / 字体族 token。
+     *
+     * @param value 管理端提交的 JSON 反序列化值，必须是扁平 map
+     */
+    public static void validateThemeOverrides(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            throw ApiException.badRequest("theme.overrides 必须是对象");
+        }
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            if (!THEME_OVERRIDE_KEYS.contains(key)) {
+                throw ApiException.badRequest("theme.overrides 含未知变量：" + key);
+            }
+            if (!(entry.getValue() instanceof String raw)) {
+                throw ApiException.badRequest("theme.overrides." + key + " 必须是字符串");
+            }
+            String valueText = raw.trim();
+            if (valueText.isEmpty() || valueText.length() > 200) {
+                throw ApiException.badRequest("theme.overrides." + key + " 为空或超出长度上限");
+            }
+            String lower = valueText.toLowerCase(java.util.Locale.ROOT);
+            if (!SAFE_CSS_VALUE.matcher(valueText).matches()
+                    || lower.contains("url(") || lower.contains("expression(")
+                    || lower.contains("javascript:") || lower.contains("var(")) {
+                throw ApiException.badRequest("theme.overrides." + key + " 含非法 CSS 值");
+            }
+        }
     }
 
     /** 内置导航 key 对应的路径；未知 key 返回 null（由调用方过滤） */

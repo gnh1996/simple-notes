@@ -166,7 +166,7 @@ public class BlogPageController {
         response.getWriter().write(render(
                 html,
                 STYLE_BREAKOUT.matcher(css).replaceAll("<\\\\/style"),
-                bootJson(site, themeId, themeVersionNo, themeContract),
+                bootJson(site, themeId, themeVersionNo, themeContract, preview),
                 site,
                 themeId,
                 themeContract,
@@ -255,12 +255,14 @@ public class BlogPageController {
                 escape(assetBase()));
     }
 
-    private String bootJson(SiteResponse site, String themeId, int themeVersionNo, int themeContract) {
+    private String bootJson(SiteResponse site, String themeId, int themeVersionNo, int themeContract,
+            boolean preview) {
         Map<String, Object> boot = new LinkedHashMap<>();
         boot.put("site", site);
         boot.put("themeMode", site.themeMode());
         boot.put("adminOrigin", siteProperties.getAdminOrigin());
         boot.put("contract", ThemeService.RUNTIME_CONTRACT);
+        boot.put("preview", preview);
         Map<String, Object> theme = new LinkedHashMap<>();
         theme.put("id", themeId);
         theme.put("versionNo", themeVersionNo);

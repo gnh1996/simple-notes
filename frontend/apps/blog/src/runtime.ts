@@ -7,9 +7,11 @@ import runtimeCss from './runtime.css?raw'
 import { api } from './api'
 import { blogComponents } from './components'
 import { RUNTIME_CONTRACT } from './contract'
+import { fixtureArchives, fixturePage, fixturePost, fixturePosts, fixtureTags } from './fixtures'
 import { warmMarkdown } from './markdown'
 import {
   applyThemeCss,
+  applyThemeOverrides,
   injectThemeHtml,
   removeCloak,
   starterTheme,
@@ -258,6 +260,123 @@ function emptyRouteData(): RouteData {
   }
 }
 
+/** 预览壳 + `fixtures=1` 时才启用示例数据（docs/blog-runtime-theme.md §7.2）。 */
+let fixtureMode = false
+
+function fixtureSorted(sort: ListSort): PostSummary[] {
+  const rows = [...fixturePosts]
+  rows.sort((left, right) => {
+    if (sort.pinnedFirst && left.pinned !== right.pinned) {
+      return left.pinned ? -1 : 1
+    }
+    const leftDate = left[sort.sortBy] || left.displayAt
+    const rightDate = right[sort.sortBy] || right.displayAt
+    const diff = new Date(leftDate).getTime() - new Date(rightDate).getTime()
+    return sort.direction === 'asc' ? diff : -diff
+  })
+  return rows
+}
+
+function fixturePeriod(post: PostSummary, period: { year: number; month: number }): boolean {
+  const date = new Date(post.displayAt)
+  return date.getUTCFullYear() === period.year && date.getUTCMonth() + 1 === period.month
+}
+
+function fixturePageResult(rows: PostSummary[], query: Record<string, unknown>): PageResult<PostSummary> {
+  const page = Math.max(1, Number(query.page) || 1)
+  const size = 10
+  const from = (page - 1) * size
+  return {
+    items: rows.slice(from, from + size),
+    total: rows.length,
+    page,
+    size,
+  }
+}
+
+function loadFixtureRoute(to: RouteLocationNormalized): RouteData {
+  const data = emptyRouteData()
+  const query = to.query as Record<string, unknown>
+
+  switch (to.name) {
+    case 'home': {
+      const sort = resolveListSort(to.query, true)
+      data.listSort = sort
+      applyPage(data, fixturePageResult(fixtureSorted(sort), query))
+      break
+    }
+    case 'tag-posts': {
+      const id = String(to.params.id)
+      const sort = resolveListSort(to.query, true)
+      data.listSort = sort
+      const tag = fixtureTags.find((item) => item.id === id) ?? null
+      data.tags = fixtureTags
+      data.tag = tag
+      const rows = fixtureSorted(sort).filter((item) => item.tags.some((itemTag) => itemTag.id === id))
+      applyPage(data, fixturePageResult(rows, query))
+      break
+    }
+    case 'tags': {
+      data.tags = fixtureTags
+      data.state = fixtureTags.length ? 'ready' : 'empty'
+      break
+    }
+    case 'archives': {
+      const sort = resolveListSort(to.query, false)
+      data.listSort = sort
+      data.archives = fixtureArchives
+      const period = validPeriod(to.query)
+      if (!period) {
+        data.state = 'empty'
+        data.message = '请选择月份查看归档'
+        break
+      }
+      const rows = fixtureSorted(sort).filter((item) => fixturePeriod(item, period))
+      applyPage(data, fixturePageResult(rows, query))
+      if (!data.posts.length) data.message = '该月暂无文章'
+      break
+    }
+    case 'search': {
+      const keyword = String(to.query.q || '')
+      const sort = resolveListSort(to.query, true)
+      data.keyword = keyword
+      data.listSort = sort
+      if (!keyword) {
+        data.state = 'empty'
+        break
+      }
+      data.searched = true
+      const lower = keyword.toLowerCase()
+      const rows = fixtureSorted(sort).filter(
+        (item) =>
+          item.title.toLowerCase().includes(lower) || item.summary.toLowerCase().includes(lower),
+      )
+      applyPage(data, fixturePageResult(rows, query))
+      break
+    }
+    case 'post': {
+      const slug = String(to.params.slug)
+      const sort = resolveListSort(to.query, true)
+      data.listSort = sort
+      const detail = fixturePost(slug)
+      data.post = detail
+      data.prevPost = detail?.prevPost ?? null
+      data.nextPost = detail?.nextPost ?? null
+      data.state = detail ? 'ready' : 'error'
+      if (!detail) data.message = '示例文章不存在'
+      break
+    }
+    case 'page': {
+      data.page = fixturePage
+      data.state = 'ready'
+      break
+    }
+    default:
+      data.state = 'ready'
+  }
+  return data
+}
+
 function applyPage(data: RouteData, result: PageResult<PostSummary>): void {
   data.posts = result.items || []
   data.pager = toPager(result)
@@ -280,6 +399,9 @@ function isAbortError(error: unknown): boolean {
  * 快照在导航确认（afterEach）后一次性应用，取数期间旧页面保持可见。
  */
 async function loadRoute(to: RouteLocationNormalized, signal: AbortSignal): Promise<RouteData> {
+  if (fixtureMode) {
+    return loadFixtureRoute(to)
+  }
   const data = emptyRouteData()
   const query = to.query
 
@@ -577,6 +699,8 @@ async function main(): Promise<void> {
   }
 
   prepareTheme(boot)
+  applyThemeOverrides(boot.site.themeOverrides)
+  fixtureMode = !!boot.preview && new URLSearchParams(location.search).has('fixtures')
   const site = ref<Site>(boot.site)
   pageSize.value = boot.site.pageSize || 10
   applyColorMode(

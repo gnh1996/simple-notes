@@ -326,6 +326,9 @@ public class SiteSettingService {
             case BOOLEAN -> stored = Boolean.toString(
                     value instanceof Boolean b ? b : Boolean.parseBoolean(String.valueOf(value)));
             case JSON -> {
+                if ("theme.overrides".equals(definition.key())) {
+                    SiteSettingCatalog.validateThemeOverrides(value);
+                }
                 try {
                     stored = objectMapper.writeValueAsString(value);
                 } catch (RuntimeException e) {

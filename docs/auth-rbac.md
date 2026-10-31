@@ -112,7 +112,7 @@
 - 个人中心（改自己密码 / 昵称）属"登录即可"，不设权限码（接口见 §8：`PUT /api/auth/password`、`PUT /api/auth/profile`）
 - 给用户分配角色独立为 `admin:user:assign-role`（与"分配角色"按钮同码，从 `admin:user:update` 拆出，见 §6.2 / §8）
 - 新增功能的标准开发动作 = **代码引用码 + 一条 INSERT 迁移**（对账兜底）
-- 预留命名空间（随对应功能设计补充，本次不枚举）：`admin:post:*`、`admin:note:*`、`admin:tag:*`、`admin:comment:*`、`admin:media:*`、`admin:settings:*`、`blog:*`、`desktop:*`；内容域具体权限码见 `docs/content-model.md` §7
+- 预留命名空间（随对应功能设计补充，本次不枚举）：`admin:post:*`、`admin:note:*`、`admin:tag:*`、`admin:comment:*`、`admin:media:*`、`admin:site:*`、`admin:theme:*`、`blog:*`、`desktop:*`；内容域具体权限码见 `docs/content-model.md` §7，站点 / 主题域见 `docs/blog-runtime-theme.md` §9.1
 
 ## 4. 预置用户与角色（超管）
 
@@ -318,7 +318,7 @@
 | GET `/api/auth/me` | 会话 | 身份 + root + entries + codes + roles；`menus` 仅 ADMIN 端返回（§6.2 / §6.3） |
 | PUT `/api/auth/password` | 会话 | 改自己密码（需旧密码） |
 | PUT `/api/auth/profile` | 会话 | 改自己昵称 |
-| GET `/api/admin/users` | `admin:user` | 分页列表 |
+| GET `/api/admin/users` | `admin:user` | 分页列表（`page` / `size` / `keyword`） |
 | POST `/api/admin/users` | `admin:user:create` | 创建（登录名 + 初始密码 + 昵称；角色另行分配） |
 | PUT `/api/admin/users/{id}` | `admin:user:update` | 昵称 / 邮箱 / 状态 |
 | PUT `/api/admin/users/{id}/roles` | `admin:user:assign-role` | 全量替换角色集合（内置角色拒绝；超管角色持有者拒绝） |
@@ -421,3 +421,4 @@ v1.1 评审修订同步：`docs/tech-stack.md`（待定 #3 注记改写 + 变更
   - **页面**：登录（语义码文案由后端返回：凭据错误 / 禁用 / 无入口权限 / 限流）、首页（身份 + 快捷入口，按可见菜单过滤）、用户管理（搜索分页 / 新建 / 编辑含状态禁停超管 / 分配角色（选项来自 `roles/assignable`，内置角色只读展示）/ 重置密码 / 删除）、角色管理（列表 / 新建 / 编辑 / 修改授权：按端分 Tab 的完整目录树，独立勾选无级联、父节点半选态、分支全选 / 清空、停用节点不可勾选但保留既有授权）、菜单管理（按端分 Tab 的树形表格 + 改名 / 调序 / 启停，结构性字段只读）、个人中心（基本设置 / 修改密码 / 退出所有设备）
   - **布局**：vben 风格（可折叠侧边栏 + 面包屑 + 多标签页 + 用户下拉）；暗色主题跟随系统并可手动覆盖（localStorage `sn.admin.theme`）；移动端以抽屉承载侧边栏（`useBreakpoint` 单一断点来源）
   - **验证**：类型检查 / 构建通过；浏览器端到端走查通过（含受限角色视角：菜单过滤、按钮隐藏、未注册路由 404、403 自动刷新）
+- **2026-10-31** 文档对齐：预留命名空间由 `admin:settings:*` 更正为已落地的 `admin:site:*` / `admin:theme:*`；用户列表补 `keyword` 参数；站点 / 主题权限明细指向 `docs/blog-runtime-theme.md` §9.1

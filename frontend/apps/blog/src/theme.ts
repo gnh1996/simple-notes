@@ -1,6 +1,7 @@
 import starterCss from '@simple-notes/theme-starter/theme.css?raw'
 import starterHtml from '@simple-notes/theme-starter/theme.html?raw'
 
+import { CONTRACT_ACTIONS, CONTRACT_COMPONENTS, CONTRACT_CSS_VARS, CONTRACT_DATA, CONTRACT_DIRECTIVES, CONTRACT_HELPERS } from './contract'
 import type { ThemePayload, ThemeValidationResult } from './types'
 
 /** 内置默认主题：runtime 兜底 + 主题契约不兼容时的回退（随构建发布）。 */
@@ -14,6 +15,119 @@ export const starterTheme: ThemePayload = {
 
 const MAX_HTML_BYTES = 64 * 1024
 const MAX_CSS_BYTES = 256 * 1024
+
+const TEMPLATE_KEYS = new Set([
+  ...Object.keys(CONTRACT_DATA),
+  ...Object.keys(CONTRACT_HELPERS),
+  ...Object.keys(CONTRACT_ACTIONS),
+])
+const COMPONENT_NAMES = new Set(Object.keys(CONTRACT_COMPONENTS))
+const DIRECTIVE_NAMES = new Set<string>(CONTRACT_DIRECTIVES)
+const JS_KEYWORDS = new Set([
+  'true', 'false', 'null', 'undefined', 'in', 'of', 'new', 'typeof', 'instanceof',
+  'void', 'delete', 'return', 'if', 'else', 'this', 'NaN', 'Infinity',
+])
+
+/** v-for / slot 作用域的局部变量：表达式里出现它们不算未登记标识符。 */
+function collectLocals(html: string): Set<string> {
+  const locals = new Set<string>()
+  for (const match of html.matchAll(/v-for="\(?([^)"]*?)\)?\s+(?:in|of)\s+/g)) {
+    for (const part of match[1].split(',')) {
+      const name = part.trim()
+      if (name) locals.add(name)
+    }
+  }
+  for (const match of html.matchAll(/(?:#[\w-]*|v-slot(?::[\w-]+)?)="([^"]*)"/g)) {
+    const value = match[1].trim()
+    const inner = value.startsWith('{') ? value.slice(1, value.lastIndexOf('}')) : value
+    for (const part of inner.split(',')) {
+      const pieces = part.split(':')
+      const name = (pieces.length > 1 ? pieces[1] : pieces[0]).trim()
+      if (/^[A-Za-z_$][\w$]*$/.test(name)) locals.add(name)
+    }
+  }
+  return locals
+}
+
+function arrowParamNames(expression: string): Set<string> {
+  const names = new Set<string>()
+  for (const match of expression.matchAll(/(?:\(([^()]*)\)|([A-Za-z_$][\w$]*))\s*=>/g)) {
+    for (const part of (match[1] ?? match[2] ?? '').split(',')) {
+      let name = part.split('=')[0].trim().replace(/^\.\.\./, '')
+      if (name.includes(':')) name = name.split(':').pop()!.trim()
+      name = name.replace(/[{}\[\]]/g, '').trim()
+      if (/^[A-Za-z_$][\w$]*$/.test(name)) names.add(name)
+    }
+  }
+  return names
+}
+
+function stripArrowParams(expression: string): string {
+  return expression.replace(
+    /(?:\(([^()]*)\)|([A-Za-z_$][\w$]*))\s*=>/g,
+    (match) => ' '.repeat(match.length),
+  )
+}
+
+/** 提取表达式中的自由标识符（字符串、属性访问、对象字面量键、箭头参数除外）。 */
+function freeIdentifiers(expression: string): string[] {
+  const arrowParams = arrowParamNames(expression)
+  const cleaned = stripArrowParams(
+    expression.replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`/g, ' '),
+  )
+  const names: string[] = []
+  const pattern = /(?<![\w$.])([A-Za-z_$][\w$]*)/g
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(cleaned))) {
+    const name = match[1]
+    if (arrowParams.has(name)) continue
+    const before = cleaned.slice(0, match.index).trimEnd().slice(-1)
+    const after = cleaned.slice(pattern.lastIndex).match(/^\s*:/)
+    if (after && (before === '{' || before === ',')) continue
+    names.push(name)
+  }
+  return names
+}
+
+function scanTheme(html: string, errors: Array<{ line: number; message: string }>): void {
+  const lineAt = (index: number): number => (index < 0 ? 0 : html.slice(0, index).split('\n').length)
+  const locals = collectLocals(html)
+
+  for (const match of html.matchAll(/<\s*(blog-[a-z-]+)/g)) {
+    if (!COMPONENT_NAMES.has(match[1])) {
+      errors.push({ line: lineAt(match.index), message: `使用了未登记的组件 <${match[1]}>` })
+    }
+  }
+  for (const match of html.matchAll(/\s(v-[a-z-]+)/g)) {
+    if (!DIRECTIVE_NAMES.has(match[1])) {
+      errors.push({ line: lineAt(match.index), message: `使用了未登记的指令 ${match[1]}` })
+    }
+  }
+
+  const expressions: Array<{ text: string; index: number }> = []
+  for (const match of html.matchAll(/{{([\s\S]*?)}}/g)) {
+    expressions.push({ text: match[1], index: match.index })
+  }
+  for (const match of html.matchAll(/\s([:@][A-Za-z0-9_.:[\]-]+|v-(?:bind|on|if|else-if|for|show|model|text|once)[A-Za-z0-9_.:[\]-]*)="([^"]*)"/g)) {
+    expressions.push({ text: match[2], index: match.index })
+  }
+  for (const { text, index } of expressions) {
+    for (const name of freeIdentifiers(text)) {
+      if (JS_KEYWORDS.has(name) || locals.has(name) || TEMPLATE_KEYS.has(name)) continue
+      errors.push({ line: lineAt(index), message: `引用了未登记的标识符 "${name}"` })
+    }
+  }
+}
+
+function scanCssUrls(css: string, errors: Array<{ line: number; message: string }>): void {
+  const lineAt = (index: number): number => (index < 0 ? 0 : css.slice(0, index).split('\n').length)
+  for (const match of css.matchAll(/url\(\s*([^)]*)\s*\)/gi)) {
+    const target = match[1].trim().replace(/^["']|["']$/g, '')
+    if (!target.startsWith('/api/media/') && !target.startsWith('data:')) {
+      errors.push({ line: lineAt(match.index), message: 'CSS url() 仅允许 /api/media/ 与 data: 资源' })
+    }
+  }
+}
 
 const FORBIDDEN: ReadonlyArray<readonly [string, string]> = [
   ['<script', '禁止 <script>'],
@@ -52,6 +166,8 @@ export function validateTheme(html: string, css: string): ThemeValidationResult 
     }
   }
 
+  scanTheme(source, errors)
+
   if (new Blob([source]).size > MAX_HTML_BYTES) {
     errors.push({ line: 0, message: '主题 HTML 超出 64KB 上限' })
   }
@@ -63,6 +179,7 @@ export function validateTheme(html: string, css: string): ThemeValidationResult 
   if (/@import/i.test(style)) {
     errors.push({ line: 0, message: '主题 CSS 禁止 @import' })
   }
+  scanCssUrls(style, errors)
 
   return { ok: errors.length === 0, errors }
 }
@@ -76,6 +193,26 @@ export function applyThemeCss(css: string): void {
     document.head.appendChild(element)
   }
   element.textContent = css
+}
+
+/** 应用站点设置里的 CSS 变量覆盖；只接受契约登记的变量名。 */
+export function applyThemeOverrides(overrides: Record<string, string> | null | undefined): void {
+  const root = document.documentElement
+  for (const key of CONTRACT_CSS_VARS) {
+    root.style.removeProperty(key)
+  }
+  if (!overrides) {
+    return
+  }
+  for (const [key, value] of Object.entries(overrides)) {
+    if (!CONTRACT_CSS_VARS.includes(key as (typeof CONTRACT_CSS_VARS)[number])) {
+      continue
+    }
+    if (typeof value !== 'string' || !value.trim()) {
+      continue
+    }
+    root.style.setProperty(key, value.trim())
+  }
 }
 
 /** 开发路径：把主题 HTML 注入 body（与生产壳的 DOM 形状保持一致）。 */

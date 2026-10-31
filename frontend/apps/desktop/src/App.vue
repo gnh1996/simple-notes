@@ -15,7 +15,7 @@ const content = ref(`# Simple Notes 桌面端骨架
 这是一段用于验证方言与编辑器的示例。
 
 > [!NOTE]
-> 预览与 blog 前台使用同一份 \`markdownDialect\` 配置。
+> 预览使用桌面端过渡期的 md-editor-v3（markdown-it）；admin / blog 已切换 Lute，迁移后与它们同源。
 
 \`\`\`ts
 const hello = (name: string) => \`Hello, \${name}\`

@@ -10,10 +10,10 @@ hljs.registerLanguage('properties', properties)
 hljs.registerLanguage('vue', xml)
 
 /**
- * Markdown 方言的单一语义源（docs/markdown-dialect.md §6）。
+ * 桌面端过渡期的 Markdown 方言配置（docs/markdown-dialect.md §6）。
  *
- * admin（md-editor-v3）与 blog runtime（markdown-it）都从这里取配置，
- * 避免两端各自维护一份 breaks / html / linkify / 扩展集合。
+ * desktop（md-editor-v3 / markdown-it）从这里取配置；admin / blog 已改用
+ * `@simple-notes/markdown` 的 Vditor + Lute（方言 v2），不要从本文件取。
  */
 export const markdownDialect = {
   breaks: false,

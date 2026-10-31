@@ -11,7 +11,6 @@ import cc.naihao.simplenotes.web.dto.CreateThemeVersionRequest;
 import cc.naihao.simplenotes.web.dto.ThemeSummary;
 import cc.naihao.simplenotes.web.dto.ThemeVersionResponse;
 import java.util.List;
-import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -135,37 +134,11 @@ public class ThemeService {
     }
 
     private void validateHtml(String html) {
-        String lower = html.toLowerCase(Locale.ROOT);
-        if (!lower.contains("id=\"app\"") && !lower.contains("id='app'")) {
-            throw ApiException.badRequest("主题必须包含 id=\"app\" 根节点");
-        }
-        List<String> forbidden = List.of(
-                "<script", "v-html", "javascript:", "window.", "document.",
-                "localstorage", "fetch(", "eval(", "import(");
-        for (String pattern : forbidden) {
-            if (lower.contains(pattern)) {
-                throw ApiException.badRequest("主题 HTML 含禁用内容：" + pattern);
-            }
-        }
+        ThemeTemplateValidator.validateHtml(html);
     }
 
     private void validateCss(String css) {
-        String lower = css.toLowerCase(Locale.ROOT);
-        if (lower.contains("@import")) {
-            throw ApiException.badRequest("主题 CSS 禁止使用 @import");
-        }
-        int index = lower.indexOf("url(");
-        while (index >= 0) {
-            int end = lower.indexOf(')', index);
-            if (end < 0) {
-                break;
-            }
-            String target = lower.substring(index + 4, end).trim().replace("\"", "").replace("'", "");
-            if (!target.startsWith("/api/media/") && !target.startsWith("data:")) {
-                throw ApiException.badRequest("主题 CSS 仅允许 /api/media/ 与 data: 资源");
-            }
-            index = lower.indexOf("url(", end);
-        }
+        ThemeTemplateValidator.validateCss(css);
     }
 
     private SiteTheme requireTheme(String themeId) {

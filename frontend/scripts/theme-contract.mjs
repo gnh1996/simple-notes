@@ -389,7 +389,7 @@ const JS_KEYWORDS = new Set([
 
 function collectLocals(html) {
   const locals = new Set()
-  for (const match of html.matchAll(/v-for="\(?([^)"]*?)\)?\s+in\s+/g)) {
+  for (const match of html.matchAll(/v-for="\(?([^)"]*?)\)?\s+(?:in|of)\s+/g)) {
     for (const part of match[1].split(',')) {
       const name = part.trim()
       if (name) {

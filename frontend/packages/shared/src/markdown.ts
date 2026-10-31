@@ -3,7 +3,10 @@ import { allToolbar, config, type ToolbarNames } from 'md-editor-v3'
 import { hljs, MarkdownItGitHubAlerts, markdownDialect } from './markdown-dialect'
 
 /**
- * admin / blog 共享的 md-editor-v3 配置（docs/markdown-dialect.md §6）。
+ * 桌面端过渡期的 md-editor-v3 配置（docs/markdown-dialect.md §6）。
+ *
+ * admin / blog 已改用 Vditor + Lute（`@simple-notes/markdown`）；本文件只服务 desktop
+ * 迁移前的 md-editor-v3，迁移完成后可删除。
  *
  * - `breaks: false` 对齐 CommonMark 软换行；
  * - 原生 HTML 关闭（html: false），由渲染端转义；

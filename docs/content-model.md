@@ -1,6 +1,6 @@
 # 内容模型设计（随手记 + 博客）
 
-> **状态：v1.4.2 · 2026-10-31（Web 端已实现；v1.4 增加创作时间与公开列表排序上下文；v1.4.1 补充附件存储设计指针；v1.4.2 附件存储实现）**
+> **状态：v1.4.3 · 2026-10-31（Web 端已实现；v1.4 增加创作时间与公开列表排序上下文；v1.4.1 补充附件存储设计指针；v1.4.2 附件存储实现；v1.4.3 按实现对齐 API / 权限 / 媒体与博客运行时描述）**
 > 范围：随手记与博客文章的统一内容模型、发布快照、数据表草案、权限码、API 契约与 Web 端范围
 > 关联：`docs/auth-rbac.md`（权限体系）、`docs/markdown-dialect.md`（Markdown 方言）、`docs/tech-stack.md`（技术选型）
 > 非目标：评论、桌面端同步、SEO / SSR、多作者、定时发布、分类 / 系列、笔记分享 —— 见 §13
@@ -187,22 +187,22 @@ POST / UNPUBLISHED（后台保留，公开不可见）
 | --- | --- |
 | `id` | `varchar(36)` PK |
 | `owner_id` | FK `sys_user` |
-| `storage_key` | R2 对象 key，唯一 |
+| `storage_mode` | `LOCAL` / `OSS` / `DATABASE`；记录该行二进制实际所在介质（V11 起） |
+| `storage_key` | 存储介质内的对象 key，全表唯一 |
 | `original_name` | 原始文件名 |
 | `mime_type` | MIME |
 | `size_bytes` | 文件大小 |
 | `width` / `height` | 图片尺寸，可空 |
 | `alt_text` | 封面等场景的默认 alt，可空 |
-| `status` | `ACTIVE` / `DELETED`，或沿用软删除 |
-| 审计七件套 | 标准 |
+| 审计七件套 | 标准软删除（`delete_flag`），无独立 `status` 列 |
 
 - 正文图片使用**可访问 URL**：DIRECT 模式下 OSS 为 `/oss/{key}`、本地 / DB 为 `/api/media/{id}`；不直接写 R2 endpoint / bucket。`/api/media/{id}` 保留为稳定兜底端点（OSS 会 302 到 `/oss/{key}`）。
 - 封面通过 `cover_attachment_id` 引用。
 - 删除附件前检查是否被文章封面或已发布快照引用；正文内引用 v1 不做完整反向解析，孤儿清理放 P1。
 - 上传限制（支持任意文件后）：单文件 20 MB；魔数校验；**禁止 SVG**（XSS 风险）；图片 inline，其他文件强制 `Content-Disposition: attachment`；图片重新编码仍待定。详见 `docs/attachment-storage.md` §8。
-- 公开 bucket + 随机 UUID 的访问方式对草稿 / 任意文件不是严格隔离；个人项目可接受，后续如需严格隐私改为私有 bucket / 签名 URL。
+- 公开访问与草稿 / 任意文件的隔离：当前采用**私有 R2 bucket + 媒体域 Nginx `auth_request` 预签名代理**（方案 B）；媒体域仍是匿名入口，知道 URL 即可访问，敏感附件不应放在公开媒体库。详见 `docs/attachment-storage.md` §7.3 / §10。
 - 实现进度：LOCAL / R2 / DATABASE 三介质已实现（`V11` / `V12`）；R2 采用私有 bucket + Nginx `auth_request` 预签名代理；`storage_key` 与 `/api/media/{id}` 稳定端点契约不变。
-- 三介质扩展（LOCAL / OSS / DATABASE）设计见 `docs/attachment-storage.md`：`attachment.storage_mode` 按行记录实际介质，全局设置只影响新上传；DIRECT 模式下 OSS 返回 `/oss/{key}`，经媒体域 Nginx 访问 R2（公开 bucket 直连；私有 bucket 签名 / 预签名），本地 / DB 返回 `/api/media/{id}`，稳定端点保留为兜底。
+- 三介质扩展（LOCAL / OSS / DATABASE）设计见 `docs/attachment-storage.md`：`attachment.storage_mode` 按行记录实际介质，全局设置只影响新上传；DIRECT 模式下 OSS 返回 `/oss/{key}`，经媒体域 Nginx 访问私有 R2（Nginx `auth_request` 取后端短期预签名），本地 / DB 返回 `/api/media/{id}`，稳定端点保留为兜底。
 
 ### 3.6 评论（后续，不在 V2 建表）
 
@@ -233,6 +233,7 @@ create table note (
     published_revision_id varchar(36),
     first_published_at    timestamptz,
     last_published_at     timestamptz,
+    authored_at           timestamptz,
     draft_modified_at     timestamptz,
     version               bigint       not null default 0,
     create_time           timestamptz  not null,
@@ -257,6 +258,7 @@ create table note (
             and published_revision_id is null
             and first_published_at is null
             and last_published_at is null
+            and authored_at is null
             and draft_modified_at is null
         )
     ),
@@ -295,6 +297,9 @@ create table note (
             and last_published_at is not null
         )
     ),
+    constraint ck_note_authored_at_note check (
+        kind = 'POST' or authored_at is null
+    ),
     constraint ck_note_slug_format check (
         slug is null or slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'
     )
@@ -330,7 +335,11 @@ create index idx_note_post_admin
     where delete_flag = 0 and kind = 'POST';
 
 create index idx_note_post_public
-    on note (pinned desc, first_published_at desc)
+    on note (pinned desc, (coalesce(authored_at, first_published_at)) desc)
+    where delete_flag = 0 and kind = 'POST' and publish_status = 'PUBLISHED';
+
+create index idx_note_post_public_display_time
+    on note ((coalesce(authored_at, first_published_at)) desc)
     where delete_flag = 0 and kind = 'POST' and publish_status = 'PUBLISHED';
 
 create index idx_note_revision_note
@@ -491,7 +500,7 @@ note.delete_flag = 0
 规则：
 
 - 草稿、`UNPUBLISHED`、已删除文章一律 404；不在公开接口暴露“存在但未发布”的信息。
-- v1 不提供公开草稿预览 / 预览 token；后台编辑器内的预览使用当前草稿，并明确提示“线上仍是已发布版本”。
+- v1 不提供公开的草稿**文章**预览 token；后台编辑器内的预览使用当前草稿，并明确提示“线上仍是已发布版本”。主题预览 token 只用于“看未激活的主题版本”（见 `docs/blog-runtime-theme.md` §7.2），不携带文章身份。
 - 公开列表不返回正文；详情返回快照 Markdown。
 - 公开列表 / 搜索 / 归档 / 详情上下篇统一支持排序参数 `pinnedFirst` / `direction` / `sortBy`，规则见 §6.4。
 - 公开搜索只搜索已发布 revision 的标题 / 正文；不得命中草稿内容。
@@ -508,7 +517,7 @@ note.delete_flag = 0
 
 | 方法 / 路径 | 权限 | 说明 |
 | --- | --- | --- |
-| `GET /api/admin/notes` | `admin:note` | 列表；参数 `keyword` / `folderId` / `tagId` / `page` / `size`；默认按置顶、更新时间降序 |
+| `GET /api/admin/notes` | `admin:note` | 列表；参数 `keyword` / `folderId` / `tagId` / `pinnedOnly` / `page` / `size`；默认按置顶、更新时间降序 |
 | `POST /api/admin/notes` | `admin:note:create` | 新建笔记，强制 `kind=NOTE` |
 | `GET /api/admin/notes/{id}` | `admin:note` | 详情；只允许本人 / 超管 |
 | `PUT /api/admin/notes/{id}` | `admin:note:update` | 更新标题 / 正文 / 文件夹 / 标签 / 置顶；请求带 `version`；不接受 `kind` |
@@ -518,7 +527,7 @@ note.delete_flag = 0
 | `POST /api/admin/notes/{id}/restore` | `admin:note:delete` | 恢复笔记 |
 | `DELETE /api/admin/notes/{id}/purge` | `admin:note:delete` | 永久删除（P1，可先不实现） |
 
-笔记列表响应建议：`id`、`title`、`folder`、`tags`、`pinned`、`updatedAt`。不在列表返回完整正文。
+笔记列表响应：`id`、`title`、`folderId`、`folderName`、`tags`、`pinned`、`createTime`、`updateTime`、`version`。不在列表返回完整正文。
 
 ### 6.2 admin：博客文章
 
@@ -546,12 +555,12 @@ note.delete_flag = 0
 | 方法 / 路径 | 权限 | 说明 |
 | --- | --- | --- |
 | `GET /api/admin/tags/options` | `admin:note` 或 `admin:post` | 编辑器联想：全部启用标签 id / name |
-| `GET /api/admin/tags` | `admin:tag` | 管理列表；含随手记 / 博客草稿 / 已发布快照三层使用量 |
+| `GET /api/admin/tags` | `admin:tag` | 管理列表；参数 `keyword` / `page` / `size`；含随手记 / 博客草稿 / 已发布快照三层使用量 |
 | `POST /api/admin/tags` | `admin:tag:create` | 手动创建标签 |
 | `PUT /api/admin/tags/{id}` | `admin:tag:update` | 改名；重名 409；影响所有当前 / 快照展示 |
 | `DELETE /api/admin/tags/{id}?force=true` | `admin:tag:delete` | 软删除；有使用量且未 force 时 409 `TAG_IN_USE` |
-| `GET /api/admin/tags/{id}/contents?kind=NOTE\|POST` | `admin:tag` | 关联内容；标记 `draftTagged` / `publishedTagged` |
-| `GET /api/admin/tags/{id}/candidates?kind=NOTE\|POST` | `admin:tag:assign` | 可添加内容候选（当前草稿未使用该标签） |
+| `GET /api/admin/tags/{id}/contents?kind=NOTE\|POST` | `admin:tag` | 关联内容；参数 `keyword` / `page` / `size`；标记 `draftTagged` / `publishedTagged` |
+| `GET /api/admin/tags/{id}/candidates?kind=NOTE\|POST` | `admin:tag:assign` | 可添加内容候选（当前草稿未使用该标签）；参数 `keyword` / `page` / `size` |
 | `POST /api/admin/tags/{id}/contents` | `admin:tag:assign` | 给一批内容当前草稿加标签 |
 | `DELETE /api/admin/tags/{id}/contents/{contentId}` | `admin:tag:assign` | 从内容当前草稿移除标签 |
 
@@ -566,6 +575,8 @@ note.delete_flag = 0
 | `GET /api/blog/tags` | 标签及已发布文章数量 |
 | `GET /api/blog/archives` | 全量年月索引；参数 `sortBy` / `direction`，按所选字段统计与排序；月内文章走 `/api/blog/posts?year=&month=` |
 | `GET /api/blog/search?q=` | 搜索已发布快照的标题 / 正文；额外支持 `pinnedFirst` / `direction` / `sortBy` |
+| `GET /api/blog/site` | 公开站点配置（品牌 / 作者 / 导航 / 主题模式等），供 runtime 预览与未来桌面端复用 |
+| `GET /api/blog/pages/{slug}` | 独立页面（`about` 与 `/p/:slug`） |
 | `GET /api/blog/feed.xml` | RSS（P1） |
 | `GET /api/blog/sitemap.xml` | 站点地图（P1） |
 | `GET /api/media/{id}` | 稳定媒体端点；本地 / DB 直接返回，OSS 重定向到 `/oss/{key}`（DIRECT 下 OSS 正文通常直接使用 `/oss/{key}`） |
@@ -647,10 +658,11 @@ note.delete_flag = 0
 - `admin:media` 的读权限由菜单码承担；上传 / 删除 / 切换存储介质用 ACTION。
 - 编辑器联想 `GET /api/admin/tags/options` 允许 `admin:note` 或 `admin:post` 任一访问；标签管理页与写操作使用 `admin:tag:*`。
 - 标签改名 / 删除是全局分类操作；删除有使用量时前端二次确认并带 `force=true`。
+- 站点设置 / 主题管理的权限码（`admin:site:*`、`admin:theme:*`）见 `docs/blog-runtime-theme.md` §9.1，不在本节内容域清单中重复。
 
 ### 7.2 菜单迁移
 
-在 `sys_menu` 中新增（`V3__add_content_permissions.sql`，id 用 `gen_random_uuid()`，父节点按 code 子查询）：
+在 `sys_menu` 中新增（`V3__add_content_permissions.sql` / `V4__add_tag_permissions.sql` / `V12__add_storage_permission.sql`，id 用 `gen_random_uuid()`，父节点按 code 子查询）：
 
 | code | type | name | parent | sort |
 | --- | --- | --- | --- | --- |
@@ -690,7 +702,7 @@ note.delete_flag = 0
 - 标题、正文、标签、文件夹、置顶、回收站；
 - 列表、搜索（标题 / 正文 / 标签）、筛选、排序、分页；
 - 标签联想复用、标签管理（改名 / 删除 / 使用量 / 内容分配）；
-- 图片上传、封面、正文插图、媒体库；
+- 任意文件上传、封面、正文插图、媒体库；
 - 软删除 / 恢复、乐观锁、审计字段。
 
 **随手记**
@@ -761,6 +773,8 @@ note.delete_flag = 0
 | `/posts/:id` | 文章编辑 / 发布 | `admin:post` |
 | `/tags` | 标签管理（使用量 / 分配内容） | `admin:tag` |
 | `/media` | 媒体库 | `admin:media` |
+| `/site` | 站点设置（品牌 / 作者 / 导航 / 页脚 / 独立页面） | `admin:site` |
+| `/themes` | 主题管理（版本 / 预览 / 应用） | `admin:theme` |
 | `/trash` | 回收站（笔记 / 文章分 Tab） | `admin:note:delete` / `admin:post:delete` |
 
 交互要点：
@@ -770,7 +784,7 @@ note.delete_flag = 0
 - 发布按钮按状态变化：「发布」「更新发布」「重新发布」「已发布」。
 - 文章发布后 slug 只读；预览明确标注“当前草稿预览，线上仍是已发布版本”。
 - 已发布文章删除时二次确认，提示会先下架。
-- 列表默认按更新时间降序；公开首页按置顶、首次发布时间降序。
+- 列表默认按更新时间降序；公开首页按置顶、`displayAt`（`authoredAt ?? firstPublishedAt`）降序。
 
 ### 9.2 blog 前台
 
@@ -781,7 +795,8 @@ note.delete_flag = 0
 | `/tags/:id` | 标签文章列表 |
 | `/archives` | 年月索引；`?year=&month=` 为月内分页视图 |
 | `/search` | 搜索 |
-| `/about` | 关于页（v1 静态内容可接受） |
+| `/about` | 关于页（独立页面 `about`，可在站点设置维护） |
+| `/p/:slug` | 其他独立页面 |
 
 - 匿名可读；不要求登录。
 - **页面形态（v1.3 起）**：后端组装壳（站点配置 + 主题 HTML/CSS）+ Vite 构建的 runtime（打包时进入后端 jar，同源 `/blog/**`），主题由管理端以不可变版本下发；详见 `docs/blog-runtime-theme.md`。
@@ -798,7 +813,7 @@ note.delete_flag = 0
 - 入库清洗策略（2026-10-25 收口）：**不做后端入库清洗**，清洗发生在所有前端渲染入口；若未来需要严格拒绝裸 HTML，再按 Markdown-aware 方案重新评估。
 - 正文图片使用可访问 URL（DIRECT：OSS `/oss/{key}`、本地 / DB `/api/media/{id}`），不写 R2 endpoint / bucket；封面使用 `cover_attachment_id`。
 - 上传校验：单文件 20 MB、魔数检测、禁止 SVG；非图片文件强制下载；文件名不参与存储路径。任意文件策略见 `docs/attachment-storage.md` §8。
-- 公开 bucket 下草稿 / 附件可能被知道 URL 的人访问；个人项目接受，后续可改私有 bucket / 签名 URL。
+- 媒体域仍是匿名入口：知道 URL 即可访问；当前采用**私有 R2 + 媒体域 Nginx 预签名代理**，但敏感文件不要放入公开媒体库。
 
 ---
 
@@ -822,13 +837,15 @@ note.delete_flag = 0
 
 ### 12.1 Flyway
 
-- **实现状态**：V2–V10 已落地；后续结构变更走新迁移。
+- **实现状态**：V2–V12 已落地；后续结构变更走新迁移。
 - `V1__init_auth_rbac.sql` 已冻结，不改。
 - `V2__init_content.sql`：`note_folder`、`tag`、`attachment`、`note`、`note_revision`、`note_tag`、`note_revision_tag`、索引、约束、`published_revision_id` 外键。
 - `V3__add_content_permissions.sql`：内容域 `sys_menu` 节点；id 用 `gen_random_uuid()`，父节点按 code 子查询，不手填 UUID。
 - `V4__add_tag_permissions.sql`：标签管理 `admin:tag` 菜单与动作节点。
 - `V5__drop_note_status.sql`：移除笔记归档字段 `note.status`，重建不依赖它的 `ck_note_note_only` / `ck_note_post_only` 约束。
 - `V10__add_note_authored_at.sql`（v1.4，已执行）：新增 `note.authored_at`、`kind=NOTE` 时为空约束、公开 `displayAt` 表达式索引（`coalesce(authored_at, first_published_at)`）；`last_published_at` 排序索引按需追加。
+- `V11__attachment_storage_modes.sql`（v1.4.2，已执行）：`attachment.storage_mode` 回填 + `attachment_blob`。
+- `V12__add_storage_permission.sql`（v1.4.2，已执行）：`admin:media:storage` ACTION。
 - 建表顺序：`note_folder` / `tag` / `attachment` → `note` → `note_revision` → 关联表 → `alter table note add constraint fk_note_published_revision`。
 
 ### 12.2 后端
@@ -843,7 +860,7 @@ note.delete_flag = 0
   - `TagService`：标签解析 / 查找 / 快照；
   - `TagAdminService`：标签管理列表 / 改名 / 删除 / 使用量 / 内容分配；
   - `AttachmentService`：上传、删除保护、可访问 URL（DIRECT）/ 稳定端点兜底。
-- Controller：`AdminNoteController`、`AdminPostController`、`AdminTrashController`、`AdminMediaController`、`BlogPostController`、`BlogTaxonomyController`、`MediaController`。
+- Controller：`AdminNoteController`、`AdminPostController`、`AdminTrashController`、`AdminMediaController`、`BlogController`、`BlogSiteController`、`BlogPageController`、`MediaController`。
 - 公开 DTO 与后台 DTO 分开；公开详情从 revision 组装。
 - 排序：`BlogSortField`（`displayAt` / `firstPublishedAt` / `lastPublishedAt`）+ `pinnedFirst` / `direction`；`BlogService` 统一生成 `OrderSpecifier`，列表、搜索、归档、详情相邻项共用；`year` / `month` 过滤也使用同一时间字段表达式。
 - 相邻项：按当前文章在排序中的位置取严格前一条 / 后一条（`limit 1`），排序尾部用 `note.id` 兜底；不再拉 100 条列表由前端推导；搜索上下文复用 `containsIgnoreCase(title/content)` 条件。
@@ -859,8 +876,8 @@ note.delete_flag = 0
   - `v-perm` 控制按钮；文章状态徽标和发布按钮；
   - Markdown 配置复用共享模块。
 - blog：
-  - 首页、详情、标签、归档、搜索、关于；
-  - 复用 `MdPreview` 共享配置；
+  - 首页、详情、标签、归档、搜索、关于 / 独立页面；
+  - 由 blog runtime 用 **Lute** 渲染（`@simple-notes/markdown` + `method.min.js`），与 admin 共用 `vditorMarkdown` 与 DOMPurify；
   - 只调用公开接口。
 
 ### 12.4 测试重点
@@ -877,14 +894,14 @@ note.delete_flag = 0
 10. slug 唯一、格式、首次发布后不可改、删除后不复用；
 11. 标签快照：编辑标签不更新发布，更新发布后才生效；
 12. 标签管理：联想选项、使用量、改名影响公开快照、分配 / 移除草稿、force 删除；
-12. 权限码与菜单启动对账；
-13. `version` 冲突返回 409；
-14. 回收站查询能读到软删除行，普通查询读不到；
-15. `authoredAt` 为空时公开展示回落 `firstPublishedAt`，设置后覆盖展示、默认排序与归档；笔记写入 `authoredAt` 被拒；
-16. `pinnedFirst` / `direction` / `sortBy` 组合：首页 / 标签 / 归档 / 搜索排序，以及详情上下篇方向与筛选上下文；
-17. 搜索上下篇携带 `q`，仍停留在搜索结果内；
-18. 归档月视图：月份索引计数、`year` / `month` 过滤与月内 `total` 使用同一 `sortBy` 字段；月内分页不截断、跨页计数一致；
-19. 未知 `sortBy` / `direction` 返回 400。
+13. 权限码与菜单启动对账；
+14. `version` 冲突返回 409；
+15. 回收站查询能读到软删除行，普通查询读不到；
+16. `authoredAt` 为空时公开展示回落 `firstPublishedAt`，设置后覆盖展示、默认排序与归档；笔记写入 `authoredAt` 被拒；
+17. `pinnedFirst` / `direction` / `sortBy` 组合：首页 / 标签 / 归档 / 搜索排序，以及详情上下篇方向与筛选上下文；
+18. 搜索上下篇携带 `q`，仍停留在搜索结果内；
+19. 归档月视图：月份索引计数、`year` / `month` 过滤与月内 `total` 使用同一 `sortBy` 字段；月内分页不截断、跨页计数一致；
+20. 未知 `sortBy` / `direction` 返回 400。
 
 ---
 
@@ -899,7 +916,7 @@ note.delete_flag = 0
 7. **SEO / SSR**：v1 接受 SPA；若以后需要搜索流量或社交卡片稳定抓取，另做预渲染 / SSR 设计。
 8. **多作者 / 数据范围**：v1 单作者；`owner_id` 已预留，后续再定文章协作与笔记隔离规则。
 9. **定时发布 / 分类 / 系列**：P1 之后按需要引入。
-10. **媒体隐私**：公开 bucket 下的草稿图片隔离是否足够，后续可改私有 bucket / 签名 URL。
+10. **媒体隐私**：已改为私有 R2 + 媒体域匿名入口；敏感文件仍不应进入公开媒体库。后续可评估按内容可见性做签名 / 鉴权。
 
 ---
 
@@ -917,3 +934,4 @@ note.delete_flag = 0
 | 2026-10-28 | v1.4 创作时间与排序上下文 | 新增 `note.authored_at`（运营字段，不参与快照）；公开日期统一为 `displayAt = authoredAt ?? firstPublishedAt`；公开列表 / 搜索 / 归档 / 详情上下篇支持 `pinnedFirst` / `direction` / `sortBy`（字段白名单、不限制组合）；归档改为「月份索引 + 月内分页」，`year` / `month` 跟随 `sortBy`；搜索上下篇携带 `q`；`V10` 迁移已执行 |
 | 2026-10-31 | v1.4.1 附件存储设计 | 引用 `docs/attachment-storage.md`：任意文件、20 MB、行级 `storage_mode`、DIRECT 模式（OSS `/oss/{key}` 经媒体域 Nginx 访问 R2，公开 / 私有 bucket 两种；本地 / DB `/api/media/{id}`）；稳定端点保留兜底；内容模型与现有 API 不变 |
 | 2026-10-31 | v1.4.2 附件存储实现 | `V11` / `V12`；`admin:media:storage`；媒体库任意文件、封面仅图片、编辑器按 MIME 插入图片 / 链接；私有 R2 + Nginx `auth_request` 方案 B |
+| 2026-10-31 | v1.4.3 文档对齐 | 附件表补 `storage_mode` / 软删除；标签与媒体列表补分页参数；公开博客补 `/site` `/pages`；admin 信息架构补站点设置 / 主题管理；控制器名、Lute 渲染归属、V11 / V12 与媒体隐私描述按实现更新 |

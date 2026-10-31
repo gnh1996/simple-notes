@@ -8,11 +8,11 @@
 | --- | --- |
 | `docs/tech-stack.md` | 技术选型总览（2026-10-18 冻结）与残余待定项 |
 | `docs/auth-rbac.md` | 认证与权限设计（RBAC：三端入口 / admin 菜单 / 按钮与接口权限；JWT 会话；v1 定稿） |
-| `docs/content-model.md` | 内容模型设计（随手记 / 博客单表、发布快照、标签管理、权限与 API；v1.1 Web 端已实现） |
-| `docs/attachment-storage.md` | 附件存储设计（本地 / R2 / 数据库三介质；任意文件、20MB、行级存储模式、DIRECT 外链、媒体域、私有 R2 + Nginx 预签名代理；v1.0 已实现） |
+| `docs/content-model.md` | 内容模型设计（随手记 / 博客单表、发布快照、标签管理、权限与 API；v1.4.3 Web 端已实现） |
+| `docs/attachment-storage.md` | 附件存储设计（本地 / R2 / 数据库三介质；任意文件、20MB、行级存储模式、DIRECT 外链、媒体域、私有 R2 + Nginx 预签名代理；v1.2 已实现） |
 | `docs/markdown-dialect.md` | Markdown 内容方言规范（v2 白名单 / 边界 / admin+blog 配置对齐；桌面端待迁移） |
 | `docs/markdown-dialect-fixture.md` | 方言验收样本：新增语法必须 admin / blog（桌面迁移后三端）渲染比对 |
-| `docs/blog-runtime-theme.md` | 博客运行时与主题化设计（v1 草案）：运行时/主题职责、契约表、主题版本与预览、站点配置与独立页面 |
+| `docs/blog-runtime-theme.md` | 博客运行时与主题化设计（v1.15 已实现）：运行时/主题职责、契约表、主题版本与预览、站点配置与独立页面 |
 | `docs/tech-eval-vditor-wails.md` | 可行性评估与落地记录：Wails v3 已采纳；admin/blog 已切换 Vditor + Lute（v2）；desktop 待迁移 |
 | 各端 `README.md` | 目录结构、命令与端内细节 |
 | 各端 `AGENTS.md` | 端内专属规则（探索到对应目录时自动加载） |
@@ -75,7 +75,7 @@ go test ./...
 - 桌面端 Go 侧保持无头可测；避免引入需要 CGO 的依赖（SQLite 用纯 Go 驱动）
 - 不引入需要商业许可的组件；新增依赖前确认许可证可自由使用
 - 前端依赖版本一律走根 `pnpm-workspace.yaml` 的 `catalog`；`apps/*` 之间禁止互相依赖
-- 方言禁区不入库：裸 HTML、front matter、数学公式、脚注等（见方言规范的 v1 白名单）
+- 方言以 `docs/markdown-dialect.md` v2 白名单为准：允许数学、emoji、脚注、上下标、mark 与安全行内 HTML（渲染前必须清洗）；仍不收 front matter / 图片尺寸语法 / 服务端渲染
 
 ## 规则文件自身
 

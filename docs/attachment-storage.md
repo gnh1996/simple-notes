@@ -1,13 +1,13 @@
 # 附件存储设计（本地 / R2 / 数据库）
 
-> **状态：v1.0 · 2026-10-31（已实现：LOCAL / R2 / DATABASE 三介质、私有 R2 + Nginx auth_request 方案 B、任意文件、20MB、运行时切换；编译 / 前端 typecheck / 单测通过，Testcontainers 集成测试待 Docker 环境）**
+> **状态：v1.2 · 2026-10-31（已实现：LOCAL / R2 / DATABASE 三介质、私有 R2 + Nginx auth_request 方案 B、任意文件、20MB、运行时切换、媒体库分页 / 文件名搜索；编译 / 前端 typecheck / 单测通过，Testcontainers 集成测试待 Docker 环境；v1.2 为文档对齐实现）**
 > 范围：附件元数据与二进制的分离、三种存储介质的抽象与切换、任意文件策略、DIRECT 访问路径、独立媒体域、公开 / 私有 R2 访问链路、滥用防护、迁移与校验
 > 关联：`docs/content-model.md`（附件表与媒体接口）、`docs/tech-stack.md`（R2 选型与机密配置）、`backend/AGENTS.md`（数据模型 / 迁移 / 权限约定）
 > 非目标：浏览器直传、历史文件跨介质自动搬迁、图片派生、附件回收站、桌面端离线附件队列
 
 ## 0. 结论与本次决策
 
-**可行。** 现有 `attachment` 元数据表、`AttachmentStorage` SPI 和 `/api/media/{id}` 都可以继续使用。需要调整的是「存储介质按行记录」、二进制改为流式 I/O，以及把 OSS 数据面交给同域 Nginx + 公开 R2。
+**可行。** 现有 `attachment` 元数据表、`AttachmentStorage` SPI 和 `/api/media/{id}` 都可以继续使用。需要调整的是「存储介质按行记录」、二进制改为流式 I/O，以及把 OSS 数据面交给同域 Nginx + **私有 R2 + `auth_request` 预签名代理**。
 
 | 决策点 | 结论 | 设计影响 |
 | --- | --- | --- |
@@ -30,7 +30,7 @@
    - `MultipartFile.getBytes()` + JPA `byte[]` + JDBC 缓冲会产生数倍内存峰值；
    - DATABASE 适配器建议用 `JdbcTemplate` + `PreparedStatement.setBinaryStream` / `getBinaryStream`，绕过 JPA 大字段映射（理由与例外需记录到 `backend/AGENTS.md`）；
    - `spring.servlet.multipart.max-file-size` / `max-request-size` 必须同步提高到 20 MB / 25 MB。
-3. **公开 R2 bucket 下 Nginx 可直接代理，但不是防刷方案。**
+3. **公开 R2 bucket 下 Nginx 可直接代理，但不是防刷方案（历史方案说明；当前已选私有 bucket）。**
    - 公开 bucket 下，Nginx `proxy_pass` 到公开域即可，不需要 SigV4；
    - 但公开 bucket 可被外部直连刷量；**复评建议改为私有 bucket**。私有 bucket 下标准 Nginx 无法直接代理，只能：
      - 后端生成 R2 预签名 URL 并 302（此时数据不经过 Nginx），或
@@ -87,7 +87,7 @@
 2. 调用方只依赖 `AttachmentService`，不感知介质；上传返回可访问 URL（DIRECT）。
 3. 管理端可运行时切换「新上传默认介质」，切换后历史附件仍可读、可删。
 4. 支持任意文件，但默认只对图片 inline，其余强制下载。
-5. OSS 数据面由同域 Nginx 直接代理公开 R2，后端不转发大文件。
+5. OSS 数据面由同域 Nginx 经 `auth_request` 取短期预签名后代理私有 R2，后端不转发大文件。
 6. DATABASE 模式支持 20 MB 文件，读写不产生不可控的堆内存峰值。
 7. 启动 / 切换时对不可用配置 fail-fast 或明确拒绝。
 8. 保留 `/api/media/{id}` 稳定端点，作为 OSS 直链的兜底 / 兼容入口。
@@ -118,13 +118,13 @@ Nginx（与页面同域）
   ├─ /api/media/**        → Spring 后端
   │       ├─ LOCAL / DATABASE：后端流式返回
   │       └─ OSS：302 → /oss/{storageKey}（稳定端点兜底）
-  └─ /oss/**              → R2（公开：Nginx 直连；私有：签名后代理 / 302）（proxy_cache）
+  └─ /oss/**              → 私有 R2（auth_request 预签名后代理 / 302）（proxy_cache）
 ```
 
 **DIRECT 模式下：**
 
 - `LOCAL` / `DATABASE`：`AttachmentResponse.url = /api/media/{id}`，Nginx 转发到后端；
-- `OSS`：`AttachmentResponse.url = /oss/{storageKey}`，Nginx 直接代理公开 R2，**不经过后端**；
+- `OSS`：`AttachmentResponse.url = /oss/{storageKey}`，Nginx 先 `auth_request` 取后端预签名，再代理私有 R2，**不经过后端数据面**；
 - `/api/media/{id}` 对 OSS 附件仍返回 302 到 `/oss/{key}`，用于历史数据 / 手写链接 / 调试。
 
 应用与媒体同域时，Nginx 只做路径分流：
@@ -144,7 +144,7 @@ location /oss/        → R2
 | `MediaController` | 本地 / DB 流式响应；OSS 稳定端点 302；缓存头 / Content-Disposition | 介质选择 |
 | `MediaUrlResolver` | 生成 DIRECT / STABLE URL（可选绝对地址） | 介质读写 |
 | `StorageAdminService` | 模式读取 / 切换、健康检查、介质计数 | 文件内容处理 |
-| Nginx | `/oss/**` 代理公开 R2、`/api/media/**` 转发后端、缓存、Range、TLS | 业务权限、附件元数据 |
+| Nginx | `/oss/**` 经 `auth_request` 代理私有 R2、`/api/media/**` 转发后端、缓存、Range、TLS | 业务权限、附件元数据 |
 
 ### 3.2 三种介质的取舍
 
@@ -155,7 +155,7 @@ location /oss/        → R2
 | 数据面 | Nginx → 后端 | **Nginx → R2（不经过后端）** | Nginx → 后端 |
 | 备份 | 备份目录 / 卷 | bucket 版本 / 生命周期 | 随数据库 dump，库会变大 |
 | 单文件上限 | 20 MB | 20 MB | **20 MB** |
-| 主要风险 | 节点漂移、卷丢失 | 公开 bucket 被直连刷量、Nginx / 签名配置 | 库膨胀、连接池与内存 |
+| 主要风险 | 节点漂移、卷丢失 | 私有 bucket 的 Nginx / 签名配置 | 库膨胀、连接池与内存 |
 
 结论：**LOCAL 仅用于开发 / 单机；生产优先 R2；DATABASE 作为无外部依赖的兜底。** 多实例部署禁止 LOCAL。
 
@@ -377,22 +377,19 @@ public class AttachmentStorageRouter {
 | --- | --- | --- | --- | --- |
 | `storage.mode` | STRING | `LOCAL` | 否 | `LOCAL` / `OSS` / `DATABASE` |
 
-- 复用 `SiteSettingCatalog` 的定义 / 校验 / 管理端展示能力，**不新增第二张 KV 表**；该键标记为系统托管（`MANAGED_KEYS`），只能通过存储管理接口写入；
-- `publicReadable = false`，不进入博客公开配置；
-- 读取路径建议由 `StorageModeProvider` 直接依赖 `SiteSettingRepository`（只读），避免与 `SiteSettingService` 的写入逻辑形成循环依赖；
-- `SiteSettingService.update` 目前对托管键返回的是主题专用文案，需要改成通用文案；
-- 若未来运维配置项增多，再评估抽象为通用 `system_setting`。
+- 复用现有 `site_setting` KV 表与上游优先级（`site_setting.storage.mode` > `simple-notes.storage.mode` > `LOCAL`）；**当前实现不把该键放进 `SiteSettingCatalog`**，因此不会出现在站点设置表单，也不能通过 `PUT /api/admin/site/settings` 写入；读写由 `StorageModeProvider`（只读）与 `StorageAdminService`（切换）直接操作 `SiteSettingRepository`。
+- `publicReadable = false`：不进入博客公开配置。
 
 ### 6.2 切换流程
 
 ```text
-PUT /api/admin/media/storage  { "mode": "OSS", "version": 123 }
+PUT /api/admin/media/storage  { "mode": "OSS" }
   │
   ├─ 校验 mode 合法
   ├─ router.forRead(mode).validate()      // 本地目录可写 / R2 headBucket / DB 可读
   ├─ 统计旧模式附件数量（提示：切换不迁移历史文件）
   ├─ 写入 site_setting.storage.mode（带 update_by / update_time）
-  └─ 返回 { mode, counts, health }
+  └─ 返回 { mode, availableModes, counts, health }
 ```
 
 规则：
@@ -401,7 +398,7 @@ PUT /api/admin/media/storage  { "mode": "OSS", "version": 123 }
 2. 切到 R2 前必须通过健康检查，避免写入后才发现凭据 / bucket 错误；
 3. 从 R2 切走前提示「旧 R2 附件仍依赖 R2 配置与 Nginx `/oss/` 路由」；
 4. 切换不做批量搬迁；需要搬迁时另立 P1 任务；
-5. 设置写入使用乐观版本（可选）：请求带 `version`，冲突返回 409。
+5. 当前接口只接收 `mode`，没有乐观锁 `version`。存储切换是低频运维操作，后并发覆盖风险由管理端单入口承担；如未来需要多管理员并发，再补 `version`。
 
 ### 6.3 启动校验
 
@@ -560,26 +557,26 @@ location /oss/ {
 | 方法 / 路径 | 说明 |
 | --- | --- |
 | `GET /api/media/{id}` | 匿名可读；LOCAL / DB 流式返回，OSS 302 到 `/oss/{key}`（稳定端点 / 兜底） |
-| `GET /oss/{key}` | OSS 直链；公开 bucket 由 Nginx 直接代理，私有 bucket 由 Nginx / 后端签名后代理或 302 |
+| `GET /oss/{key}` | OSS 直链；当前私有 bucket 由 Nginx `auth_request` 取预签名后代理（方案 B），A 回退可 302 |
 | `POST /api/admin/media` | 上传；`multipart/form-data`，字段 `file`；任意文件 |
 | `GET /api/admin/media` | 媒体库分页列表：`page`（默认 1）/ `size`（默认 24，上限 100）/ `keyword`（按原始文件名模糊匹配）；返回 `PageResponse<AttachmentResponse>`，按 `create_time DESC` |
 | `DELETE /api/admin/media/{id}` | 删除（软删元数据 + 清理二进制） |
-| `GET /api/admin/media/storage` | 当前模式、可用模式、计数、健康状态（建议新增） |
-| `PUT /api/admin/media/storage` | 运行时切换（建议新增） |
+| `GET /api/admin/media/storage` | 当前模式、可用模式、计数、健康状态 |
+| `PUT /api/admin/media/storage` | 运行时切换（body `{ "mode": "LOCAL\|OSS\|DATABASE" }`） |
 
 `AttachmentResponse.url`：
 
 - `DIRECT`（默认）：LOCAL / DB 为 `/api/media/{id}`，OSS 为 `/oss/{key}`（或带 `MEDIA_PUBLIC_BASE_URL` 的绝对地址）；私有 bucket 下 `/oss/{key}` 由 Nginx / 后端签名后处理，浏览器不暴露 R2 endpoint；
 - `STABLE`（可选）：恒为 `/api/media/{id}`，OSS 由后端 302 到 `/oss/{key}`。
 
-### 7.5 存储管理接口（建议）
+### 7.5 存储管理接口（已实现）
 
 | 方法 / 路径 | 权限 | 说明 |
 | --- | --- | --- |
 | `GET /api/admin/media/storage` | `admin:media` | 当前模式、可用模式、各模式附件数量、健康状态 |
-| `PUT /api/admin/media/storage` | `admin:media:storage` | 切换新上传介质；body `{mode, version?}` |
+| `PUT /api/admin/media/storage` | `admin:media:storage` | 切换新上传介质；body `{ "mode": "LOCAL\|OSS\|DATABASE" }` |
 
-`StorageStatusResponse` 建议字段：
+`StorageStatusResponse` 字段：
 
 ```json
 {
@@ -640,7 +637,7 @@ location /oss/ {
 ```text
 1. 校验：非空、大小（全局 20 MB + 当前模式上限）、文件策略、魔数、禁止 SVG
 2. mode = StorageModeProvider.current()
-3. storage = router.forWrite(); storage.validate()（必要时）
+3. storage = router.forRead(mode)   // 启动 / 切换时已做 validate；上传路径不重复健康检查
 4. key = UUID + 安全扩展名
 5. 创建 Attachment（storageMode = mode, storageKey = key, mimeType, sizeBytes, ...）
 6. attachmentRepository.saveAndFlush(attachment)   // DATABASE 模式需要先有元数据行满足外键
@@ -743,7 +740,7 @@ https://media.example.com/oss/{key}     独立媒体域，指向同一 Nginx / R
 | 独立安全头 | `nosniff`、`Content-Security-Policy: sandbox`、`Referrer-Policy` |
 | 独立限流 / WAF | 可按媒体域单独配置 `limit_req`、Cloudflare Rate Limiting、WAF |
 | 独立缓存 / CDN | 媒体流量与页面流量分开缓存、计费、迁移 |
-| **不能防刷** | 知道 URL 仍然可以请求媒体域；公开 R2 仍可绕过媒体域直连源站 |
+| **不能防刷** | 知道 URL 仍然可以请求媒体域；若 R2 bucket 为公开，还可绕过媒体域直连源站（当前私有 bucket 已消除该直连面） |
 | **不能替代鉴权** | 公开附件本来就是匿名可读；私有附件需要签名 / 鉴权 |
 
 **当前建议：采用独立媒体域。** 它不能单独解决「被刷」，但能把攻击面和主站隔离开，并为后续 Nginx / Cloudflare 限流提供独立入口。
@@ -763,13 +760,13 @@ https://media.example.com/oss/{key}     独立媒体域，指向同一 Nginx / R
 - **独立媒体域**：建议采用 `media.example.com`，与应用 / 管理端分开，减少 Cookie 与同源风险；Nginx 加 `X-Content-Type-Options: nosniff`。
 - **文件名**：不参与存储路径；响应头文件名安全转义；`storage_key` 只由服务端生成。
 - **路径穿越**：LOCAL 实现 `root.resolve(key).normalize()` 后必须 `startsWith(root)`。
-- **凭据**：R2 access key / secret 只从环境变量或本地忽略文件读取；不写 `site_setting`、不写日志、不返回管理端。Nginx 代理公开 bucket 不需要 R2 凭据；私有 bucket 的 Nginx 签名需要单独管理凭据。
-- **公开读**：`/api/media/{id}` 匿名可读，依赖 UUID 不可枚举；R2 公开 bucket 下知道 `/oss/{key}` 即可访问，知道 R2 公开域 + key 也可绕过 Nginx 直接访问。**Nginx 不是访问控制层**。改为私有 bucket 后，R2 源站不可直连，媒体域仍是匿名入口，但至少所有请求经过 Nginx / 媒体域。
+- **凭据**：R2 access key / secret 只从环境变量或本地忽略文件读取；不写 `site_setting`、不写日志、不返回管理端。当前私有 bucket 由后端持有 R2 凭据并通过 `auth_request` 签发短期预签名 URL；Nginx 不持有 R2 凭据。
+- **公开读**：`/api/media/{id}` 匿名可读，依赖 UUID 不可枚举；当前私有 bucket 下 R2 源站不可直连，`/oss/{key}` 由媒体域 Nginx 代理，所有请求经过 Nginx / 媒体域；媒体域仍是匿名入口。**Nginx 不是访问控制层**。
 - **Nginx**：`client_max_body_size 25m`（仅上传入口）；`/oss/` 只允许 GET / HEAD；`limit_req` / `limit_conn`；隐藏 R2 内部头；限制缓存目录权限；TLS。
 - **封面**：只允许图片；后端校验，避免非图片作为封面。
 - **上传配额 / 限流**：上传接口需要 Nginx `limit_req` + 应用侧配额；下载侧按 §10.3 处理。
 
-### 10.3 公开 bucket 的滥用风险与防刷
+### 10.3 公开 bucket 的滥用风险与防刷（历史评估；当前采用私有 bucket）
 
 **公开 R2 的风险模型：**
 
@@ -905,9 +902,12 @@ startup/
 | `service/R2AttachmentStorage.java` | R2 上传 / 读取 / 删除 / 健康检查 |
 | `service/DatabaseAttachmentStorage.java` | `JdbcTemplate` 流式 bytea |
 | `service/AttachmentStorageRouter.java` | 写读路由 |
-| `service/StorageModeProvider.java` | 全局模式来源 |
+| `service/StorageModeProvider.java` | 全局模式来源（读取 `site_setting.storage.mode`，不走 `SiteSettingCatalog`） |
+| `service/StorageAdminService.java` | 存储状态、健康检查与运行时切换 |
+| `service/MediaUrlResolver.java` | DIRECT / STABLE URL 解析（可选绝对媒体域） |
 | `service/R2PresignService.java` | 预签名 URL |
 | `service/AttachmentService.java` | 任意文件校验、元数据、流 / 302 解析 |
+| `config/StorageProperties.java` | `simple-notes.storage.*` 配置绑定 |
 | `web/MediaController.java` | 稳定端点 / 本地 DB 流式 / OSS 302 |
 | `web/InternalMediaController.java` | Nginx `auth_request` 内部签名 |
 | `web/StorageAdminController.java` | 存储状态与运行时切换 |
@@ -942,3 +942,4 @@ startup/
 | 2026-10-31 | v0.5 | 复评 A/B/C 性价比：B（Nginx `auth_request` + 后端预签名代理）作为首选；A 降为最小回退；C 保留高流量方案；明确 B 的缓存 / 安全头 / 隐藏 R2 收益与每请求签名子请求成本 |
 | 2026-10-31 | v1.0 | 实现 LOCAL / R2 / DATABASE 三介质、流式 SPI、任意文件策略、20MB DATABASE、运行时切换、Nginx auth_request 方案 B、内部签名接口、管理端媒体库 / 存储设置；补 Nginx 示例与测试 |
 | 2026-10-31 | v1.1 | 媒体库列表改为分页：`GET /api/admin/media` 增加 `page` / `size` / `keyword`（文件名），返回 `PageResponse<AttachmentResponse>`；修复全量返回 + 全量渲染原图的性能问题 |
+| 2026-10-31 | v1.2 | 文档对齐实现：`storage.mode` 未进入 `SiteSettingCatalog`（仅 KV + 专用接口）；切换接口只接收 `mode`、无 `version`；存储管理接口标为已实现；凭据与防刷段落明确当前私有 bucket 方案 |

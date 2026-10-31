@@ -4,7 +4,7 @@ import { starterThemeMeta } from '@simple-notes/theme-starter'
 import starterThemeCss from '@simple-notes/theme-starter/theme.css?raw'
 import starterThemeHtml from '@simple-notes/theme-starter/theme.html?raw'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
 import { themeApi } from '@/api'
 import { notifyError } from '@/utils/feedback'
@@ -31,6 +31,12 @@ const previewVisible = ref(false)
 const previewUrl = ref('')
 const previewWidth = ref(1024)
 const previewing = ref('')
+const previewVersion = ref<ThemeVersionResponse | null>(null)
+const previewIframe = ref<HTMLIFrameElement>()
+const previewErrors = ref<Array<{ line: number; message: string }>>([])
+const previewValidated = ref(false)
+const previewMessageId = ref('')
+const useFixtures = ref(true)
 
 const selectedId = computed(() => selected.value?.id ?? '')
 
@@ -128,17 +134,85 @@ async function saveVersion(): Promise<void> {
   }
 }
 
+function buildPreviewUrl(): void {
+  if (!previewVersion.value) {
+    previewUrl.value = ''
+    return
+  }
+  previewErrors.value = []
+  previewValidated.value = false
+  const params = new URLSearchParams({
+    previewTheme: previewVersion.value.id,
+    token: previewToken.value,
+  })
+  if (useFixtures.value) params.set('fixtures', '1')
+  previewUrl.value = `${BLOG_URL}/?${params.toString()}`
+}
+
+const previewToken = ref('')
+
 async function preview(version: any): Promise<void> {
   if (!selected.value) return
   try {
     const token = await themeApi.previewToken(selected.value.id, version.id)
+    previewToken.value = token.token
+    previewVersion.value = version as ThemeVersionResponse
     previewing.value = `v${version.versionNo}`
-    previewUrl.value = `${BLOG_URL}/?previewTheme=${encodeURIComponent(version.id)}&token=${encodeURIComponent(token.token)}`
+    previewErrors.value = []
+    previewValidated.value = false
+    useFixtures.value = true
+    buildPreviewUrl()
     previewVisible.value = true
   } catch (error) {
     notifyError(error, '预览失败')
   }
 }
+
+const BLOG_ORIGIN = (() => {
+  try {
+    return new URL(BLOG_URL).origin
+  } catch {
+    return window.location.origin
+  }
+})()
+
+function sendPreviewMessage(payload: Record<string, unknown>): void {
+  previewIframe.value?.contentWindow?.postMessage(payload, BLOG_ORIGIN)
+}
+
+function sendPreviewValidate(): void {
+  if (!previewVersion.value) return
+  const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  previewMessageId.value = id
+  sendPreviewMessage({
+    type: 'blog-preview:validate',
+    id,
+    html: previewVersion.value.html,
+    css: previewVersion.value.css,
+  })
+}
+
+function onPreviewMessage(event: MessageEvent): void {
+  if (event.origin !== BLOG_ORIGIN) return
+  const data = event.data as Record<string, unknown> | null
+  if (!data || typeof data !== 'object') return
+  if (data.type === 'blog-preview:ready') {
+    sendPreviewMessage({
+      type: 'blog-preview:color-mode',
+      mode: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+    })
+    sendPreviewValidate()
+  } else if (data.type === 'blog-preview:validated' && data.id === previewMessageId.value) {
+    previewValidated.value = true
+    previewErrors.value = Array.isArray(data.errors)
+      ? (data.errors as Array<{ line: number; message: string }>)
+      : []
+  }
+}
+
+watch(useFixtures, () => {
+  if (previewVisible.value) buildPreviewUrl()
+})
 
 async function activate(version: any): Promise<void> {
   if (!selected.value) return
@@ -161,7 +235,14 @@ async function activate(version: any): Promise<void> {
   }
 }
 
-onMounted(loadThemes)
+onMounted(() => {
+  window.addEventListener('message', onPreviewMessage)
+  void loadThemes()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('message', onPreviewMessage)
+})
 </script>
 
 <template>
@@ -290,12 +371,32 @@ onMounted(loadThemes)
             {{ width }}
           </el-button>
         </el-button-group>
+        <el-checkbox v-model="useFixtures" size="small">使用示例数据</el-checkbox>
         <span class="text-xs text-[var(--el-text-color-secondary)]">
           预览走真实运行时；未发布的草稿仅本链接可见
         </span>
       </div>
+      <el-alert
+        v-if="previewErrors.length"
+        class="mb-3"
+        type="error"
+        :closable="false"
+        title="主题契约校验未通过"
+      >
+        <div v-for="(error, index) in previewErrors" :key="index" class="text-xs">
+          第 {{ error.line }} 行：{{ error.message }}
+        </div>
+      </el-alert>
+      <el-alert
+        v-else-if="previewValidated"
+        class="mb-3"
+        type="success"
+        :closable="false"
+        title="主题契约校验通过"
+      />
       <div class="flex justify-center overflow-auto rounded-lg bg-[var(--el-fill-color-light)] p-3">
         <iframe
+          ref="previewIframe"
           :src="previewUrl"
           :style="{ width: previewWidth + 'px', height: '72vh' }"
           class="max-w-full rounded-md border border-[var(--el-border-color-lighter)] bg-white"

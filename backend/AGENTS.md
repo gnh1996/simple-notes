@@ -27,7 +27,7 @@
 - 例外表（无需审计或确需物理删除）须在对应设计文档中说明
 - 已落地的实体基类：`domain/BaseEntity`（UUID 主键预生成 + `Persistable` 新实体判定 + 审计回调 + 软删辅助）；查询侧排除已删除数据用实体级 `@SQLRestriction("delete_flag = 0")`，不再逐查询手写条件
 - **内容模块例外**（设计见 `docs/content-model.md` §3.8）：`note_revision` 为不可变发布快照，仅 `create_by` / `create_time`，无软删除；`note_tag` / `note_revision_tag` 为关联表，物理删除；`note.slug` 唯一索引不带 `delete_flag = 0`（公开 URL 永久保留）
-- **站点配置 / 主题例外**（设计见 `docs/blog-runtime-theme.md` §6）：`site_theme_version` 为不可变主题版本，仅 `create_by` / `create_time`，无软删除；`site_setting` 为 KV 配置，物理 upsert（新增即 INSERT、写入即 UPDATE、移除即 DELETE），无 `delete_flag`；`site_page` 保存即线上，不做发布快照
+- **站点配置 / 主题例外**（设计见 `docs/blog-runtime-theme.md` §6）：`site_theme_version` 为不可变主题版本，仅 `create_by` / `create_time`，无软删除；`site_setting` 为 KV 配置，物理 upsert（新增即 INSERT、写入即 UPDATE、移除即 DELETE），无 `delete_flag`；`site_page` 保存即线上，不做发布快照。主题版本保存必须走 `ThemeTemplateValidator`（组件 / 指令 / 模板键白名单 + 行号错误），`theme.overrides` 必须走 `SiteSettingCatalog.validateThemeOverrides`（变量白名单 + 安全 CSS 值）
 - **附件存储例外**（设计见 `docs/attachment-storage.md`）：`attachment.storage_mode` 按行记录实际介质；`attachment_blob` 是 DATABASE 模式的从属二进制，仅 `storage_key` / `content` / `create_time`，无审计七件套（生命周期完全由 `attachment` 决定）；二进制读写用 `JdbcTemplate` 流式 API，不用 JPA `byte[]` / `@Lob`
 
 ## 附件存储（docs/attachment-storage.md）

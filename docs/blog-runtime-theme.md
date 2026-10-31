@@ -1,6 +1,6 @@
 # 博客运行时与主题化设计（Blog Runtime & Theme）
 
-> **状态：v1.13 · 2026-10-28（列表排序上下文与创作时间：已实现）**
+> **状态：v1.15 · 2026-10-31（列表排序上下文与创作时间：已实现；v1.14 文档对齐；v1.15 补齐主题契约保存 / 运行时校验、theme.overrides 应用与预览 fixtures / postMessage）**
 > 范围：博客前台从 Vue SPA 改为「后端组装页面 + 固定运行时 + 数据化主题」；runtime 仍由 Vite 构建，但产物在 Maven 打包时进入后端 jar，与页面、API 同源提供；含站点配置、独立页面、主题管理与 agent 预览链路
 > 关联：`docs/content-model.md`（内容与公开读取）、`docs/tech-stack.md`（选型）、`docs/markdown-dialect.md`（方言）、`docs/auth-rbac.md`（权限码与菜单）
 > 非目标：SSR / 预渲染、评论、图片派生、RSS / sitemap、主题市场、多作者
@@ -109,7 +109,7 @@ theme.contract   = N
 
 ### 3.2 数据形状
 
-注入入口：`window.__BLOG_BOOT__ = { site, route, themeMode }`；`colorMode`（实际生效的 light / dark）由 runtime 结合 localStorage 与系统偏好解析后暴露给模板。其余数据由 runtime 按路由取。
+注入入口：`window.__BLOG_BOOT__ = { site, themeMode, adminOrigin, contract, preview, theme }`；`route` 不在壳里注入，由 runtime 读取 `location` 后构造；`colorMode`（实际生效的 light / dark）由 runtime 结合 localStorage 与系统偏好解析后暴露给模板。其余数据由 runtime 按路由取。
 
 | 键 | 类型 | 出现页面 | 说明 |
 | --- | --- | --- | --- |
@@ -121,7 +121,7 @@ theme.contract   = N
 | `colorMode` | `'light' \| 'dark'` | 全部 | 实际生效值（`system` 已解析） |
 | `posts` | `PostSummary[]` | 首页 / 标签 / 归档 / 搜索 | 当前页列表 |
 | `pager` | `Pager` | 同 `posts` | 分页 |
-| `post` | `PostDetail` | 文章详情 | 正文为 Markdown 原文 |
+| `post` | `PostDetail \| null` | 文章详情 | 正文为 Markdown 原文 |
 | `prevPost` / `nextPost` | `PostSummary \| null` | 文章详情 | 按当前列表排序上下文取相邻项（见 §4.5） |
 | `tags` | `Tag[]` | 标签页 | 全部标签及已发布数量 |
 | `tag` | `Tag \| null` | 标签文章页 | 当前标签 |
@@ -149,21 +149,20 @@ theme.contract   = N
 
 ```text
 Site        { name, tagline, description, logoUrl, faviconUrl, baseUrl,
-              icp, policeRecord, author: Author, social: SocialLink[], footerText }
+              icp, policeRecord, author: Author, social: SocialLink[], footerText,
+              themeMode, themeOverrides, pageSize }
 Author      { name, avatarUrl, bio }
-SocialLink  { type, label, url }
-NavItem     { key, label, to, external }
+SocialLink  { type, label, url }        // 字段均可空
+NavItem     { key, label, to }
 SortField   = 'displayAt' | 'firstPublishedAt' | 'lastPublishedAt'
 PostSummary { slug, title, summary, coverUrl, tags: TagBrief[], pinned,
               firstPublishedAt, lastPublishedAt, authoredAt, displayAt, readingMinutes }
-PostDetail  { slug, title, content, summary, coverUrl, tags: TagBrief[],
-              authorName, firstPublishedAt, lastPublishedAt, authoredAt, displayAt,
-              readingMinutes }
+PostDetail  { ...PostSummary, content, authorName, prevPost, nextPost }
 Tag         { id, name, count }
 TagBrief    { id, name }
 Archive     { year, month, count }
 Pager       { page, size, total, totalPages, hasPrev, hasNext }
-SitePage    { slug, title, content, updatedAt }   // /p/:slug 与 /about
+SitePage    { id, slug, title, content, visible, sort, updatedAt }   // /p/:slug 与 /about
 ```
 
 约束：
@@ -263,7 +262,7 @@ SitePage    { slug, title, content, updatedAt }   // /p/:slug 与 /about
 | `home.pageSize` | NUMBER | `10` | 是 | 1–50 |
 | `footer.text` | STRING | `''` | 是 | 页脚文案 |
 | `theme.mode` | ENUM | `system` | 是 | `system / light / dark` |
-| `theme.id` | STRING | `''` | 是 | 当前生效主题；空 = 内置默认主题。**系统托管**：只由主题管理写入 |
+| `theme.id` | STRING | `''` | 是 | 当前生效主题；空 = 内置默认主题。**系统托管**：只由主题管理写入；壳注入到 `__BLOG_BOOT__.theme.id`，不属于 `site` 载荷 |
 | `theme.overrides` | JSON | `{}` | 是 | 仅允许 §3.6 的 CSS 变量名 |
 
 规则：
@@ -276,7 +275,7 @@ SitePage    { slug, title, content, updatedAt }   // /p/:slug 与 /about
 
 ### 3.6 CSS 变量与 DOM 钩子
 
-主题通过以下变量做视觉适配；`theme.overrides` 只允许覆盖这张表里的变量。
+主题通过以下变量做视觉适配；`theme.overrides` 只允许覆盖这张表里的变量。运行时在启动时把这些覆盖写到 `document.documentElement.style`，因此优先级高于主题 CSS，但只接受登记变量名。
 
 | 变量 | 用途 |
 | --- | --- |
@@ -332,6 +331,8 @@ html[data-blog-navigating="1"]        路由取数中，顶部进度条可见
 
 `--theme <file>` 可校验任意主题 HTML（如库内版本），`--emit` 生成 `apps/blog/dist/theme-contract.json`。
 
+保存主题版本时，后端 `site/ThemeTemplateValidator` 会按同一套组件 / 指令 / 模板键清单再扫描一次（含行号错误）；运行时加载前还会执行 `validateTheme`，因此库内旧数据或被篡改的数据不会直接进入模板编译器。
+
 约定：**新增模板键 / 组件 / 变量时，先改 `contract.ts`，再改 `template-context.ts` / `components/index.ts` + 新增组件文件**；顺序反了会在自检时报"已暴露但未登记"。
 
 ---
@@ -342,7 +343,7 @@ html[data-blog-navigating="1"]        路由取数中，顶部进度条可见
 
 - 主题必须提供 `<div id="app">` 根节点；模板由 runtime 编译。
 - **禁止** `<script>`、`v-html`、`window` / `fetch` / `eval` / `localStorage` 等表达式。
-- 允许：`v-if` / `v-for` / `v-show` / `v-model="ui.x"` / `:class` / `:style` / `@click`（只能调用 §3.3 的动作）、组件标签与具名 slot、表达式内的方法调用（`filter` / `slice` / `sort` 等）与箭头函数。
+- 允许：`v-if` / `v-for` / `v-show` / `v-model="ui.x"` / `:class` / `:style` / `@click`（只能调用 §3.3 的动作）、组件标签与具名 slot（`#default` 或 `v-slot`）、表达式内的方法调用（`filter` / `slice` / `sort` 等）与箭头函数。
 - 主题可以只实现部分页面，缺失页面回落内置默认主题。
 
 ### 4.2 文件模型
@@ -434,7 +435,7 @@ catch-all 会抢占它（`RequestMappingHandlerMapping` 先于资源 handler）�
 GET /posts/hello
   → 匹配到公开路由 → 读取 site 配置 + ACTIVE 主题版本
   → 组装 HTML：
-       <script>window.__BLOG_BOOT__ = {site, themeMode, adminOrigin, contract, theme:{id,versionNo,contract}}</script>
+       <script>window.__BLOG_BOOT__ = {site, themeMode, adminOrigin, contract, preview, theme:{id,versionNo,contract}}</script>
        <style>[v-cloak]{display:none}</style>
        <style id="blog-boot-style">/* 首屏加载层，内联 */</style>
        <style id="blog-theme">/* 主题 CSS，内联 */</style>
@@ -443,7 +444,7 @@ GET /posts/hello
          [data-blog-progress]  /* 顶部进度条 */
          /* 主题 HTML，原样注入 */
        <script type="module" src="/blog/runtime.js"></script>
-  → 返回整页（ETag = 主题版本 + 配置版本 + 壳版本；s-maxage=60）
+  → 返回整页（ETag = 主题版本 + 配置版本 + asset-base + 壳版本；s-maxage=60）
 ```
 
 - 主题 CSS 内联：避免二次请求与首帧闪烁；体积上限 256KB。
@@ -464,7 +465,7 @@ GET /posts/hello
 | --- | --- |
 | 分域 | blog 与 admin 不同源；blog 不持有 admin 凭证 |
 | 匿名面 | 非 API 的 GET 一律公开（壳 fallback + jar 内静态资源），`/api/**` 要求会话。因此新增业务控制器**必须**挂在 `/api/` 下：`startup/ApiPathValidator` 在启动期扫描 handler，漏写前缀直接终止启动 |
-| CSP | `default-src 'self'; script-src 'self' 'unsafe-eval'`；主题 CSS 需 `style-src 'unsafe-inline'`；KaTeX 字体需 `font-src 'self' data:`；同源部署下无需放行资产域（开发期 `BLOG_ASSET_BASE` 指向 Vite 时自动把该 origin 加入 script/style/font/connect）；独立媒体域时自动把 `MEDIA_PUBLIC_BASE_URL` 的 origin 加入 `img-src` / `media-src` |
+| CSP | `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'`（壳内联启动脚本 + Vue 运行时模板编译）；主题 CSS 需 `style-src 'unsafe-inline'`；KaTeX 字体需 `font-src 'self' data:`；同源部署下无需放行资产域（开发期 `BLOG_ASSET_BASE` 指向 Vite 时自动把该 origin 加入 script/style/font/connect）；独立媒体域时自动把 `MEDIA_PUBLIC_BASE_URL` 的 origin 加入 `img-src` / `media-src` |
 | `unsafe-eval` | Vue 运行时模板编译必需；靠零主题 JS + 校验 + 分域兜底 |
 | 模板校验 | 保存时后端校验；**加载时 runtime 再校验一次**（库内旧数据 / 被篡改数据不得直接进编译器）；见 §8 |
 | 预览隔离 | 草稿仅通过短期签名 token 可见（30 分钟，HMAC）；页面 `no-store` + `no-referrer`，bootstrap 同样 `no-store` |
@@ -597,12 +598,14 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | blog → admin | `blog-preview:error` | `{ message }` |
 
 - 校验逻辑只在 runtime 一处，admin 不引入 Vue 编译器。
+- 管理端预览弹窗当前发送 `validate` 与 `color-mode`；`scroll-to` 由 runtime 支持，留给后续工具 / 主题调试使用。
 - 视口切换由 admin 调整 iframe 宽度（320 / 375 / 768 / 1024）。
-- 空站点预览支持 `&fixtures=1` 注入示例数据。
+- 空站点预览支持 `&fixtures=1` 注入示例数据（仅在预览壳中生效；管理端预览弹窗有「使用示例数据」开关）。
+- 管理端预览弹窗会向 iframe 发送 `blog-preview:validate`，展示运行时返回的契约错误；保存时后端仍会做同一口径的扫描，不能只依赖预览。
 
 ### 7.3 站点设置
 
-分组表单：品牌 / 作者 / 社交 / 导航 / 首页 / 页脚 / 主题。保存前做注册表校验，订阅式即时预览（复用主题预览 iframe）。
+分组表单：品牌 / 作者（含社交链接）/ 导航 / 首页 / 页脚 / 主题（与 `SiteSettingCatalog` 的 group 一致）。保存前做注册表校验，订阅式即时预览（复用主题预览 iframe）。
 
 「主题」分组中的**当前主题只读**：展示主题名称与生效版本号（无 `admin:theme` 权限时显示"由主题管理维护"），并提供跳转到主题管理的入口；切换 / 回滚只在主题管理执行。`theme.id` 不属于可提交配置项。
 
@@ -628,14 +631,14 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 类别 | 规则 |
 | --- | --- |
 | 结构 | 必须含 `#app`；禁 `<script>`；禁 `v-html` |
-| 契约 | 模板引用的数据键 / 动作 / 组件必须在白名单内 |
+| 契约 | 模板引用的数据键 / 动作 / 组件必须在白名单内；后端保存时执行与 `theme-contract.mjs` 同口径的保守扫描，运行时加载前再扫描一次 |
 | 危险模式 | 禁 `window` / `document` / `fetch` / `eval` / `localStorage` / `import(` |
 | 外部资源 | 禁外域 `url()` / `@import`；图片仅 `/api/media/**` 与 `data:` |
 | 体积 | HTML ≤ 64KB；CSS ≤ 256KB |
 | 版本 | `runtime.contract - theme.contract ∈ [0, 1]` |
-| CSS | `theme.overrides` 的键必须在 §3.6 白名单内，值须为合法颜色 / 长度 |
+| CSS | `theme.overrides` 的键必须在 §3.6 白名单内，值须为安全的颜色 / 长度 / 字体族 token（后端校验；运行时只应用登记变量） |
 
-校验失败一律拒绝保存，返回行级错误。
+校验失败一律拒绝保存，返回带行号的错误；运行时加载到历史 / 被篡改主题时校验失败会回落内置默认主题。
 
 ---
 
@@ -652,8 +655,8 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | `GET /api/blog/posts` | 已有；`page` / `size` / `tagId` / `year` / `month` / `pinnedFirst` / `direction` / `sortBy`；`year` / `month` 跟随 `sortBy` 字段 |
 | `GET /api/blog/posts/{slug}` | 已有；额外接受 `pinnedFirst` / `direction` / `sortBy` / `tagId` / `year` / `month` / `q` 计算 `prevPost` / `nextPost` |
 | `GET /api/blog/tags`、`/api/blog/archives`、`/api/blog/search` | 已有；`/archives` 返回全量月份索引并支持 `sortBy` / `direction`，`/search` 支持完整排序参数 |
-| `GET /api/blog/pages/{slug}` | 新增：独立页面 |
-| `GET /api/blog/site` | 新增：站点公开配置（供预览 / 未来的桌面端复用） |
+| `GET /api/blog/pages/{slug}` | 已实现：独立页面 |
+| `GET /api/blog/site` | 已实现：站点公开配置（供预览 / 未来的桌面端复用） |
 | `GET /api/media/{id}` | 已有 |
 
 管理端：
@@ -661,10 +664,10 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 方法 / 路径 | 权限 | 说明 |
 | --- | --- | --- |
 | `GET /api/admin/themes` | `admin:theme` | 列表 |
-| `GET /api/admin/themes/{id}/versions/{v}` | `admin:theme` | 读取版本源码 |
+| `GET /api/admin/themes/{id}/versions/{versionId}` | `admin:theme` | 读取版本源码 |
 | `POST /api/admin/themes/{id}/versions` | `admin:theme:write` | 新增草稿版本 |
-| `POST /api/admin/themes/{id}/versions/{v}/preview-token` | `admin:theme` | 签发预览 token |
-| `POST /api/admin/themes/{id}/versions/{v}/activate` | `admin:theme:activate` | 应用 / 回滚 |
+| `POST /api/admin/themes/{id}/versions/{versionId}/preview-token` | `admin:theme` | 签发预览 token |
+| `POST /api/admin/themes/{id}/versions/{versionId}/activate` | `admin:theme:activate` | 应用 / 回滚 |
 | `GET /api/admin/site/settings` | `admin:site` | 读取（含默认值与元信息） |
 | `PUT /api/admin/site/settings` | `admin:site:update` | 批量保存 |
 | `GET /api/admin/site/pages`、`POST`、`PUT`、`DELETE` | `admin:site` / `admin:site:update` | 独立页面 CRUD |
@@ -796,3 +799,5 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 2026-10-28 | v1.11 试点 | **单文件组件试点**：`@vitejs/plugin-vue` 接入 `apps/blog`（catalog 已有，构建期依赖），`<blog-pager>` 改为 `components/pager.vue`（`<script setup>` + `<template>`），其余组件仍是 `.ts` template 字符串；自检改为按 `index.ts` 的导入定位组件文件，`.vue` 用 `vue/compiler-sfc` 读 `<template>` 扫描（`parts` / `slots` 规则不变），并新增两项守护：组件文件含 `<style>` 直接失败、`components/` 下未注册的文件直接失败。收益是 SFC 模板进 `vue-tsc` 类型检查（template 字符串做不到）；代价：Vue 运行时编译器仍不能去掉（主题用），构建产物 +0.07 kB。**未决策是否全量迁移**，其余组件维持现状 |
 | 2026-10-28 | v1.12 全量迁移 | 剩余 12 个组件全部改为 `.vue`（`<script setup lang="ts">` + `<template>`，`defineOptions` 保留原组件名），blog 组件统一为单文件组件；自检删除 template 字符串分支，改为**只认 `.vue`**（新增守护：注册进 `index.ts` 但不是 `.vue` 直接失败），`parts` / `slots` / `<style>` / 未注册文件四条校验口径不变；模板进入 `vue-tsc` 类型检查（实测 `tag-cloud.vue` 里 `item.ct` 会被 TS2339 拦下）。构建产物 `runtime.js` 298.36 → 298.55 kB（gzip 104.15 → 104.56 kB）；Vue 运行时编译器仍保留（主题模板需要）；数据库零迁移 |
 | 2026-10-28 | v1.13 排序上下文 | **公开列表排序上下文**：`pinnedFirst` / `direction` / `sortBy`（`displayAt` / `firstPublishedAt` / `lastPublishedAt`）；列表与归档按 URL query 取数，详情上下篇由详情接口按同一上下文计算（不再拉 100 条列表）；runtime 注入只读 `listSort` 与 `postDate(post)`，归档改为**按月查看 + 月内分页**（月份索引 + `year` / `month` + `page` / `size`），`year` / `month` 过滤跟随 `sortBy`；主题可通过 `<a href="?direction=asc">` 切换；搜索上下篇携带 `q`；数据库新增 `note.authored_at`（见 `docs/content-model.md` v1.4）；V10 已执行，契约自检 29 键通过 |
+| 2026-10-31 | v1.14 文档对齐 | 按实现补齐 `Site` / `SitePage` 数据形状；CSP 增加 `script-src 'unsafe-inline'`（壳内联启动脚本）；ETag 增加 asset-base；站点设置分组按 `SiteSettingCatalog` 收敛为品牌 / 作者 / 导航 / 首页 / 页脚 / 主题；主题版本接口参数改为 `versionId`；`/api/blog/site` 与 `/pages/{slug}` 标为已实现 |
+| 2026-10-31 | v1.15 契约与预览补全 | 后端 `ThemeTemplateValidator` 保存时扫描组件 / 指令 / 模板键并返回行号；runtime `validateTheme` 增加同口径扫描与 CSS `url()` 检查；`theme.overrides` 后端校验（白名单 + 安全值）并由 runtime 写到 `documentElement.style`；管理端预览发送 `blog-preview:validate` / `color-mode` 并展示错误；预览支持 `fixtures=1` 示例数据 |

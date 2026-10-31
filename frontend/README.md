@@ -33,6 +33,7 @@ frontend/
 | `pnpm dev:desktop` | 启动桌面端 UI dev server（<http://localhost:5175>；binding 调用需在 Wails 壳内） |
 | `pnpm build:admin` / `pnpm build:blog` / `pnpm build:desktop` | 构建单个应用；blog 产物在 Maven 打包时进入后端 jar；desktop 产物由 `desktop/` 的 `wails3 build` 同步并嵌入 |
 | `pnpm sync:theme` / `pnpm check:theme` | 同步 / 校验后端内置默认主题副本 |
+| `pnpm check:contract` | 校验博客主题契约（runtime 暴露面 == `contract.ts` 登记面） |
 | `pnpm build` | 构建全部应用 |
 | `pnpm gen:api` | 按后端 OpenAPI 契约重新生成 `packages/api` 类型（需后端已启动；默认 `http://localhost:8080/v3/api-docs`，可用 `OPENAPI_URL` 覆盖） |
 | `pnpm typecheck` | 全仓类型检查 |
@@ -61,7 +62,7 @@ apps/admin/src/
 - 构建产物在 Maven `prepare-package` 时拷入后端 jar 的 `static/blog/`，由后端同源提供；页面与 API 都在 8080，单一启动路径
 - 开发期：`mvn spring-boot:run` 默认启用 `dev` profile，`asset-base` 自动指向 Vite（`http://localhost:5174`）获得 HMR；生产 jar 不启用该 profile，固定从 jar 内 `/blog` 读取
 - 内置默认主题在 `packages/theme-starter`；后端兜底副本用 `pnpm sync:theme` 同步、`pnpm check:theme` 校验
-- Markdown 方言、hljs、github-alerts 均来自 `@simple-notes/shared`，不在 app 内重复配置
+- Markdown 方言、Lute 预加载与 DOMPurify 清洗来自 `@simple-notes/markdown`；hljs / KaTeX / Mermaid 由 `pnpm sync:vditor` 自托管，不在 app 内重复配置
 
 ## 桌面端 UI（apps/desktop）
 
@@ -69,7 +70,7 @@ apps/admin/src/
 - **不直连后端**：调用 Go binding `api.Do({ method, path, body })`；Bearer 由 Go 注入，token 不进入 JS
 - `bindings/` 由 `wails3 task bindings` 生成（改 Go service 签名后重跑），随仓库提交；**禁止手写 IPC 类型**
 - API 类型仍来自 `@simple-notes/api` 的 OpenAPI 生成物；Go 侧只做通用转发
-- Markdown 与 admin 同源：`configureMarkdown()` + `packages/shared`；编辑器高度按容器计算，不做移动端分叉
+- Markdown 过渡期使用 `configureMarkdown()` + `packages/shared`（md-editor-v3 / markdown-it）；与 admin 的 Vditor + Lute **尚未同源**，迁移前不参与方言 v2 验收。编辑器高度按容器计算，不做移动端分叉
 - 构建产物由 `pnpm build:desktop` → `pnpm sync:wails` 同步到 `desktop/web/dist`（`//go:embed` 不能跨 module）
 
 ## 已定选型（设计阶段记录）

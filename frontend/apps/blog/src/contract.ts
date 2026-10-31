@@ -213,6 +213,7 @@ export const CONTRACT_DIRECTIVES = [
   'v-cloak',
   'v-bind',
   'v-on',
+  'v-slot',
 ] as const
 
 /** 一次性取用：构建产物 / 校验器 / 文档生成的统一形状。 */

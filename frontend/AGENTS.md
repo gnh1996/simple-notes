@@ -24,7 +24,7 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 
 ## 博客前台（blog runtime）
 
-> 设计与实现见 `docs/blog-runtime-theme.md`（v1.3 / 方案 C 已落地）。
+> 设计与实现见 `docs/blog-runtime-theme.md`（v1.15 / 方案 C 已落地）。
 
 - **构建产物**：`apps/blog` 是 Vite + TS 的 runtime；产物入口固定为 `runtime.js`，Maven `prepare-package` 会拷入后端 jar 的 `static/blog/`。**主题模板是运行时数据，必须保留 Vue 运行时编译器**（`vue` alias 指向 `vue/dist/vue.esm-bundler.js`，不要改成 runtime-only）；组件统一是 `.vue` 单文件组件（构建期编译，模板进 `vue-tsc` 类型检查）
 - **首屏**：唯一启动路径 = 后端 `BlogPageController` 组装壳（站点配置 + 主题 HTML/CSS 内联）；runtime 只读 `window.__BLOG_BOOT__`，不再有客户端 bootstrap 启动分支。路由数据在 `beforeResolve` 取好、`afterEach` 一次性写入，壳内 `[data-blog-boot]` 加载层在 `data-blog-ready=1` 后淡出；主题可用 CSS 隐藏它
@@ -57,7 +57,7 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 - **不直连后端**：只调用 Go binding `api.Do({ method, path, body })`；token 不进入 JS / localStorage
 - `bindings/` 由 `wails3 task bindings` 生成（改 Go service 签名后重跑），随仓库提交；禁止手写 IPC 类型
 - API 类型来自 `@simple-notes/api`（OpenAPI 生成），不另写接口类型；Go 侧只做通用转发
-- Markdown 与 admin 同源：`configureMarkdown()` + `packages/shared`；新增语法仍按方言 fixture 流程
+- Markdown 过渡期使用 `configureMarkdown()` + `packages/shared`（md-editor-v3 / markdown-it）；与 admin 的 Vditor + Lute **尚未同源**，迁移前不参与方言 v2 验收
 - 构建产物先 `pnpm build:desktop`，再由 `desktop/` 的 `wails3 build` 执行 `pnpm sync:wails` 同步进 `desktop/web/dist`
 - 内存按 WebView 进程树评估：新增常驻面板 / 依赖前先实测（见 `desktop/README.md`）
 
@@ -68,7 +68,7 @@ pnpm install
 pnpm dev:admin            # 5173
 pnpm dev:blog             # 5174（runtime dev server；页面走后端 8080）
 pnpm dev:desktop          # 5175（桌面端 UI；binding 需在 Wails 壳内）
-pnpm typecheck            # 全仓类型检查（含默认主题副本校验）
+pnpm typecheck            # 全仓类型检查（含默认主题副本 / 主题契约校验）
 pnpm build:admin          # 单应用构建
 pnpm build:blog           # 产出 runtime.js；Maven 打包时拷入后端 jar
 pnpm build:desktop        # 桌面端 UI 构建；之后由 desktop/ 的 wails3 build 同步并嵌入
