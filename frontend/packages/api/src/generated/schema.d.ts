@@ -4,6 +4,54 @@
  */
 
 export interface paths {
+    "/api/desktop/posts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPost"];
+        put: operations["updatePost"];
+        post?: never;
+        delete: operations["deletePost"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/notes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getNote"];
+        put: operations["updateNote"];
+        post?: never;
+        delete: operations["deleteNote"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/note-folders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["renameFolder"];
+        post?: never;
+        delete: operations["deleteFolder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/profile": {
         parameters: {
             query?: never;
@@ -238,6 +286,54 @@ export interface paths {
         get: operations["status"];
         put: operations["switchMode"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createPost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createNote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/note-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["folders"];
+        put?: never;
+        post: operations["createFolder"];
         delete?: never;
         options?: never;
         head?: never;
@@ -596,6 +692,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/desktop/posts/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["syncPosts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/desktop/notes/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["syncNotes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/blog/tags": {
         parameters: {
             query?: never;
@@ -820,6 +948,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/posts/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["sync"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/notes/trash": {
         parameters: {
             query?: never;
@@ -828,6 +972,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["noteTrash"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/notes/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["sync_1"];
         put?: never;
         post?: never;
         delete?: never;
@@ -888,6 +1048,94 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        UpdatePostRequest: {
+            /** Format: int64 */
+            version: number;
+            title: string;
+            content: string;
+            summary?: string;
+            slug?: string;
+            coverAttachmentId?: string;
+            tags?: string[];
+            pinned?: boolean;
+            authoredAt?: string;
+        };
+        PostDetail: {
+            id: string;
+            title: string;
+            content: string;
+            summary?: string;
+            slug?: string;
+            publicUrl?: string;
+            coverAttachmentId?: string;
+            coverUrl?: string;
+            tags: components["schemas"]["TagBrief"][];
+            pinned: boolean;
+            /** @enum {string} */
+            publishStatus: "DRAFT" | "PUBLISHED" | "UNPUBLISHED";
+            hasUnpublishedChanges: boolean;
+            publishedRevisionId?: string;
+            /** Format: int32 */
+            publishedRevisionNo?: number;
+            publishedTitle?: string;
+            /** Format: date-time */
+            firstPublishedAt?: string;
+            /** Format: date-time */
+            lastPublishedAt?: string;
+            /** Format: date-time */
+            authoredAt?: string;
+            /** Format: date-time */
+            draftModifiedAt?: string;
+            /** Format: date-time */
+            createTime?: string;
+            /** Format: date-time */
+            updateTime?: string;
+            /** Format: int64 */
+            version: number;
+        };
+        TagBrief: {
+            id: string;
+            name: string;
+        };
+        UpdateNoteRequest: {
+            /** Format: int64 */
+            version: number;
+            title: string;
+            content: string;
+            folderId?: string;
+            tags?: string[];
+            pinned?: boolean;
+        };
+        NoteDetail: {
+            id: string;
+            title: string;
+            content: string;
+            folderId?: string;
+            folderName?: string;
+            tags: components["schemas"]["TagBrief"][];
+            pinned: boolean;
+            /** Format: date-time */
+            createTime?: string;
+            /** Format: date-time */
+            updateTime?: string;
+            /** Format: int64 */
+            version: number;
+        };
+        NoteFolderRequest: {
+            name: string;
+            /** Format: int32 */
+            sort?: number;
+        };
+        NoteFolderResponse: {
+            id: string;
+            name: string;
+            /** Format: int32 */
+            sort: number;
+            /** Format: date-time */
+            createTime: string;
+            /** Format: date-time */
+            updateTime?: string;
+        };
         ProfileUpdateRequest: {
             nickname: string;
         };
@@ -1016,92 +1264,6 @@ export interface components {
         GrantPermissionsRequest: {
             menuIds: string[];
         };
-        UpdatePostRequest: {
-            /** Format: int64 */
-            version: number;
-            title: string;
-            content: string;
-            summary?: string;
-            slug?: string;
-            coverAttachmentId?: string;
-            tags?: string[];
-            pinned?: boolean;
-            authoredAt?: string;
-        };
-        PostDetail: {
-            id: string;
-            title: string;
-            content: string;
-            summary?: string;
-            slug?: string;
-            publicUrl?: string;
-            coverAttachmentId?: string;
-            coverUrl?: string;
-            tags: components["schemas"]["TagBrief"][];
-            pinned: boolean;
-            /** @enum {string} */
-            publishStatus: "DRAFT" | "PUBLISHED" | "UNPUBLISHED";
-            hasUnpublishedChanges: boolean;
-            publishedRevisionId?: string;
-            /** Format: int32 */
-            publishedRevisionNo?: number;
-            publishedTitle?: string;
-            /** Format: date-time */
-            firstPublishedAt?: string;
-            /** Format: date-time */
-            lastPublishedAt?: string;
-            /** Format: date-time */
-            authoredAt?: string;
-            /** Format: date-time */
-            draftModifiedAt?: string;
-            /** Format: date-time */
-            createTime?: string;
-            /** Format: date-time */
-            updateTime?: string;
-            /** Format: int64 */
-            version: number;
-        };
-        TagBrief: {
-            id: string;
-            name: string;
-        };
-        UpdateNoteRequest: {
-            /** Format: int64 */
-            version: number;
-            title: string;
-            content: string;
-            folderId?: string;
-            tags?: string[];
-            pinned?: boolean;
-        };
-        NoteDetail: {
-            id: string;
-            title: string;
-            content: string;
-            folderId?: string;
-            folderName?: string;
-            tags: components["schemas"]["TagBrief"][];
-            pinned: boolean;
-            /** Format: date-time */
-            createTime?: string;
-            /** Format: date-time */
-            updateTime?: string;
-            /** Format: int64 */
-            version: number;
-        };
-        NoteFolderRequest: {
-            name: string;
-            /** Format: int32 */
-            sort?: number;
-        };
-        NoteFolderResponse: {
-            id: string;
-            name: string;
-            /** Format: int32 */
-            sort: number;
-            /** Format: date-time */
-            createTime: string;
-        };
         UpdateMenuRequest: {
             name: string;
             /** Format: int32 */
@@ -1136,6 +1298,25 @@ export interface components {
             health: {
                 [key: string]: string;
             };
+        };
+        CreatePostRequest: {
+            id?: string;
+            title: string;
+            content: string;
+            summary?: string;
+            slug?: string;
+            coverAttachmentId?: string;
+            tags?: string[];
+            pinned?: boolean;
+            authoredAt?: string;
+        };
+        CreateNoteRequest: {
+            id?: string;
+            title: string;
+            content: string;
+            folderId?: string;
+            tags?: string[];
+            pinned?: boolean;
         };
         LoginRequest: {
             username: string;
@@ -1208,26 +1389,9 @@ export interface components {
             /** Format: int32 */
             sort?: number;
         };
-        CreatePostRequest: {
-            title: string;
-            content: string;
-            summary?: string;
-            slug?: string;
-            coverAttachmentId?: string;
-            tags?: string[];
-            pinned?: boolean;
-            authoredAt?: string;
-        };
         PublishRequest: {
             /** Format: int64 */
             version: number;
-        };
-        CreateNoteRequest: {
-            title: string;
-            content: string;
-            folderId?: string;
-            tags?: string[];
-            pinned?: boolean;
         };
         AttachmentResponse: {
             id: string;
@@ -1245,6 +1409,24 @@ export interface components {
             createTime: string;
         };
         StreamingResponseBody: unknown;
+        SyncItem: {
+            id: string;
+            kind: string;
+            title: string;
+            folderId?: string;
+            pinned: boolean;
+            publishStatus?: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            updateTime: string;
+            deleted: boolean;
+        };
+        SyncPage: {
+            items: components["schemas"]["SyncItem"][];
+            nextCursor?: string;
+            hasMore: boolean;
+        };
         TagCountResponse: {
             id: string;
             name: string;
@@ -1518,6 +1700,188 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getPost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["PostDetail"];
+                };
+            };
+        };
+    };
+    updatePost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePostRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["PostDetail"];
+                };
+            };
+        };
+    };
+    deletePost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["NoteDetail"];
+                };
+            };
+        };
+    };
+    updateNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["NoteDetail"];
+                };
+            };
+        };
+    };
+    deleteNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    renameFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteFolderRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["NoteFolderResponse"];
+                };
+            };
+        };
+    };
+    deleteFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     updateProfile: {
         parameters: {
             query?: never;
@@ -2118,6 +2482,98 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["StorageStatusResponse"];
+                };
+            };
+        };
+    };
+    createPost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePostRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["PostDetail"];
+                };
+            };
+        };
+    };
+    createNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["NoteDetail"];
+                };
+            };
+        };
+    };
+    folders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["NoteFolderResponse"][];
+                };
+            };
+        };
+    };
+    createFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteFolderRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["NoteFolderResponse"];
                 };
             };
         };
@@ -2883,6 +3339,52 @@ export interface operations {
             };
         };
     };
+    syncPosts: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SyncPage"];
+                };
+            };
+        };
+    };
+    syncNotes: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SyncPage"];
+                };
+            };
+        };
+    };
     tags: {
         parameters: {
             query?: never;
@@ -3209,6 +3711,29 @@ export interface operations {
             };
         };
     };
+    sync: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SyncPage"];
+                };
+            };
+        };
+    };
     noteTrash: {
         parameters: {
             query?: never;
@@ -3225,6 +3750,29 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["TrashItemResponse"][];
+                };
+            };
+        };
+    };
+    sync_1: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SyncPage"];
                 };
             };
         };

@@ -95,6 +95,7 @@ public class NoteFolderService {
     }
 
     private NoteFolderResponse toResponse(NoteFolder folder) {
-        return new NoteFolderResponse(folder.getId(), folder.getName(), folder.getSort(), folder.getCreateTime());
+        return new NoteFolderResponse(folder.getId(), folder.getName(), folder.getSort(),
+                folder.getCreateTime(), folder.getUpdateTime());
     }
 }

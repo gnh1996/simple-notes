@@ -15,7 +15,7 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * BaseURL 返回当前后端地址（诊断展示用）。
+ * BaseURL 返回当前后端地址：优先使用设置页保存的值，其次回落到环境变量 / 默认值。
  */
 export function BaseURL(): $CancellablePromise<string> {
     return $Call.ByID(1870775966);
@@ -26,4 +26,11 @@ export function BaseURL(): $CancellablePromise<string> {
  */
 export function Do(req: $models.Request): $CancellablePromise<$models.Response | null> {
     return $Call.ByID(887655769, req);
+}
+
+/**
+ * Get 发起 GET 并把 2xx JSON 响应解码到 out；非 2xx 转成错误（含服务端 message）。
+ */
+export function Get(path: string, out: any): $CancellablePromise<void> {
+    return $Call.ByID(2862013052, path, out);
 }

@@ -7,6 +7,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -45,8 +46,28 @@ func New(db *store.Store, baseURL string) *Service {
 	}
 }
 
-// BaseURL 返回当前后端地址（诊断展示用）。
-func (s *Service) BaseURL() string { return s.baseURL }
+// BaseURL 返回当前后端地址：优先使用设置页保存的值，其次回落到环境变量 / 默认值。
+func (s *Service) BaseURL() string {
+	if value, ok, err := s.db.BaseURL(); err == nil && ok && value != "" {
+		return value
+	}
+	return s.baseURL
+}
+
+// Get 发起 GET 并把 2xx JSON 响应解码到 out；非 2xx 转成错误（含服务端 message）。
+func (s *Service) Get(path string, out any) error {
+	resp, err := s.Do(Request{Method: http.MethodGet, Path: path})
+	if err != nil {
+		return err
+	}
+	if resp.Status < 200 || resp.Status >= 300 {
+		return fmt.Errorf("%s", errorMessage(resp.Status, resp.Body))
+	}
+	if err := json.Unmarshal([]byte(resp.Body), out); err != nil {
+		return fmt.Errorf("解析响应: %w", err)
+	}
+	return nil
+}
 
 // Do 转发一次请求；HTTP 非 2xx 也会正常返回（由前端按状态码处理）。
 func (s *Service) Do(req Request) (*Response, error) {
@@ -63,7 +84,7 @@ func (s *Service) Do(req Request) (*Response, error) {
 		body = strings.NewReader(req.Body)
 	}
 
-	httpReq, err := http.NewRequest(method, s.baseURL+req.Path, body)
+	httpReq, err := http.NewRequest(method, s.BaseURL()+req.Path, body)
 	if err != nil {
 		return nil, fmt.Errorf("构造请求: %w", err)
 	}
@@ -89,4 +110,23 @@ func (s *Service) Do(req Request) (*Response, error) {
 		return nil, fmt.Errorf("读取响应: %w", err)
 	}
 	return &Response{Status: resp.StatusCode, Body: string(data)}, nil
+}
+
+// ErrorMessage 把接口错误体转成可展示文案（供其它 service 复用）。
+func ErrorMessage(status int, body string) string {
+	return errorMessage(status, body)
+}
+
+// errorMessage 把接口错误体转成可展示文案。
+func errorMessage(status int, body string) string {
+	var envelope struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal([]byte(body), &envelope) == nil && envelope.Message != "" {
+		return envelope.Message
+	}
+	if status == http.StatusUnauthorized {
+		return "会话已失效，请重新登录"
+	}
+	return fmt.Sprintf("请求失败（HTTP %d）", status)
 }

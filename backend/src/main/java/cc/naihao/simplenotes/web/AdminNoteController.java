@@ -1,12 +1,15 @@
 package cc.naihao.simplenotes.web;
 
+import cc.naihao.simplenotes.domain.NoteKind;
 import cc.naihao.simplenotes.service.NoteService;
 import cc.naihao.simplenotes.service.PostService;
+import cc.naihao.simplenotes.service.SyncService;
 import cc.naihao.simplenotes.web.dto.CreateNoteRequest;
 import cc.naihao.simplenotes.web.dto.NoteDetail;
 import cc.naihao.simplenotes.web.dto.NoteSummary;
 import cc.naihao.simplenotes.web.dto.PageResponse;
 import cc.naihao.simplenotes.web.dto.PostDetail;
+import cc.naihao.simplenotes.web.dto.SyncPage;
 import cc.naihao.simplenotes.web.dto.UpdateNoteRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +36,7 @@ public class AdminNoteController {
 
     private final NoteService noteService;
     private final PostService postService;
+    private final SyncService syncService;
 
     @GetMapping
     @PreAuthorize("@authz.can('admin:note')")
@@ -44,6 +48,14 @@ public class AdminNoteController {
             @RequestParam(required = false) String tagId,
             @RequestParam(defaultValue = "false") boolean pinnedOnly) {
         return noteService.list(page, size, keyword, folderId, tagId, pinnedOnly);
+    }
+
+    @GetMapping("/sync")
+    @PreAuthorize("@authz.can('admin:note')")
+    public SyncPage sync(
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "200") int limit) {
+        return syncService.page(NoteKind.NOTE, cursor, limit);
     }
 
     @GetMapping("/{id}")

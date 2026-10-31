@@ -96,6 +96,18 @@ public final class Perms {
     public static final String ADMIN_THEME_WRITE = "admin:theme:write";
     public static final String ADMIN_THEME_ACTIVATE = "admin:theme:activate";
 
+    // ---- desktop：同步 ----
+
+    public static final String DESKTOP_NOTE = "desktop:note";
+    public static final String DESKTOP_POST = "desktop:post";
+    public static final String DESKTOP_NOTE_UPDATE = "desktop:note:update";
+    public static final String DESKTOP_POST_UPDATE = "desktop:post:update";
+    public static final String DESKTOP_NOTE_DELETE = "desktop:note:delete";
+    public static final String DESKTOP_POST_DELETE = "desktop:post:delete";
+    public static final String DESKTOP_FOLDER_WRITE = "desktop:folder:write";
+    public static final String DESKTOP_NOTE_CREATE = "desktop:note:create";
+    public static final String DESKTOP_POST_CREATE = "desktop:post:create";
+
     private static final Set<String> ALL = collectAll();
 
     private Perms() {

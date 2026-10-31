@@ -1,12 +1,15 @@
 package cc.naihao.simplenotes.web;
 
+import cc.naihao.simplenotes.domain.NoteKind;
 import cc.naihao.simplenotes.domain.PublishStatus;
 import cc.naihao.simplenotes.service.PostService;
+import cc.naihao.simplenotes.service.SyncService;
 import cc.naihao.simplenotes.web.dto.CreatePostRequest;
 import cc.naihao.simplenotes.web.dto.PageResponse;
 import cc.naihao.simplenotes.web.dto.PostDetail;
 import cc.naihao.simplenotes.web.dto.PostSummary;
 import cc.naihao.simplenotes.web.dto.PublishRequest;
+import cc.naihao.simplenotes.web.dto.SyncPage;
 import cc.naihao.simplenotes.web.dto.UpdatePostRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminPostController {
 
     private final PostService postService;
+    private final SyncService syncService;
 
     @GetMapping
     @PreAuthorize("@authz.can('admin:post')")
@@ -42,6 +46,14 @@ public class AdminPostController {
             @RequestParam(required = false) PublishStatus status,
             @RequestParam(required = false) Boolean hasUnpublishedChanges) {
         return postService.list(page, size, keyword, status, hasUnpublishedChanges);
+    }
+
+    @GetMapping("/sync")
+    @PreAuthorize("@authz.can('admin:post')")
+    public SyncPage sync(
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "200") int limit) {
+        return syncService.page(NoteKind.POST, cursor, limit);
     }
 
     @GetMapping("/{id}")

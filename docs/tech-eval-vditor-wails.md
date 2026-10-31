@@ -1,16 +1,18 @@
 # 评估：Markdown 编辑器换 Vditor + 桌面端改 Wails v3
 
-> **状态：Wails v3 已采纳并落地骨架；admin / blog 已切换 Vditor + Lute（方言 v2）；desktop 待迁移**
+> **状态：Wails v3 已采纳并落地骨架；admin / blog / desktop 均已切换 Vditor + Lute（方言 v2；desktop 2026-10-31 迁移完成）**
 > 范围：评估与落地记录；桌面端功能设计另行推进。
 > 关联：`docs/tech-stack.md`、`docs/markdown-dialect.md`、`docs/markdown-dialect-fixture.md`、`docs/blog-runtime-theme.md`、`frontend/AGENTS.md`、`desktop/README.md`
 
 ## 决策记录（2026-10-25 确认）
 
 1. **内存**：可接受 WebView 带来的上移，但要求尽量优化 → Wails 提案通过；以实测数据替代旧 74MB 基线。
-2. **编辑器**：写作体验与编辑器功能都在考虑范围内 → Vditor 不直接否决，先做 fixture POC。**POC 已执行（2026-10-25）**：暴露旧方言的 5 处冲突；随后产品决策改为 **v2 白名单**，admin / blog 已切换 Vditor + Lute，桌面端待迁移。
+2. **编辑器**：写作体验与编辑器功能都在考虑范围内 → Vditor 不直接否决，先做 fixture POC。**POC 已执行（2026-10-25）**：暴露旧方言的 5 处冲突；随后产品决策改为 **v2 白名单**，admin / blog / desktop 均已切换 Vditor + Lute（桌面端 2026-10-31）。
 3. **Wails 版本**：接受 v3 beta → 锁定 `v3.0.0-beta.34`，预留 GA 升级窗口。
 
 已落地：`desktop/`（Go + Wails 骨架）+ `frontend/apps/desktop`（Vue UI）；Windows 构建 / 运行已验证，内存实测见 §3.5。
+
+**2026-10-31 更新：桌面端编辑器已从 md-editor-v3 迁移到 Vditor 4.0.1 + Lute（方言 v2，资源自托管 `/vditor`）。** 实测（Windows 11 / WebView2 进程树）：WS 413.5 → 437MB、私有 261.6 → 298MB、exe 17.9 → 24.8MB；`--disable-gpu` 私有 298 → 209.8MB。`packages/shared` 中 md-editor-v3 专用配置一并删除。
 
 ## 0. 结论速览
 
@@ -20,8 +22,8 @@
 | --- | --- | --- | --- | --- |
 | 桌面端改 Wails v3 | **可行（beta 阶段）** | 复用 Vue/TS 资产；桌面端不再自带第三套 Markdown 引擎；Go 适合本地优先 / 后台同步 | WebView 内存基线；Wails v3 尚未 GA；Linux 依赖 GTK4 + WebKitGTK 6.0；放弃 NativeAOT 叙事 | **已采纳并落地骨架** |
 | admin/blog 换 Vditor（仅编辑器） | 技术可行，**架构不成立** | IR / WYSIWYG 写作体验、中文语境好、维护活跃 | 渲染引擎由 markdown-it 变成 Lute，与 blog 不再同源，直接破坏"编辑器预览 = 发布所得" | **不推荐** |
-| 三端统一走 Lute（Vditor 全量） | 可行，**admin / blog 已落地（2026-10-25）** | 真正单一引擎；编辑预览 = 发布；IR/WYSIWYG | 方言 v2（允许数学/emoji/安全 HTML）+ 主题 CSS + DOMPurify | **已执行；desktop 待迁移** |
-| Wails + 保留 md-editor-v3 | 可行 | 桌面与 admin 共用同一编辑器与方言配置，方言引擎从 3 套降为 2 套；无方言迁移 | WebView 内存基线 | **当前落地路径** |
+| 三端统一走 Lute（Vditor 全量） | 可行，**三端已落地（admin / blog 2026-10-25；desktop 2026-10-31）** | 真正单一引擎；编辑预览 = 发布；IR/WYSIWYG | 方言 v2（允许数学/emoji/安全 HTML）+ 主题 CSS + DOMPurify | **已执行，三端同源** |
+| Wails + 保留 md-editor-v3 | 可行 | 桌面与 admin 共用同一编辑器与方言配置，方言引擎从 3 套降为 2 套；无方言迁移 | WebView 内存基线 | **2026-10-25 路径，2026-10-31 由上一行取代** |
 
 一句话：**Wails 值得做；Vditor 不是"换个编辑器"，而是"换掉整个方言引擎"，只有在接受方言 v2 的前提下才成立。**
 
@@ -145,7 +147,7 @@
 | 静态资源 | `lute.min.js` 3.74MB（未压缩）；完整 `vditor/dist` 23MB；默认走 unpkg，必须自托管 + 裁剪 | ⚠️ 可控但需专门处理 |
 | 离线性 | 配置本地 `cdn` 后未发现外部请求 | ✅（本 POC 未抓完整网络，需在实现期加检查） |
 
-**结论（2026-10-25 更新）：POC 冲突已通过方言 v2 解决，不再是阻塞。** 产品决定允许数学 / emoji / 安全 HTML / 脚注 / 上下标；admin / blog 已切换，桌面端待迁移。原“保留 v1、用自定义渲染器恢复字面文本”的 C-b 路线不再采用。
+**结论（2026-10-25 更新）：POC 冲突已通过方言 v2 解决，不再是阻塞。** 产品决定允许数学 / emoji / 安全 HTML / 脚注 / 上下标；admin / blog / desktop 已全部切换（桌面端 2026-10-31）。原“保留 v1、用自定义渲染器恢复字面文本”的 C-b 路线不再采用。
 
 ---
 
@@ -229,7 +231,7 @@ Wails 的整个 UI 就是 WebView，这不是"用 WebView 做预览"，而是"�
 
 | 风险 | 说明 | 对策 |
 | --- | --- | --- |
-| **内存 / WebView 基线** | 整机内存显著高于 Avalonia；Linux WebKitGTK 往往更重 | **已实测（Windows）**：模板空壳 WS ≈361MB / 私有 ≈232MB；本骨架 WS ≈390–403MB / 私有 ≈254MB；`--disable-gpu` 私有 ≈191MB。Go 进程仅 ~38MB，主要开销在 WebView2 进程树 |
+| **内存 / WebView 基线** | 整机内存显著高于 Avalonia；Linux WebKitGTK 往往更重 | **已实测（Windows）**：模板空壳 WS ≈361MB / 私有 ≈232MB；md-editor-v3 骨架 WS ≈390–403MB / 私有 ≈254MB；**Vditor + Lute（2026-10-31）WS ≈437MB / 私有 ≈298MB**；`--disable-gpu` 私有 ≈210MB。Go 进程仅 ~40–53MB，主要开销在 WebView2 进程树 |
 | **Wails v3 beta** | GA 逾期；beta 仍有 breaking 变更与偶发缺陷；CLI 只能 `go install` 锁版本 | 锁 `v3.0.0-beta.34`；隔离 v3 API 到少量文件；预留 GA 升级窗口；关注 changelog |
 | **Linux 依赖面** | 默认 GTK4 + WebKitGTK 6.0；Ubuntu 24.04 之外需 `gtk3` tag（v3.1 移除）；AppImage 打包 WebKit 较麻烦 | 明确支持基线（Ubuntu 24.04+）；或提供 deb + 依赖声明；提前验证目标发行版 |
 | **中文输入法** | WebKitGTK / Wayland 下 IME 是历史风险点；WebView2 通常较好 | 必须在实机验证（fcitx5 + Wayland、Windows 微软拼音、macOS） |
@@ -326,13 +328,13 @@ Wails 的整个 UI 就是 WebView，这不是"用 WebView 做预览"，而是"�
 | --- | --- | --- | --- | --- | --- |
 | **A. 旧路径** | md-editor-v3 | markdown-it | Wails | 2（admin/desktop 同源 + blog） | 无 WYSIWYG；UI/类型复用最好；内存高 |
 | **B. 旧方案** | AvaloniaEdit + LiveMarkdown | markdown-it | Avalonia | 3（Markdig + markdown-it ×2） | 无 WYSIWYG；内存最低；UI/编辑器全部自研 |
-| **C. 全端 Lute（当前）** | Vditor | Lute | Wails | 1 | **admin / blog 已落地（2026-10-25）；desktop 待迁移** |
+| **C. 全端 Lute（当前）** | Vditor | Lute | Wails | 1 | **三端已落地（admin / blog 2026-10-25；desktop 2026-10-31）** |
 | **D. 半套 Lute** | Vditor | markdown-it | Wails 或 Avalonia | 2–3 | 预览 ≠ 发布；**否决** |
 | **E. Avalonia + WebView 编辑器** | Vditor / md-editor-v3 | 对应引擎 | Avalonia + WebView | 2–3 | 两套 UI + WebView 内存；**否决** |
 
 ### 4.4 优先级重估：如果"编辑体验"是项目核心（2026-10-25 追加）
 
-> **执行状态（2026-10-25）**：已按 C-a 落地 admin / blog（Vditor + Lute + 方言 v2 + DOMPurify）；桌面端待迁移。
+> **执行状态（2026-10-31）**：已按 C-a 落地三端（Vditor + Lute + 方言 v2 + DOMPurify）；桌面端于 2026-10-31 完成迁移，实测内存见 §3.5。
 
 前面的结论把"方言稳定 / 安全边界"放在第一位，因此 Vditor 的 POC 失败被当作否决理由。若项目的第一优先级是**编辑体验**，权重需要反过来：
 

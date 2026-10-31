@@ -1,9 +1,9 @@
 # Markdown 内容方言规范
 
-> **版本：v2 · 2026-10-25**
+> **版本：v2.1 · 2026-10-31**
 > 适用：博客文章与随手记（统一方言，不做区分）
 > 验收样本：`docs/markdown-dialect-fixture.md`
-> 变更：v2 起允许数学公式、Emoji 短代码、脚注、上下标、mark 与**安全行内 HTML**；引擎统一为 Lute（Vditor）。
+> 变更：v2 起允许数学公式、Emoji 短代码、脚注、上下标、mark 与**安全行内 HTML**；引擎统一为 Lute（Vditor）。v2.1 桌面端迁移到 Vditor 4.0.1 + Lute，三端同源。
 
 本规范定义 Simple Notes 中「允许书写的 Markdown 语法」与「边界」，用于约束多端行为一致：
 
@@ -11,17 +11,17 @@
 | --- | --- | --- | --- |
 | 管理端（Web） | **Vditor 4.0.1（Lute）** | 书写 + 预览 | v2 已切换 |
 | 博客前台（Web） | **Lute**（`@simple-notes/markdown` + `method.min.js`） | 发布渲染 | v2 已切换 |
-| 桌面端（Wails） | 过渡期仍为 md-editor-v3 / markdown-it | 书写 + 预览 | **待迁移，不参与 v2 验收** |
+| 桌面端（Wails） | **Vditor 4.0.1（Lute）** | 书写 + 预览 | v2.1 已切换（2026-10-31） |
 | 后端 | 不解析、不渲染 | 原样存储 | 不做 HTML 清洗（见 §3） |
 
-管理端与博客共用同一份 Lute 配置（`frontend/packages/markdown/src/index.ts` 的 `vditorMarkdown`）；
+admin / blog / 桌面端共用同一份 Lute 配置（`frontend/packages/markdown/src/index.ts` 的 `vditorMarkdown`）；
 **配置只允许有一份**，任何一端另写都会被视为方言漂移。
 
 ---
 
 ## 1. 基线：CommonMark + GFM
 
-以下语法无条件支持，admin / blog 必须一致：
+以下语法无条件支持，admin / blog / 桌面端必须一致：
 
 - 标题 h1–h6、段落、分隔线
 - 强调：`**粗体**` `*斜体*` `***粗斜体***`、删除线 `~~text~~`
@@ -126,13 +126,14 @@
 ## 7. 验收机制与变更流程
 
 1. 语法提案 → 在 `docs/markdown-dialect-fixture.md` 增加样本节
-2. **admin / blog 渲染 fixture** → 记录差异（截图 / 备注）；桌面端迁移后补第三端
+2. **admin / blog / 桌面端渲染 fixture** → 记录差异（截图 / 备注）
 3. 通过 → 白名单更新 + 版本号 +1；不通过 → 不收录
 4. fixture 中的预期行为按 v2 解释：数学 / emoji / 安全 HTML 渲染属预期；front matter、图片尺寸语法仍为纯文本
 
 ## 8. 未决事项
 
-- [ ] 桌面端迁移到 Vditor / Lute（当前过渡期使用 md-editor-v3，**与 v2 不一致**）
+- [x] 桌面端迁移到 Vditor / Lute（2026-10-31 已切换，Vditor 4.0.1 + Lute，与 admin / blog 同源）
+- [ ] 桌面端三端 fixture 比对（迁移后补渲染记录）
 - [ ] callout 标题为英文（Lute 内置），是否需要中文映射 / 自定义渲染器
 - [ ] 博客主题 CSS 对 callout / 数学 / Mermaid / 任务列表的视觉验收
 - [ ] 后端是否保留“写入时扫描危险 HTML”的额外防线（当前仅前端清洗）
@@ -172,3 +173,4 @@
 | v1（草案） | 2026-10-25 | blog runtime 改为构建产物，共享 `markdownDialect` |
 | v1（草案） | 2026-10-25 | 桌面端改为 Wails，复用 admin 编辑器 |
 | **v2** | **2026-10-25** | **admin / blog 切换 Vditor + Lute；允许数学、emoji、脚注、上下标、mark、安全行内 HTML；新增 DOMPurify 清洗与 hljs `vue` 别名；桌面端待迁移** |
+| **v2.1** | **2026-10-31** | **桌面端迁移到 Vditor 4.0.1 + Lute（资源自托管、粘贴清洗、主题切换），三端同源；待补三端 fixture 渲染记录** |

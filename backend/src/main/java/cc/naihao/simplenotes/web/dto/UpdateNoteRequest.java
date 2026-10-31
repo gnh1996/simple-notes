@@ -14,7 +14,7 @@ public record UpdateNoteRequest(
         @Size(max = 200, message = "标题最长 200 个字符")
         String title,
 
-        @NotBlank(message = "正文不能为空")
+        @NotNull(message = "正文不能为空")
         String content,
 
         String folderId,

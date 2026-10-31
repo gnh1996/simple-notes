@@ -9,4 +9,9 @@ export interface Status {
     "apiBaseUrl": string;
     "databasePath": string;
     "hasToken": boolean;
+    "loggedIn": boolean;
+    "scopeId": string;
+    "serverUrl": string;
+    "username": string;
+    "nickname": string;
 }

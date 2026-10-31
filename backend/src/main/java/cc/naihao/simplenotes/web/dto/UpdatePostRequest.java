@@ -15,7 +15,7 @@ public record UpdatePostRequest(
         @Size(max = 200, message = "标题最长 200 个字符")
         String title,
 
-        @NotBlank(message = "正文不能为空")
+        @NotNull(message = "正文不能为空")
         String content,
 
         @Size(max = 500, message = "摘要最长 500 个字符")

@@ -101,6 +101,12 @@ public class PostService {
         String coverId = attachmentService.validateCover(request.coverAttachmentId(), principal.userId());
 
         Note note = new Note();
+        if (request.id() != null && !request.id().isBlank()) {
+            if (noteRepository.existsById(request.id())) {
+                throw ApiException.conflict("内容 id 已存在");
+            }
+            note.setId(request.id());
+        }
         note.setKind(NoteKind.POST);
         note.setTitle(request.title().trim());
         note.setContent(request.content());

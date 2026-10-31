@@ -1,11 +1,6 @@
 @layer theme, base, components, utilities;
 @import 'tailwindcss';
 @import '@simple-notes/ui/tokens.css';
-@import 'md-editor-v3/lib/style.css';
-@import 'md-editor-v3/lib/preview.css';
-@import 'markdown-it-github-alerts/styles/github-base.css';
-@import 'markdown-it-github-alerts/styles/github-colors-light.css';
-@import 'markdown-it-github-alerts/styles/github-colors-dark-class.css';
 
 html,
 body,
@@ -36,7 +31,12 @@ html.dark {
   --color-app-muted: #a1a1aa;
 }
 
-/* md-editor-v3 在暗色下使用自身变量，这里只补齐容器圆角 */
-.md-editor {
+/* Vditor 容器与卡片对齐；代码块改用纯色背景（默认条纹底图） */
+.vditor {
   border-radius: 8px;
+}
+
+.vditor code,
+.vditor-ir__preview code {
+  background-image: none;
 }

@@ -10,10 +10,11 @@
 | `docs/auth-rbac.md` | 认证与权限设计（RBAC：三端入口 / admin 菜单 / 按钮与接口权限；JWT 会话；v1 定稿） |
 | `docs/content-model.md` | 内容模型设计（随手记 / 博客单表、发布快照、标签管理、权限与 API；v1.4.3 Web 端已实现） |
 | `docs/attachment-storage.md` | 附件存储设计（本地 / R2 / 数据库三介质；任意文件、20MB、行级存储模式、DIRECT 外链、媒体域、私有 R2 + Nginx 预签名代理；v1.2 已实现） |
-| `docs/markdown-dialect.md` | Markdown 内容方言规范（v2 白名单 / 边界 / admin+blog 配置对齐；桌面端待迁移） |
-| `docs/markdown-dialect-fixture.md` | 方言验收样本：新增语法必须 admin / blog（桌面迁移后三端）渲染比对 |
+| `docs/markdown-dialect.md` | Markdown 内容方言规范（v2 白名单 / 边界 / 三端配置对齐） |
+| `docs/markdown-dialect-fixture.md` | 方言验收样本：新增语法必须 admin / blog / 桌面三端渲染比对 |
 | `docs/blog-runtime-theme.md` | 博客运行时与主题化设计（v1.15 已实现）：运行时/主题职责、契约表、主题版本与预览、站点配置与独立页面 |
-| `docs/tech-eval-vditor-wails.md` | 可行性评估与落地记录：Wails v3 已采纳；admin/blog 已切换 Vditor + Lute（v2）；desktop 待迁移 |
+| `docs/desktop-sync.md` | 桌面端同步设计（v1 草案）：本地优先 + 懒加载 manifest、`version` 修订号与本地 hash、整篇冲突 + diff、离线新建、账号隔离 |
+| `docs/tech-eval-vditor-wails.md` | 可行性评估与落地记录：Wails v3 已采纳；admin/blog/desktop 均已切换 Vditor + Lute（v2） |
 | 各端 `README.md` | 目录结构、命令与端内细节 |
 | 各端 `AGENTS.md` | 端内专属规则（探索到对应目录时自动加载） |
 
@@ -42,7 +43,7 @@
 ## 跨端关键约定
 
 - **响应式（Web）**：`useBreakpoint()`（`@simple-notes/shared`）是全项目唯一的断点来源，禁止 UA / 设备类型判断；同一路由与逻辑只有一份，只在展示层按断点分叉
-- **Markdown**：遵守 `docs/markdown-dialect.md` v2 白名单；admin / blog 共用 `@simple-notes/markdown` 的 `vditorMarkdown` / `sanitizeHtml`，禁止各端另写配置；桌面端迁移前暂用 md-editor-v3（不参与 v2 验收）；新增语法必须先在 fixture 中完成验收
+- **Markdown**：遵守 `docs/markdown-dialect.md` v2 白名单；admin / blog / desktop 共用 `@simple-notes/markdown` 的 `vditorMarkdown` / `sanitizeHtml`，禁止各端另写配置；新增语法必须先在 fixture 中完成三端验收
 - **API 契约**：后端 OpenAPI 为单一来源，Web / 桌面端一律使用生成类型，禁止手写接口类型；桌面端经 Go binding 转发（WebView 不直连后端）
 - **数据**：后端 PostgreSQL + Flyway（迁移只追加、不改历史；已在任一环境执行过的脚本不可修改 / 删除，回退只能新增更高版本补偿）；桌面端本地优先（离线可用 + 后台同步）
 - **内容模型**：随手记与博客文章共用 `note` 表（`kind` 区分）；只有 `POST` 可发布，公开博客只读发布快照（`note_revision`），编辑后必须“更新发布”；不支持文章转回笔记（见 `docs/content-model.md`）

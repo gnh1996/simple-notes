@@ -748,7 +748,7 @@ note.delete_flag = 0
 - slug 修改与 301 历史；
 - 媒体库孤儿清理、附件引用检查；
 - `pg_trgm` / 全文搜索索引；
-- 桌面端同步（独立设计）。
+- 桌面端同步（见 `docs/desktop-sync.md`）。
 
 ### 8.3 P2
 

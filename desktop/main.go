@@ -9,7 +9,11 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"cc.naihao/simplenotes/desktop/internal/api"
+	"cc.naihao/simplenotes/desktop/internal/auth"
+	"cc.naihao/simplenotes/desktop/internal/folders"
+	"cc.naihao/simplenotes/desktop/internal/notes"
 	"cc.naihao/simplenotes/desktop/internal/store"
+	"cc.naihao/simplenotes/desktop/internal/syncsvc"
 	"cc.naihao/simplenotes/desktop/internal/system"
 )
 
@@ -38,11 +42,17 @@ func main() {
 		windowsOptions.AdditionalBrowserArgs = strings.Fields(args)
 	}
 
+	apiService := api.New(db, baseURL)
+
 	app := application.New(application.Options{
 		Name:        "Simple Notes",
 		Description: "随手记与博客写作桌面端",
 		Services: []application.Service{
-			application.NewService(api.New(db, baseURL)),
+			application.NewService(apiService),
+			application.NewService(auth.New(db)),
+			application.NewService(syncsvc.New(db, apiService)),
+			application.NewService(folders.New(db, apiService)),
+			application.NewService(notes.New(db, apiService)),
 			application.NewService(system.New(db, baseURL)),
 		},
 		Assets: application.AssetOptions{

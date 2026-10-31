@@ -77,10 +77,10 @@ apps/admin/src/
 
 | 位置 | 选型 | 说明 |
 | --- | --- | --- |
-| 管理端 / 桌面端 Markdown 编辑器 | **Vditor 4.0.1**（Lute 内核；admin 已切换，desktop 待迁移） | IR / WYSIWYG，KaTeX / Mermaid / emoji / 表格内置；后端只存原文 |
+| 管理端 / 桌面端 Markdown 编辑器 | **Vditor 4.0.1**（Lute 内核；三端同源，桌面端 2026-10-31 迁移完成） | IR / WYSIWYG，KaTeX / Mermaid / emoji / 表格内置；后端只存原文 |
 | 博客前台 Markdown 渲染 | **Lute**（`@simple-notes/markdown` + `method.min.js`，2026-10-25 起） | 与 admin 共用 `vditorMarkdown`；DOMPurify 清洗；Math / Mermaid / hljs 按需加载 |
 
-> 注意：admin 与 blog 共用 `packages/markdown` 的 `vditorMarkdown` 与 `sanitizeHtml`；主题 CSS 需按 Lute 的 `.callout` / KaTeX / 任务列表结构适配。Vditor 静态资源由 `pnpm sync:vditor`（各应用 predev/prebuild 自动执行）裁剪复制到 `public/vditor`，禁止公共 CDN。
+> 注意：admin / blog / desktop 共用 `packages/markdown` 的 `vditorMarkdown` 与 `sanitizeHtml`；主题 CSS 需按 Lute 的 `.callout` / KaTeX / 任务列表结构适配。Vditor 静态资源由 `pnpm sync:vditor`（各应用 predev/prebuild 自动执行）裁剪复制到 `public/vditor`，禁止公共 CDN。
 
 ## 约定
 

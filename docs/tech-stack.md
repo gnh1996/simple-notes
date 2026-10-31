@@ -24,7 +24,7 @@
 | 样式 | Tailwind CSS v4 + 共享设计 token（`packages/ui`）；Element Plus 样式按 CSS 层导入（见 `frontend/AGENTS.md`） |
 | 管理端 UI | Element Plus 2.14 |
 | API 客户端 | 后端 springdoc 导出 OpenAPI → `packages/api` 用 **openapi-typescript** 生成类型（`pnpm gen:api`）+ 自建轻量 fetch 封装（传输层与 Bearer 注入在应用侧） |
-| Markdown 编辑器 | **Vditor 4.0.1**（Lute 内核；admin 使用；桌面端待迁移） |
+| Markdown 编辑器 | **Vditor 4.0.1**（Lute 内核；admin / desktop 使用，三端同源） |
 | Markdown 渲染 | 博客前台由 blog runtime 使用 **Lute**（`@simple-notes/markdown` + `method.min.js`），与 admin 共用 `vditorMarkdown`；见 `docs/blog-runtime-theme.md` |
 | 响应式 | `useBreakpoint()` 单一断点来源，展示层分叉 |
 
@@ -36,9 +36,9 @@
 | UI | Vue 3.5 + Vite 8 + TypeScript 6（pnpm workspace 成员，复用 `packages/*`） |
 | 架构 | Wails services / bindings；Go 侧负责窗口、HTTP 传输、SQLite、原生能力 |
 | 数据模式 | 本地优先（SQLite；离线可用 + 后台同步） |
-| Markdown | 过渡期复用 md-editor-v3（markdown-it）；**待迁移到 Vditor + Lute**，迁移后与管理端同源 |
+| Markdown | **Vditor 4.0.1 + Lute**（与 admin / blog 同源，方言 v2；资源自托管 `/vditor`，粘贴清洗）；2026-10-31 迁移完成 |
 | 分发 | 三平台各自构建（Wails Taskfile / CI 矩阵）；不再使用 NativeAOT 单文件 |
-| 内存基线 | Windows 实测：空壳 ≈360MB WS / 当前骨架 ≈390MB WS（私有 ≈254MB；`--disable-gpu` 私有 ≈191MB） |
+| 内存基线 | Windows 实测（2026-10-31 验收，进程树）：列表 ≈364MB WS / ≈225MB 私有；打开编辑器 ≈424MB / ≈274MB；`--disable-gpu` 列表私有 ≈154MB、编辑态 ≈198MB；启动到 WebView 就绪 0.6–0.9s；详见 `desktop/README.md` |
 
 ## 跨端
 
@@ -55,7 +55,7 @@
 4. **桌面本地存储实现**（已定，2026-10-25）：SQLite + `modernc.org/sqlite`（纯 Go，无额外 CGO）；当前为 `app_kv` + `auth_session` 骨架，业务表随功能设计补迁移
 5. **API 客户端生成工具**（Web 端已定，2026-10-18）：**openapi-typescript**（仅生成类型到 `packages/api/src/generated`，请求侧沿用 `packages/api` 的轻量 fetch 封装）；契约来自后端 springdoc 的 `/v3/api-docs`（`pnpm gen:api` 拉取生成）。桌面端复用同一份 TS 类型，由 Go transport 转发（C# 客户端方案作废，2026-10-25）
 6. **工程化**：Vitest、ESLint/Prettier、后端 Testcontainers、机密防泄漏扫描（gitleaks 等）随实现补 —— **后端 Testcontainers 已补**（2026-10-18，随 RBAC 集成测试起用：`spring-boot-testcontainers` + `testcontainers-postgresql`，`@ServiceConnection` 注入）；其余待补
-7. **桌面 Markdown 编辑库**：桌面端迁移到 Vditor + Lute 后与管理端完全同源；当前过渡期仍为 md-editor-v3（不参与 v2 方言验收）。见 `docs/markdown-dialect.md` §6
+7. **桌面 Markdown 编辑库**（已定，2026-10-31）：桌面端已迁移到 Vditor 4.0.1 + Lute，与 admin / blog 同源；md-editor-v3 / markdown-it 在桌面端退役，方言 v2 三端一致。见 `docs/markdown-dialect.md`
 8. **logback CVE-2026-19880 复查**：1.5.x 线无修复版，待 Spring Boot 升级至 logback 1.6.x 或 1.5.x 发布修复版后复核（详见变更记录）
 
 ## 变更机制
@@ -65,6 +65,14 @@
 - 已发生的变更记录可追加到本文件文末
 
 ## 变更记录
+
+### 2026-10-31 · 桌面端切换 Vditor + Lute（方言 v2 三端同源）
+
+- **形态**：`frontend/apps/desktop` 编辑器由 md-editor-v3（markdown-it）改为 **Vditor 4.0.1 + Lute**，配置来自 `@simple-notes/markdown` 的 `vditorMarkdown` / `createEditorOptions` / `sanitizeHtml`；Vditor 资源经 `pnpm sync:vditor` 自托管到 `public/vditor`（9.4MB），禁用公共 CDN
+- **理由**：三端同源，编辑器预览 = 发布所得；方言 v2 验收可覆盖桌面端
+- **代价（实测，Windows 11 / WebView2 进程树）**：工作集 413.5 → 437MB、私有 261.6 → 298MB（+24 / +37MB）；exe 17.9 → 24.8MB（嵌入资源）；`--disable-gpu` 私有 298 → 209.8MB
+- **清理**：`packages/shared` 中 md-editor-v3 专用的 `configureMarkdown` / `markdownDialect` 随之删除；桌面端新增 `MarkdownEditor.vue`
+- **文档**：`docs/markdown-dialect.md` v2.1、`desktop/README.md`、`desktop/AGENTS.md`、`frontend/AGENTS.md` 同步
 
 ### 2026-10-25 · admin / blog 切换 Vditor + Lute，方言 v2 落地
 

@@ -10,7 +10,7 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 
 ## Markdown（方言 v2；详见 `docs/markdown-dialect.md`）
 
-- 编辑器：**Vditor 4.0.1**（admin；桌面端待迁移），IR 模式，可切 SV；配置来自 `@simple-notes/markdown`
+- 编辑器：**Vditor 4.0.1**（admin / desktop；桌面端 2026-10-31 迁移完成），IR 模式，可切 SV；配置来自 `@simple-notes/markdown`
 - 博客前台：**Lute**（`@simple-notes/markdown` 的 `createPreviewOptions` + `renderToElement`，`method.min.js` 不打包完整编辑器）
 - 单一语义源：`packages/markdown/src/index.ts` 的 `vditorMarkdown`；admin / blog 禁止另写配置
 - 安全：`sanitizeHtml()`（DOMPurify）在所有 `innerHTML` 前执行；Vditor 预览 `transform` + paste 清洗；Lute `sanitize: true` 保留
@@ -54,10 +54,11 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 > 壳与本地能力见 `desktop/AGENTS.md`；此处只约束前端部分。
 
 - UI 由 `desktop/` 的 Wails WebView 加载；窗口、SQLite、HTTP、令牌都在 Go 侧
+- **M0–M4 已实现**：登录 / 索引列表 / 打开即拉取 / Vditor 编辑 / 防抖推送 / 409 冲突二选一 / 删除与墓碑 / 文件夹写 / outbox / 离线新建 / 冲突 diff + 副本 / 发布状态展示 + 管理端深链（发布与下架只在 admin）；剩余三平台实机验收
 - **不直连后端**：只调用 Go binding `api.Do({ method, path, body })`；token 不进入 JS / localStorage
 - `bindings/` 由 `wails3 task bindings` 生成（改 Go service 签名后重跑），随仓库提交；禁止手写 IPC 类型
 - API 类型来自 `@simple-notes/api`（OpenAPI 生成），不另写接口类型；Go 侧只做通用转发
-- Markdown 过渡期使用 `configureMarkdown()` + `packages/shared`（md-editor-v3 / markdown-it）；与 admin 的 Vditor + Lute **尚未同源**，迁移前不参与方言 v2 验收
+- Markdown 与 admin / blog 同源：`@simple-notes/markdown` 的 `createEditorOptions` / `sanitizeHtml` / `vditorMarkdown`；资源由 `pnpm sync:vditor` 自托管；方言 v2 由三端 fixture 验收
 - 构建产物先 `pnpm build:desktop`，再由 `desktop/` 的 `wails3 build` 执行 `pnpm sync:wails` 同步进 `desktop/web/dist`
 - 内存按 WebView 进程树评估：新增常驻面板 / 依赖前先实测（见 `desktop/README.md`）
 

@@ -65,7 +65,13 @@ func OpenAt(path string) (*Store, error) {
 		return nil, fmt.Errorf("初始化表结构: %w", err)
 	}
 
-	return &Store{db: db, path: path}, nil
+	store := &Store{db: db, path: path}
+	if err := store.migrateSync(); err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	return store, nil
 }
 
 // Path 返回数据库文件路径（用于诊断展示）。

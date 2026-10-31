@@ -4,20 +4,20 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc -b && vite build",
-    "build:dev": "vue-tsc -b && vite build --minify false --mode development",
+    "dev": "pnpm sync:vditor && vite",
+    "build": "pnpm sync:vditor && vue-tsc -b && vite build",
+    "build:dev": "pnpm sync:vditor && vue-tsc -b && vite build --minify false --mode development",
     "preview": "vite preview",
     "typecheck": "vue-tsc -b",
-    "sync:wails": "node scripts/sync-wails.mjs"
+    "sync:wails": "node scripts/sync-wails.mjs",
+    "sync:vditor": "node ../../scripts/sync-vditor-assets.mjs"
   },
   "dependencies": {
     "@simple-notes/api": "workspace:*",
-    "@simple-notes/shared": "workspace:*",
+    "@simple-notes/markdown": "workspace:*",
     "@simple-notes/ui": "workspace:*",
     "@wailsio/runtime": "catalog:",
-    "markdown-it-github-alerts": "catalog:",
-    "md-editor-v3": "catalog:",
+    "vditor": "catalog:",
     "vue": "catalog:"
   },
   "devDependencies": {
