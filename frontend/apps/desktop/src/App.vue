@@ -51,8 +51,8 @@ const remoteSnapshot = ref<RemoteSnapshot | null>(null)
 const diffOpen = ref(false)
 const creatingNote = ref(false)
 
-// 免登录模式 / 临时文件 / 最近打开
-const guestMode = ref(false)
+// 本地模式 / 临时文件 / 最近打开
+const loginOpen = ref(false)
 const tempFile = ref<LocalFile | null>(null)
 const tempContent = ref('')
 const tempDirty = ref(false)
@@ -114,7 +114,6 @@ const stateClass = computed(() =>
       ? 'text-amber-400'
       : 'text-app-muted',
 )
-const showLogin = computed(() => !session.value && !guestMode.value)
 const serverFolders = computed(() => folders.value.filter((folder) => folder.id !== LOCAL_FILES_FOLDER))
 const unsaved = computed(
   () => tempDirty.value || (!!selected.value && (dirty.value || saveState.value === 'saving')),
@@ -133,18 +132,30 @@ function toggleTheme(): void {
 async function bootstrap(): Promise<void> {
   try {
     session.value = await AuthService.Current()
-    if (session.value) {
-      status.value = await SystemService.Status()
-      await refreshAll(true)
-    }
   } catch (err) {
     error.value = String(err)
   }
+  // 默认就是本地 Markdown 编辑器：没有会话时直接进入本地模式，不再用登录页拦截。
+  if (session.value) {
+    try {
+      status.value = await SystemService.Status()
+    } catch (err) {
+      error.value = String(err)
+    }
+  }
+  await refreshAll(true)
   await loadRecent()
 }
 
-async function enterGuestMode(): Promise<void> {
-  guestMode.value = true
+function openLogin(): void {
+  loginOpen.value = true
+}
+
+function closeLogin(): void {
+  loginOpen.value = false
+}
+
+async function enterLocalMode(): Promise<void> {
   session.value = null
   status.value = null
   kind.value = 'NOTE'
@@ -158,8 +169,8 @@ async function enterGuestMode(): Promise<void> {
 }
 
 async function onLoggedIn(value: Session): Promise<void> {
+  loginOpen.value = false
   session.value = value
-  guestMode.value = false
   kind.value = 'NOTE'
   folderId.value = ''
   status.value = await SystemService.Status()
@@ -759,9 +770,6 @@ async function confirmImport(payload: {
     }
     importOpen.value = false
     discardTemp()
-    if (!session.value) {
-      guestMode.value = true
-    }
     kind.value = 'NOTE'
     folderId.value = ''
     keyword.value = ''
@@ -1006,7 +1014,6 @@ async function logout(): Promise<void> {
     error.value = String(err)
   }
   session.value = null
-  guestMode.value = false
   status.value = null
   notes.value = []
   folders.value = []
@@ -1018,6 +1025,8 @@ async function logout(): Promise<void> {
   creatingFolder.value = false
   renamingId.value = ''
   message.value = ''
+  // 退出登录回到本地模式，而不是登录页：本地笔记与文件编辑继续可用。
+  await enterLocalMode()
 }
 
 let searchTimer: number | undefined
@@ -1141,11 +1150,7 @@ applyTheme()
 
 <template>
   <div class="flex h-full flex-col bg-app-bg text-app-fg" data-file-drop-target="true">
-    <template v-if="showLogin">
-      <LoginView @logged-in="onLoggedIn" @use-local="enterGuestMode" @open-file="openFile()" />
-    </template>
-
-    <template v-else-if="tempFile">
+    <template v-if="tempFile">
       <header class="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-app-border px-4">
         <div class="flex min-w-0 items-center gap-3">
           <span class="text-base font-semibold">Simple Notes</span>
@@ -1180,6 +1185,14 @@ applyTheme()
             @click="openImportDialog"
           >
             纳入管理…
+          </button>
+          <button
+            v-if="!session"
+            class="rounded border border-brand-400/60 px-3 py-1 text-xs text-brand-400 hover:bg-brand-500/10"
+            type="button"
+            @click="openLogin"
+          >
+            登录
           </button>
           <button
             class="rounded border border-app-border px-3 py-1 text-xs hover:bg-app-panel"
@@ -1246,12 +1259,12 @@ applyTheme()
             class="shrink-0 rounded px-2 py-0.5 text-xs"
             :class="session ? 'bg-brand-500/10 text-brand-400' : 'bg-amber-500/10 text-amber-400'"
           >
-            {{ session ? 'M4 · 发布状态 · 管理端深链' : '免登录 · 本地笔记' }}
+            {{ session ? 'M4 · 发布状态 · 管理端深链' : '本地模式 · 不连接服务器' }}
           </span>
           <span v-if="session" class="truncate text-xs text-app-muted">
             {{ status?.nickname || status?.username }} @ {{ status?.serverUrl }}
           </span>
-          <span v-else class="text-xs text-app-muted">本地模式：不连接服务器</span>
+          <span v-else class="text-xs text-app-muted">本地文件与本地笔记随时可用</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="relative">
@@ -1343,7 +1356,7 @@ applyTheme()
             v-else
             class="rounded border border-brand-400/60 px-3 py-1 text-xs text-brand-400 hover:bg-brand-500/10"
             type="button"
-            @click="guestMode = false"
+            @click="openLogin"
           >
             登录
           </button>
@@ -1662,8 +1675,40 @@ applyTheme()
               />
             </div>
           </template>
-          <div v-else class="flex h-full items-center justify-center p-6 text-center text-xs text-app-muted">
-            选择左侧内容查看；正文在打开时才从服务端拉取并缓存。
+          <div v-else class="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+            <template v-if="session">
+              <p class="text-xs text-app-muted">选择左侧内容查看；正文在打开时才从服务端拉取并缓存。</p>
+            </template>
+            <template v-else>
+              <p class="text-sm font-medium">本地 Markdown 编辑器</p>
+              <p class="max-w-sm text-xs leading-relaxed text-app-muted">
+                当前未登录，可以直接打开本地文件或新建仅本地笔记；登录后才会连接服务器并同步。
+              </p>
+              <div class="mt-1 flex flex-wrap items-center justify-center gap-2">
+                <button
+                  class="rounded bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-400 disabled:opacity-60"
+                  type="button"
+                  :disabled="creatingNote"
+                  @click="newNote"
+                >
+                  + 新建本地笔记
+                </button>
+                <button
+                  class="rounded border border-app-border px-3 py-1.5 text-xs hover:bg-app-bg"
+                  type="button"
+                  @click="openFile()"
+                >
+                  打开本地文件…
+                </button>
+                <button
+                  class="rounded border border-app-border px-3 py-1.5 text-xs text-app-muted hover:bg-app-bg"
+                  type="button"
+                  @click="openLogin"
+                >
+                  登录
+                </button>
+              </div>
+            </template>
           </div>
         </section>
       </main>
@@ -1679,7 +1724,7 @@ applyTheme()
           {{
             session
               ? `${status?.databasePath ?? ''} · 令牌：${status?.hasToken ? '已保存' : '无'}`
-              : '免登录模式 · 本地 SQLite'
+              : '本地模式 · 本地 SQLite · 不连接服务器'
           }}
         </span>
       </footer>
@@ -1756,6 +1801,16 @@ applyTheme()
       @confirm="confirmImport"
       @cancel="importOpen = false"
     />
+
+    <div
+      v-if="loginOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+      @click.self="closeLogin"
+    >
+      <div class="w-full max-w-sm">
+        <LoginView @logged-in="onLoggedIn" @cancel="closeLogin" />
+      </div>
+    </div>
 
     <div v-if="promoteOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
       <div class="w-full max-w-sm rounded-xl border border-app-border bg-app-panel p-4 shadow-xl">
