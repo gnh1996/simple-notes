@@ -25,6 +25,14 @@ import (
 //go:embed all:web/dist
 var assets embed.FS
 
+// 应用图标（品牌源图 assets/brand 的副本）。
+// Windows 正常构建会用 `wails3 generate syso` 把 icon.ico 嵌进 exe 资源；
+// 这里再内嵌一份 PNG 作为运行时兜底（直接用 `go build` / IDE 编译时没有 .syso，
+// Wails 会回退到 application.Options.Icon），同时用于关于框与 Linux 窗口图标。
+//
+//go:embed build/appicon.png
+var appIcon []byte
+
 func main() {
 	db, err := store.Open()
 	if err != nil {
@@ -50,6 +58,7 @@ func main() {
 	app := application.New(application.Options{
 		Name:        "Simple Notes",
 		Description: "随手记与博客写作桌面端",
+		Icon:        appIcon,
 		Services: []application.Service{
 			application.NewService(apiService),
 			application.NewService(auth.New(db)),

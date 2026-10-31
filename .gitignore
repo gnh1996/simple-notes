@@ -1,4 +1,6 @@
+# JetBrains / IDE 本地配置
 .idea
+/.run/
 /.mvn
 *.iml
 
