@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Refresh } from '@element-plus/icons-vue'
 import type { TrashItemResponse } from '@simple-notes/api'
+import { noteKindLabel, publishStatusLabel } from '@simple-notes/shared'
 import { ElMessage } from 'element-plus'
 import { onMounted, ref } from 'vue'
 
@@ -65,12 +66,12 @@ async function restore(row: TrashItemResponse): Promise<void> {
       <el-table v-loading="loading" :data="rows" row-key="id">
         <el-table-column prop="title" label="标题" min-width="260" show-overflow-tooltip />
         <el-table-column label="类型" width="100">
-          <template #default="{ row }">{{ row.kind === 'NOTE' ? '笔记' : '文章' }}</template>
+          <template #default="{ row }">{{ noteKindLabel(row.kind) }}</template>
         </el-table-column>
         <el-table-column label="状态" width="120">
           <template #default="{ row }">
             <span v-if="row.kind === 'NOTE'">—</span>
-            <el-tag v-else size="small" type="info" effect="plain">{{ row.publishStatus || 'DRAFT' }}</el-tag>
+            <el-tag v-else size="small" type="info" effect="plain">{{ publishStatusLabel(row.publishStatus) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="删除时间" width="180">

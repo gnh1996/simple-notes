@@ -45,6 +45,7 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 - **服务端菜单驱动**：侧边栏渲染 `me.menus`；路由由页面注册表（`src/router/page-registry.ts`，权限码 → 路径 / 组件 / 图标）映射后 `addRoute`；注册表未命中按目录递归；前端无路由级权限判断（`docs/auth-rbac.md` §6.2）
 - **权限**：按钮用 `v-perm="'admin:xxx:yyy'"`（无码移除 DOM；超管自动放行）；接口 401 → 清凭证回登录页，403 `PERMISSION_DENIED` → 刷新 `me` 并重建菜单 / 路由
 - **API 调用**：只用 `src/api` 的实例（自动注入 Bearer 与统一错误处理），禁止在页面里裸调 fetch
+- **枚举文案**：固定枚举 / 状态码的中文文案统一从 `@simple-notes/shared` 的 `labels.ts` 取（`STORAGE_MODE_LABELS`、`PUBLISH_STATUS_LABELS` 等），页面禁止直接输出枚举值或另写映射；这些值由后端代码枚举定义，不建数据库字典表
 - **样式**：Element Plus 经 `@layer element-plus` 导入（层序 `theme, base, components, element-plus, utilities`）；Tailwind 工具类可直接覆盖组件样式；应用级覆盖写在 `styles/main.css` 末尾
 - **主题 / 布局**：暗色主题由 `useTheme`（模块级单例 + `html.dark`）驱动，首屏由 `index.html` 内联脚本防闪白；多标签页状态在 `stores/tabs`（内存态，不做持久化）
 

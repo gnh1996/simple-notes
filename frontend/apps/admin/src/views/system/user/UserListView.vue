@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import type { UserResponse } from '@simple-notes/api'
+import { enabledStatusLabel } from '@simple-notes/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
 
@@ -148,7 +149,7 @@ async function remove(row: UserResponse): Promise<void> {
         <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small" effect="light">
-              {{ row.status === 1 ? '启用' : '禁用' }}
+              {{ enabledStatusLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>

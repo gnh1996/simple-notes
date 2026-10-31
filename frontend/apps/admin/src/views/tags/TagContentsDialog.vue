@@ -5,6 +5,7 @@ import type {
   TagContentCandidate,
   TagContentResponse,
 } from '@simple-notes/api'
+import { NOTE_KIND_LABELS, noteKindLabel, publishStatusLabel, type NoteKindValue } from '@simple-notes/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, ref, watch } from 'vue'
 
@@ -16,7 +17,7 @@ const visible = defineModel<boolean>({ required: true })
 const props = defineProps<{ tag: TagAdminSummary }>()
 const emit = defineEmits<{ changed: [] }>()
 
-type Kind = 'NOTE' | 'POST'
+type Kind = NoteKindValue
 
 const auth = useAuthStore()
 const canAssign = computed(() => auth.can('admin:tag:assign'))
@@ -28,7 +29,7 @@ const candidates = ref<TagContentCandidate[]>([])
 const selectedIds = ref<string[]>([])
 const keyword = ref('')
 
-const kindLabel = computed(() => (activeTab.value === 'NOTE' ? '随手记' : '博客文章'))
+const kindLabel = computed(() => NOTE_KIND_LABELS[activeTab.value])
 
 async function loadContents(): Promise<void> {
   loading.value = true
@@ -141,13 +142,11 @@ async function removeContent(content: TagContentResponse): Promise<void> {
 }
 
 function statusText(content: TagContentResponse): string {
-  if (content.publishStatus === 'PUBLISHED') return '已发布'
-  if (content.publishStatus === 'UNPUBLISHED') return '已下架'
-  return '草稿'
+  return publishStatusLabel(content.publishStatus)
 }
 
 function candidateLabel(candidate: TagContentCandidate): string {
-  return `${candidate.title}（${candidate.kind === 'NOTE' ? '随手记' : '文章'}）`
+  return `${candidate.title}（${noteKindLabel(candidate.kind)}）`
 }
 
 function reload(): void {
@@ -165,8 +164,8 @@ function reload(): void {
     </div>
 
     <el-tabs v-model="activeTab">
-      <el-tab-pane label="随手记" name="NOTE" />
-      <el-tab-pane label="博客文章" name="POST" />
+      <el-tab-pane :label="NOTE_KIND_LABELS.NOTE" name="NOTE" />
+      <el-tab-pane :label="NOTE_KIND_LABELS.POST" name="POST" />
     </el-tabs>
 
     <el-card v-if="canAssign" shadow="never" body-class="py-3">
@@ -203,7 +202,7 @@ function reload(): void {
         <template #default="{ row }">{{ row.title }}</template>
       </el-table-column>
       <el-table-column label="类型" width="100">
-        <template #default="{ row }">{{ row.kind === 'NOTE' ? '随手记' : '文章' }}</template>
+        <template #default="{ row }">{{ noteKindLabel(row.kind) }}</template>
       </el-table-column>
       <el-table-column label="状态" width="120">
         <template #default="{ row }">

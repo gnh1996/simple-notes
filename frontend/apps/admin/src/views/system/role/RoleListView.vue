@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Plus, Refresh } from '@element-plus/icons-vue'
 import type { RoleResponse } from '@simple-notes/api'
+import { enabledStatusLabel } from '@simple-notes/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { onMounted, ref } from 'vue'
 
@@ -96,7 +97,7 @@ async function remove(row: RoleResponse): Promise<void> {
         <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small" effect="light">
-              {{ row.status === 1 ? '启用' : '停用' }}
+              {{ enabledStatusLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>

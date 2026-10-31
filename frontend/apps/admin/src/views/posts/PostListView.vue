@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Delete, Edit, Link, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import type { PostSummary } from '@simple-notes/api'
+import { PUBLISH_STATUS_LABELS } from '@simple-notes/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { postApi } from '@/api'
@@ -25,17 +26,17 @@ const query = reactive({
 
 const tabs: Array<{ key: TabKey; label: string }> = [
   { key: 'ALL', label: '全部' },
-  { key: 'DRAFT', label: '草稿' },
-  { key: 'PUBLISHED', label: '已发布' },
+  { key: 'DRAFT', label: PUBLISH_STATUS_LABELS.DRAFT },
+  { key: 'PUBLISHED', label: PUBLISH_STATUS_LABELS.PUBLISHED },
   { key: 'CHANGES', label: '有未发布更改' },
-  { key: 'UNPUBLISHED', label: '已下架' },
+  { key: 'UNPUBLISHED', label: PUBLISH_STATUS_LABELS.UNPUBLISHED },
 ]
 
-const statusMeta = computed(() => ({
-  DRAFT: { label: '草稿', type: 'info' as const },
-  PUBLISHED: { label: '已发布', type: 'success' as const },
-  UNPUBLISHED: { label: '已下架', type: 'warning' as const },
-}))
+const statusMeta = {
+  DRAFT: { label: PUBLISH_STATUS_LABELS.DRAFT, type: 'info' as const },
+  PUBLISHED: { label: PUBLISH_STATUS_LABELS.PUBLISHED, type: 'success' as const },
+  UNPUBLISHED: { label: PUBLISH_STATUS_LABELS.UNPUBLISHED, type: 'warning' as const },
+}
 
 async function load(): Promise<void> {
   loading.value = true

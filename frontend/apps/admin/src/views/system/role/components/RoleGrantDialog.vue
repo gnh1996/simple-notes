@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ClientType, MenuCatalogNode, RoleResponse } from '@simple-notes/api'
+import { CLIENT_TYPE_LABELS, labelOf, MENU_TYPE_LABELS } from '@simple-notes/shared'
 import { ElMessage, ElTree, type TreeOptionProps } from 'element-plus'
 import { computed, nextTick, ref, watch } from 'vue'
 
@@ -20,13 +21,7 @@ const visible = defineModel<boolean>({ required: true })
 const props = defineProps<{ role: RoleResponse }>()
 const emit = defineEmits<{ saved: [] }>()
 
-const CLIENT_LABELS: Record<ClientType, string> = {
-  ADMIN: '管理端',
-  BLOG: '博客端',
-  DESKTOP: '桌面端',
-}
 const CLIENT_ORDER: ClientType[] = ['ADMIN', 'BLOG', 'DESKTOP']
-const TYPE_LABELS: Record<string, string> = { ENTRY: '入口', MENU: '菜单', ACTION: '操作' }
 const TYPE_TAGS: Record<string, 'success' | 'primary' | 'warning'> = {
   ENTRY: 'success',
   MENU: 'primary',
@@ -191,7 +186,7 @@ async function submit(): Promise<void> {
         <el-tab-pane
           v-for="client in clients"
           :key="client"
-          :label="CLIENT_LABELS[client]"
+          :label="CLIENT_TYPE_LABELS[client]"
           :name="client"
         >
           <el-scrollbar max-height="46vh">
@@ -211,7 +206,7 @@ async function submit(): Promise<void> {
                   <span class="truncate">{{ data.name }}</span>
                   <el-text size="small" type="info" class="shrink-0">{{ data.code }}</el-text>
                   <el-tag size="small" effect="plain" :type="TYPE_TAGS[data.type]">
-                    {{ TYPE_LABELS[data.type] }}
+                    {{ labelOf(MENU_TYPE_LABELS, data.type) }}
                   </el-tag>
                   <el-tag v-if="data.status === 0" size="small" type="danger" effect="plain">
                     停用

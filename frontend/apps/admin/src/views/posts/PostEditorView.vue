@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ArrowLeft, Check, Link, Promotion, Upload } from '@element-plus/icons-vue'
 import type { PostDetail } from '@simple-notes/api'
+import { PUBLISH_STATUS_LABELS, type PublishStatusValue } from '@simple-notes/shared'
 import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -38,7 +39,7 @@ const form = reactive({
   coverAttachmentId: '',
   tags: [] as string[],
   pinned: false,
-  publishStatus: 'DRAFT' as 'DRAFT' | 'PUBLISHED' | 'UNPUBLISHED',
+  publishStatus: 'DRAFT' as PublishStatusValue,
   publishedRevisionId: '',
   hasUnpublishedChanges: false,
   publicUrl: '',
@@ -61,9 +62,11 @@ const tagOptionNames = computed(() =>
 )
 
 const statusLabel = computed(() => {
-  if (form.publishStatus === 'DRAFT') return '草稿'
-  if (form.publishStatus === 'UNPUBLISHED') return '已下架'
-  return form.hasUnpublishedChanges ? '已发布 · 有未发布更改' : '已发布'
+  if (form.publishStatus === 'DRAFT') return PUBLISH_STATUS_LABELS.DRAFT
+  if (form.publishStatus === 'UNPUBLISHED') return PUBLISH_STATUS_LABELS.UNPUBLISHED
+  return form.hasUnpublishedChanges
+    ? `${PUBLISH_STATUS_LABELS.PUBLISHED} · 有未发布更改`
+    : PUBLISH_STATUS_LABELS.PUBLISHED
 })
 const statusType = computed(() => {
   if (form.publishStatus === 'DRAFT') return 'info' as const

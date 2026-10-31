@@ -131,7 +131,7 @@ async function submit(): Promise<void> {
       <el-form-item v-if="isEdit" label="状态">
         <el-switch v-model="form.status" :active-value="1" :inactive-value="0" :disabled="isRootUser" />
         <el-text v-if="isRootUser" size="small" type="info" class="ml-3">
-          超管账号不可禁用
+          超管账号不可停用
         </el-text>
         <el-text
           v-else-if="form.status === 0"
@@ -139,7 +139,7 @@ async function submit(): Promise<void> {
           type="warning"
           class="ml-3"
         >
-          禁用后该用户全部会话将立即失效
+          停用后该用户全部会话将立即失效
         </el-text>
       </el-form-item>
 

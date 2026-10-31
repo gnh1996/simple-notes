@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ClientType, MenuCatalogNode } from '@simple-notes/api'
+import { CLIENT_TYPE_LABELS, enabledStatusLabel, labelOf, MENU_TYPE_LABELS } from '@simple-notes/shared'
 import { Refresh } from '@element-plus/icons-vue'
 import { computed, onMounted, ref } from 'vue'
 
@@ -8,13 +9,7 @@ import { notifyError } from '@/utils/feedback'
 
 import MenuEditDialog from './components/MenuEditDialog.vue'
 
-const CLIENT_LABELS: Record<ClientType, string> = {
-  ADMIN: '管理端',
-  BLOG: '博客端',
-  DESKTOP: '桌面端',
-}
 const CLIENT_ORDER: ClientType[] = ['ADMIN', 'BLOG', 'DESKTOP']
-const TYPE_LABELS: Record<string, string> = { ENTRY: '入口', MENU: '菜单', ACTION: '操作' }
 const TYPE_TAGS: Record<string, 'success' | 'primary' | 'warning'> = {
   ENTRY: 'success',
   MENU: 'primary',
@@ -87,7 +82,7 @@ function openEdit(node: MenuCatalogNode): void {
         <el-tab-pane
           v-for="client in clients"
           :key="client"
-          :label="CLIENT_LABELS[client]"
+          :label="CLIENT_TYPE_LABELS[client]"
           :name="client"
         >
           <el-table
@@ -114,7 +109,7 @@ function openEdit(node: MenuCatalogNode): void {
             <el-table-column label="类型" width="100" align="center">
               <template #default="{ row }">
                 <el-tag size="small" effect="plain" :type="TYPE_TAGS[row.type]">
-                  {{ TYPE_LABELS[row.type] }}
+                  {{ labelOf(MENU_TYPE_LABELS, row.type) }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -122,7 +117,7 @@ function openEdit(node: MenuCatalogNode): void {
             <el-table-column label="状态" width="90" align="center">
               <template #default="{ row }">
                 <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small" effect="light">
-                  {{ row.status === 1 ? '启用' : '停用' }}
+                  {{ enabledStatusLabel(row.status) }}
                 </el-tag>
               </template>
             </el-table-column>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { MenuCatalogNode } from '@simple-notes/api'
+import { CLIENT_TYPE_LABELS, labelOf, MENU_TYPE_LABELS } from '@simple-notes/shared'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { reactive, ref, watch } from 'vue'
 
@@ -10,13 +11,6 @@ import { notifyError } from '@/utils/feedback'
 const visible = defineModel<boolean>({ required: true })
 const props = defineProps<{ node: MenuCatalogNode; parentName?: string }>()
 const emit = defineEmits<{ saved: [] }>()
-
-const TYPE_LABELS: Record<string, string> = { ENTRY: '入口', MENU: '菜单', ACTION: '操作' }
-const CLIENT_LABELS: Record<string, string> = {
-  ADMIN: '管理端',
-  BLOG: '博客端',
-  DESKTOP: '桌面端',
-}
 
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
@@ -68,8 +62,8 @@ async function submit(): Promise<void> {
         <span class="font-mono text-xs">{{ node.code }}</span>
       </el-descriptions-item>
       <el-descriptions-item label="端 / 类型">
-        {{ CLIENT_LABELS[node.client ?? ''] ?? node.client }} ·
-        {{ TYPE_LABELS[node.type ?? ''] ?? node.type }}
+        {{ labelOf(CLIENT_TYPE_LABELS, node.client) }} ·
+        {{ labelOf(MENU_TYPE_LABELS, node.type) }}
       </el-descriptions-item>
       <el-descriptions-item label="父节点">{{ parentName || '无（端根）' }}</el-descriptions-item>
     </el-descriptions>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CopyDocument, Delete, Document, Upload } from '@element-plus/icons-vue'
 import type { AttachmentResponse, StorageStatusResponse } from '@simple-notes/api'
+import { isStorageHealthy, labelOf, STORAGE_MODE_LABELS, storageHealthLabel } from '@simple-notes/shared'
 import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 
@@ -97,9 +98,10 @@ async function remove(item: AttachmentResponse): Promise<void> {
 
 async function saveStorage(): Promise<void> {
   if (!selectedMode.value || selectedMode.value === storageStatus.value?.mode) return
+  const targetModeLabel = labelOf(STORAGE_MODE_LABELS, selectedMode.value)
   try {
     await ElMessageBox.confirm(
-      `切换后仅影响新上传文件；历史文件仍从原介质读取。确定切换到 ${selectedMode.value} 吗？`,
+      `切换后仅影响新上传文件；历史文件仍从原介质读取。确定切换到「${targetModeLabel}」吗？`,
       '切换存储介质',
       { type: 'warning', confirmButtonText: '切换' },
     )
@@ -127,10 +129,15 @@ async function saveStorage(): Promise<void> {
           <el-text size="small" type="info">新上传介质</el-text>
           <div class="mt-1 flex flex-wrap items-center gap-2">
             <el-select v-model="selectedMode" size="small" class="w-36" :disabled="!canSwitchStorage">
-              <el-option v-for="mode in storageStatus.availableModes" :key="mode" :label="mode" :value="mode" />
+              <el-option
+                v-for="mode in storageStatus.availableModes"
+                :key="mode"
+                :label="labelOf(STORAGE_MODE_LABELS, mode)"
+                :value="mode"
+              />
             </el-select>
             <el-tag v-for="(count, mode) in storageStatus.counts" :key="mode" size="small" effect="plain">
-              {{ mode }} {{ count }}
+              {{ labelOf(STORAGE_MODE_LABELS, mode) }} {{ count }}
             </el-tag>
           </div>
         </div>
@@ -151,10 +158,10 @@ async function saveStorage(): Promise<void> {
           v-for="(value, mode) in storageStatus.health"
           :key="mode"
           size="small"
-          :type="value === 'OK' ? 'success' : 'warning'"
+          :type="isStorageHealthy(value) ? 'success' : 'warning'"
           effect="plain"
         >
-          {{ mode }}: {{ value }}
+          {{ labelOf(STORAGE_MODE_LABELS, mode) }} · {{ storageHealthLabel(value) }}
         </el-tag>
       </div>
     </el-card>
