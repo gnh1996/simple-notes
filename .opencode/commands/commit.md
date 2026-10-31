@@ -14,7 +14,12 @@ description: 根据未提交修改总结 commit message
 当前工作区状态：
 !`git status --short`
 
-变更内容（已暂存 + 未暂存）：
-!`git diff HEAD`
+变更概览（已暂存 + 未暂存）：
+!`git diff HEAD --stat`
+
+已暂存部分：
+!`git diff --cached --stat`
+
+需要看具体改动时，自行执行 `git diff HEAD -- <path>` 或 `git diff --cached -- <path>` 按文件查看，不要臆测未见细节。
 
 补充要求：$ARGUMENTS
