@@ -91,6 +91,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/blog/**").permitAll()
                         // 稳定媒体 URL 匿名可读（正文 / 封面引用）
                         .requestMatchers(HttpMethod.GET, "/api/media/**").permitAll()
+                        // Nginx auth_request 内部签名接口：控制器内校验共享令牌，不暴露给浏览器
+                        .requestMatchers("/api/internal/**").permitAll()
                         // 三端接口域：要求已认证会话（client 一致性 + 权限码由过滤器 / 方法级校验）
                         .requestMatchers("/api/**").authenticated()
                         // 博客前台（docs/blog-runtime-theme.md §4.5 / §5.2）：壳对任意页面路由 fallback，

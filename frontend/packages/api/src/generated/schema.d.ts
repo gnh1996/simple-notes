@@ -564,6 +564,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/media/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["storageStatus"];
+        put: operations["switchStorageMode"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/media/{id}": {
         parameters: {
             query?: never;
@@ -1214,6 +1230,19 @@ export interface components {
             altText?: string;
             /** Format: date-time */
             createTime: string;
+        };
+        StorageStatusResponse: {
+            mode: string;
+            availableModes: string[];
+            counts: {
+                [key: string]: number;
+            };
+            health: {
+                [key: string]: string;
+            };
+        };
+        UpdateStorageModeRequest: {
+            mode: string;
         };
         TagCountResponse: {
             id: string;
@@ -2770,6 +2799,50 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["AttachmentResponse"];
+                };
+            };
+        };
+    };
+    storageStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["StorageStatusResponse"];
+                };
+            };
+        };
+    };
+    switchStorageMode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStorageModeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["StorageStatusResponse"];
                 };
             };
         };

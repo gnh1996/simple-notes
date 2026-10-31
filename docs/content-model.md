@@ -1,6 +1,6 @@
 # 内容模型设计（随手记 + 博客）
 
-> **状态：v1.4 · 2026-10-28（Web 端已实现；v1.4 增加创作时间与公开列表排序上下文）**
+> **状态：v1.4.2 · 2026-10-31（Web 端已实现；v1.4 增加创作时间与公开列表排序上下文；v1.4.1 补充附件存储设计指针；v1.4.2 附件存储实现）**
 > 范围：随手记与博客文章的统一内容模型、发布快照、数据表草案、权限码、API 契约与 Web 端范围
 > 关联：`docs/auth-rbac.md`（权限体系）、`docs/markdown-dialect.md`（Markdown 方言）、`docs/tech-stack.md`（技术选型）
 > 非目标：评论、桌面端同步、SEO / SSR、多作者、定时发布、分类 / 系列、笔记分享 —— 见 §13
@@ -196,12 +196,13 @@ POST / UNPUBLISHED（后台保留，公开不可见）
 | `status` | `ACTIVE` / `DELETED`，或沿用软删除 |
 | 审计七件套 | 标准 |
 
-- 正文图片使用**稳定的站内 URL**（例如 `/api/media/{id}`），不直接写 R2 key；未来更换 bucket / CDN 不影响历史正文。
+- 正文图片使用**可访问 URL**：DIRECT 模式下 OSS 为 `/oss/{key}`、本地 / DB 为 `/api/media/{id}`；不直接写 R2 endpoint / bucket。`/api/media/{id}` 保留为稳定兜底端点（OSS 会 302 到 `/oss/{key}`）。
 - 封面通过 `cover_attachment_id` 引用。
 - 删除附件前检查是否被文章封面或已发布快照引用；正文内引用 v1 不做完整反向解析，孤儿清理放 P1。
-- 上传限制：大小、MIME 白名单、图片重新编码；**禁止 SVG**（XSS 风险）。
-- 公开 bucket + 随机 UUID 的访问方式对草稿图片不是严格隔离；个人项目可接受，后续如需严格隐私改为私有 bucket / 签名 URL。
-- 实现进度：v1 先提供本地存储适配器（`AttachmentStorage`），生产 R2 适配器按 `docs/tech-stack.md` 待接；数据库 `storage_key` 与稳定 URL 契约不变。
+- 上传限制（支持任意文件后）：单文件 20 MB；魔数校验；**禁止 SVG**（XSS 风险）；图片 inline，其他文件强制 `Content-Disposition: attachment`；图片重新编码仍待定。详见 `docs/attachment-storage.md` §8。
+- 公开 bucket + 随机 UUID 的访问方式对草稿 / 任意文件不是严格隔离；个人项目可接受，后续如需严格隐私改为私有 bucket / 签名 URL。
+- 实现进度：LOCAL / R2 / DATABASE 三介质已实现（`V11` / `V12`）；R2 采用私有 bucket + Nginx `auth_request` 预签名代理；`storage_key` 与 `/api/media/{id}` 稳定端点契约不变。
+- 三介质扩展（LOCAL / OSS / DATABASE）设计见 `docs/attachment-storage.md`：`attachment.storage_mode` 按行记录实际介质，全局设置只影响新上传；DIRECT 模式下 OSS 返回 `/oss/{key}`，经媒体域 Nginx 访问 R2（公开 bucket 直连；私有 bucket 签名 / 预签名），本地 / DB 返回 `/api/media/{id}`，稳定端点保留为兜底。
 
 ### 3.6 评论（后续，不在 V2 建表）
 
@@ -567,7 +568,7 @@ note.delete_flag = 0
 | `GET /api/blog/search?q=` | 搜索已发布快照的标题 / 正文；额外支持 `pinnedFirst` / `direction` / `sortBy` |
 | `GET /api/blog/feed.xml` | RSS（P1） |
 | `GET /api/blog/sitemap.xml` | 站点地图（P1） |
-| `GET /api/media/{id}` | 稳定媒体 URL；返回 / 重定向到对象存储（具体形态随附件设计定） |
+| `GET /api/media/{id}` | 稳定媒体端点；本地 / DB 直接返回，OSS 重定向到 `/oss/{key}`（DIRECT 下 OSS 正文通常直接使用 `/oss/{key}`） |
 
 公开接口匿名可访问，不要求 `entry:blog`；`entry:blog` 只用于未来评论 / 登录互动。`feed.xml` / `sitemap.xml` 为非 JSON 出参，不纳入 TypeScript 生成客户端，需要时由 blog 前端直接请求。
 
@@ -635,6 +636,7 @@ note.delete_flag = 0
 | `admin:media` | MENU | 媒体库页面 + 读接口 |
 | `admin:media:upload` | ACTION | 上传 |
 | `admin:media:delete` | ACTION | 删除 |
+| `admin:media:storage` | ACTION | 切换新上传存储介质 |
 
 说明：
 
@@ -642,7 +644,7 @@ note.delete_flag = 0
 - 记事本没有发布权限码；`admin:post:publish` 只出现在文章接口。
 - 公开博客不需要权限码；未来评论使用 `blog:comment:*`。
 - v1 单作者；`admin:post` 持有者可管理全部文章，`admin:note` 默认只管理自己的笔记，超管不受限。多作者 / 数据范围后续再设计。
-- `admin:media` 的读权限由菜单码承担；上传 / 删除用 ACTION。
+- `admin:media` 的读权限由菜单码承担；上传 / 删除 / 切换存储介质用 ACTION。
 - 编辑器联想 `GET /api/admin/tags/options` 允许 `admin:note` 或 `admin:post` 任一访问；标签管理页与写操作使用 `admin:tag:*`。
 - 标签改名 / 删除是全局分类操作；删除有使用量时前端二次确认并带 `force=true`。
 
@@ -670,6 +672,7 @@ note.delete_flag = 0
 | `admin:media` | MENU | 媒体库 | `entry:admin` | 60 |
 | `admin:media:upload` | ACTION | 上传媒体 | `admin:media` | 1 |
 | `admin:media:delete` | ACTION | 删除媒体 | `admin:media` | 2 |
+| `admin:media:storage` | ACTION | 切换存储介质 | `admin:media` | 3 |
 
 - `Perms` 增加对应常量；启动对账会检查常量、注解和 `sys_menu` 行一致。
 - 页面注册表新增 `admin:note` → `/notes`、`admin:post` → `/posts`、`admin:tag` → `/tags`、`admin:media` → `/media`。
@@ -793,9 +796,9 @@ note.delete_flag = 0
 - 元数据全部走数据库字段，不使用 front matter。
 - 后端只存原文，不渲染；公开渲染端在 `innerHTML` 前用 `sanitizeHtml`（DOMPurify）清洗；方言 v2 允许安全行内 HTML。
 - 入库清洗策略（2026-10-25 收口）：**不做后端入库清洗**，清洗发生在所有前端渲染入口；若未来需要严格拒绝裸 HTML，再按 Markdown-aware 方案重新评估。
-- 正文图片使用稳定站内 URL，不写 R2 key；封面使用 `cover_attachment_id`。
-- 上传校验：大小上限、MIME 白名单、图片重新编码、禁止 SVG；文件名不参与存储路径。
-- 公开 bucket 下草稿图片可能被知道 URL 的人访问；个人项目接受，后续可改私有 bucket / 签名 URL。
+- 正文图片使用可访问 URL（DIRECT：OSS `/oss/{key}`、本地 / DB `/api/media/{id}`），不写 R2 endpoint / bucket；封面使用 `cover_attachment_id`。
+- 上传校验：单文件 20 MB、魔数检测、禁止 SVG；非图片文件强制下载；文件名不参与存储路径。任意文件策略见 `docs/attachment-storage.md` §8。
+- 公开 bucket 下草稿 / 附件可能被知道 URL 的人访问；个人项目接受，后续可改私有 bucket / 签名 URL。
 
 ---
 
@@ -839,7 +842,7 @@ note.delete_flag = 0
   - `PublishService`：发布、更新发布、下架、revision 创建、slug 校验；
   - `TagService`：标签解析 / 查找 / 快照；
   - `TagAdminService`：标签管理列表 / 改名 / 删除 / 使用量 / 内容分配；
-  - `AttachmentService`：上传、删除保护、稳定 URL。
+  - `AttachmentService`：上传、删除保护、可访问 URL（DIRECT）/ 稳定端点兜底。
 - Controller：`AdminNoteController`、`AdminPostController`、`AdminTrashController`、`AdminMediaController`、`BlogPostController`、`BlogTaxonomyController`、`MediaController`。
 - 公开 DTO 与后台 DTO 分开；公开详情从 revision 组装。
 - 排序：`BlogSortField`（`displayAt` / `firstPublishedAt` / `lastPublishedAt`）+ `pinnedFirst` / `direction`；`BlogService` 统一生成 `OrderSpecifier`，列表、搜索、归档、详情相邻项共用；`year` / `month` 过滤也使用同一时间字段表达式。
@@ -912,3 +915,5 @@ note.delete_flag = 0
 | 2026-10-25 | v1.3.1 方案 A | blog runtime 改为独立 Vite 构建产物（部署在同域静态路径 / CDN），后端只组装壳；新增 `GET /api/blog/bootstrap`；Markdown 方言与 hljs 复用 `packages/shared`；默认主题收敛到 `packages/theme-starter`；内容模型与发布快照不变 |
 | 2026-10-25 | v1.3.2 方案 C | 收敛为单产物：Maven 打包时把 blog dist 拷入 jar 的 `static/blog/`，后端同源提供 `/blog/**`；runtime 只保留壳注入单启动路径；`GET /api/blog/bootstrap` 降级为调试 / agent 接口；内容模型与发布快照不变 |
 | 2026-10-28 | v1.4 创作时间与排序上下文 | 新增 `note.authored_at`（运营字段，不参与快照）；公开日期统一为 `displayAt = authoredAt ?? firstPublishedAt`；公开列表 / 搜索 / 归档 / 详情上下篇支持 `pinnedFirst` / `direction` / `sortBy`（字段白名单、不限制组合）；归档改为「月份索引 + 月内分页」，`year` / `month` 跟随 `sortBy`；搜索上下篇携带 `q`；`V10` 迁移已执行 |
+| 2026-10-31 | v1.4.1 附件存储设计 | 引用 `docs/attachment-storage.md`：任意文件、20 MB、行级 `storage_mode`、DIRECT 模式（OSS `/oss/{key}` 经媒体域 Nginx 访问 R2，公开 / 私有 bucket 两种；本地 / DB `/api/media/{id}`）；稳定端点保留兜底；内容模型与现有 API 不变 |
+| 2026-10-31 | v1.4.2 附件存储实现 | `V11` / `V12`；`admin:media:storage`；媒体库任意文件、封面仅图片、编辑器按 MIME 插入图片 / 链接；私有 R2 + Nginx `auth_request` 方案 B |

@@ -9,6 +9,7 @@
 | `docs/tech-stack.md` | 技术选型总览（2026-10-18 冻结）与残余待定项 |
 | `docs/auth-rbac.md` | 认证与权限设计（RBAC：三端入口 / admin 菜单 / 按钮与接口权限；JWT 会话；v1 定稿） |
 | `docs/content-model.md` | 内容模型设计（随手记 / 博客单表、发布快照、标签管理、权限与 API；v1.1 Web 端已实现） |
+| `docs/attachment-storage.md` | 附件存储设计（本地 / R2 / 数据库三介质；任意文件、20MB、行级存储模式、DIRECT 外链、媒体域、私有 R2 + Nginx 预签名代理；v1.0 已实现） |
 | `docs/markdown-dialect.md` | Markdown 内容方言规范（v2 白名单 / 边界 / admin+blog 配置对齐；桌面端待迁移） |
 | `docs/markdown-dialect-fixture.md` | 方言验收样本：新增语法必须 admin / blog（桌面迁移后三端）渲染比对 |
 | `docs/blog-runtime-theme.md` | 博客运行时与主题化设计（v1 草案）：运行时/主题职责、契约表、主题版本与预览、站点配置与独立页面 |

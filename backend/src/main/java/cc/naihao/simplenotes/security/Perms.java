@@ -83,6 +83,7 @@ public final class Perms {
     public static final String ADMIN_MEDIA = "admin:media";
     public static final String ADMIN_MEDIA_UPLOAD = "admin:media:upload";
     public static final String ADMIN_MEDIA_DELETE = "admin:media:delete";
+    public static final String ADMIN_MEDIA_STORAGE = "admin:media:storage";
 
     // ---- admin：站点设置 ----
 

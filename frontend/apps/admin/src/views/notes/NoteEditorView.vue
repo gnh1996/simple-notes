@@ -191,13 +191,20 @@ async function promote(): Promise<void> {
   }
 }
 
-async function uploadImages(files: File[]): Promise<{ url: string; alt?: string }[]> {
+async function uploadImages(
+  files: File[],
+): Promise<{ url: string; alt?: string; name?: string; mimeType?: string }[]> {
   const uploaded = await Promise.all(files.map((file) => mediaApi.upload(file)))
-  return uploaded.map((item) => ({ url: item.url, alt: item.altText ?? item.originalName }))
+  return uploaded.map((item) => ({
+    url: item.url,
+    alt: item.altText ?? item.originalName,
+    name: item.originalName,
+    mimeType: item.mimeType,
+  }))
 }
 
 function handleUploadError(error: unknown): void {
-  notifyError(error, '图片上传失败')
+  notifyError(error, '文件上传失败')
 }
 
 onMounted(load)

@@ -54,6 +54,7 @@ public class BlogService {
     private final NoteRevisionRepository revisionRepository;
     private final SysUserRepository userRepository;
     private final TagService tagService;
+    private final MediaUrlResolver mediaUrlResolver;
     private final JPAQueryFactory queryFactory;
 
     @Transactional(readOnly = true)
@@ -428,6 +429,6 @@ public class BlogService {
     }
 
     private String coverUrl(String attachmentId) {
-        return attachmentId == null ? null : "/api/media/" + attachmentId;
+        return attachmentId == null ? null : mediaUrlResolver.mediaPath(attachmentId);
     }
 }

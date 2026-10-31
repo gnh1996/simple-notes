@@ -1,6 +1,7 @@
 package cc.naihao.simplenotes.web;
 
 import cc.naihao.simplenotes.config.SiteProperties;
+import cc.naihao.simplenotes.config.StorageProperties;
 import cc.naihao.simplenotes.domain.SiteThemeVersion;
 import cc.naihao.simplenotes.site.PreviewTokenService;
 import cc.naihao.simplenotes.site.SiteSettingService;
@@ -40,7 +41,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 public class BlogPageController {
 
     /** 壳模板结构版本：模板 / 注入数据变化时递增，避免 ETag 命中旧壳。 */
-    private static final int SHELL_VERSION = 3;
+    private static final int SHELL_VERSION = 4;
 
     /**
      * 首屏加载层样式：必须内联在壳里（runtime.css 随 JS 到达，赶不上首帧）。
@@ -109,6 +110,7 @@ public class BlogPageController {
     private final ThemeService themeService;
     private final PreviewTokenService previewTokenService;
     private final SiteProperties siteProperties;
+    private final StorageProperties storageProperties;
     private final ObjectMapper objectMapper;
 
     private volatile String defaultHtml;
@@ -273,11 +275,14 @@ public class BlogPageController {
         String assetOrigin = originOf(assetBase());
         String extra = assetOrigin == null ? "" : " " + assetOrigin;
         String ws = assetOrigin == null ? "" : " " + assetOrigin.replaceFirst("^http", "ws");
+        String mediaOrigin = originOf(storageProperties.getPublicBaseUrl());
+        String media = mediaOrigin == null ? "" : " " + mediaOrigin;
         return "default-src 'self'; "
                 + "script-src 'self' 'unsafe-inline' 'unsafe-eval'" + extra + "; "
                 + "style-src 'self' 'unsafe-inline'" + extra + "; "
                 + "font-src 'self' data:" + extra + "; "
-                + "img-src 'self' data:; "
+                + "img-src 'self' data:" + media + "; "
+                + "media-src 'self'" + media + "; "
                 + "connect-src 'self'" + extra + ws + "; "
                 + "frame-ancestors 'self' " + siteProperties.getAdminOrigin();
     }
@@ -291,6 +296,9 @@ public class BlogPageController {
     }
 
     private static String originOf(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
         try {
             URI uri = URI.create(url);
             if (uri.getScheme() == null || uri.getHost() == null) {

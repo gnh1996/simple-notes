@@ -464,7 +464,7 @@ GET /posts/hello
 | --- | --- |
 | 分域 | blog 与 admin 不同源；blog 不持有 admin 凭证 |
 | 匿名面 | 非 API 的 GET 一律公开（壳 fallback + jar 内静态资源），`/api/**` 要求会话。因此新增业务控制器**必须**挂在 `/api/` 下：`startup/ApiPathValidator` 在启动期扫描 handler，漏写前缀直接终止启动 |
-| CSP | `default-src 'self'; script-src 'self' 'unsafe-eval'`；主题 CSS 需 `style-src 'unsafe-inline'`；KaTeX 字体需 `font-src 'self' data:`；同源部署下无需放行资产域（开发期 `BLOG_ASSET_BASE` 指向 Vite 时自动把该 origin 加入 script/style/font/connect） |
+| CSP | `default-src 'self'; script-src 'self' 'unsafe-eval'`；主题 CSS 需 `style-src 'unsafe-inline'`；KaTeX 字体需 `font-src 'self' data:`；同源部署下无需放行资产域（开发期 `BLOG_ASSET_BASE` 指向 Vite 时自动把该 origin 加入 script/style/font/connect）；独立媒体域时自动把 `MEDIA_PUBLIC_BASE_URL` 的 origin 加入 `img-src` / `media-src` |
 | `unsafe-eval` | Vue 运行时模板编译必需；靠零主题 JS + 校验 + 分域兜底 |
 | 模板校验 | 保存时后端校验；**加载时 runtime 再校验一次**（库内旧数据 / 被篡改数据不得直接进编译器）；见 §8 |
 | 预览隔离 | 草稿仅通过短期签名 token 可见（30 分钟，HMAC）；页面 `no-store` + `no-referrer`，bootstrap 同样 `no-store` |

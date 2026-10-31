@@ -56,6 +56,8 @@ export type PublishRequest = Schema['PublishRequest']
 export type PageResponsePostSummary = Schema['PageResponsePostSummary']
 
 export type AttachmentResponse = Schema['AttachmentResponse']
+export type StorageStatusResponse = Schema['StorageStatusResponse']
+export type UpdateStorageModeRequest = Schema['UpdateStorageModeRequest']
 export type TrashItemResponse = Schema['TrashItemResponse']
 
 export type TagAdminSummary = Schema['TagAdminSummary']
@@ -312,6 +314,9 @@ export function createMediaApi(client: ApiClient) {
       })
     },
     remove: (id: string) => client.delete<void>(`/admin/media/${id}`),
+    storage: () => client.get<StorageStatusResponse>('/admin/media/storage'),
+    switchStorage: (body: UpdateStorageModeRequest) =>
+      client.put<StorageStatusResponse>('/admin/media/storage', body),
   }
 }
 

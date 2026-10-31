@@ -5,3 +5,7 @@
 simple-notes:
   site:
     asset-base: http://localhost:5174
+  storage:
+    # 开发期没有媒体域 Nginx：OSS 附件由后端流式代理；生产默认 edge=nginx + auth_request
+    r2:
+      edge: backend

@@ -2,13 +2,16 @@ package cc.naihao.simplenotes.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.SQLRestriction;
 
 /**
- * 附件元数据（docs/content-model.md §3.5）：storageKey 与实际存储解耦，正文使用稳定站内 URL。
+ * 附件元数据（docs/content-model.md §3.5 / docs/attachment-storage.md）：
+ * storageKey 与实际存储解耦，storageMode 记录该行二进制实际所在介质。
  */
 @Entity
 @Table(name = "attachment")
@@ -19,6 +22,10 @@ public class Attachment extends BaseEntity {
 
     @Column(name = "owner_id", length = 36, nullable = false)
     private String ownerId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "storage_mode", length = 16, nullable = false)
+    private StorageMode storageMode = StorageMode.LOCAL;
 
     @Column(name = "storage_key", length = 255, nullable = false)
     private String storageKey;

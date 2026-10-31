@@ -1,0 +1,97 @@
+# =============================================================================
+# 附件媒体域 Nginx 示例（方案 B：私有 R2 + auth_request 预签名代理）
+#
+# 使用前替换：
+#   - media.example.com
+#   - upstream 地址
+#   - MEDIA_INTERNAL_TOKEN（与后端 simple-notes.storage.internal-token 一致）
+#   - resolver / 证书路径
+#
+# 关键点：
+#   1. /oss/ 不直接 proxy_pass 到 R2；先 auth_request 让后端签名；
+#   2. 浏览器始终只看到 media.example.com，不暴露 R2 endpoint / 签名；
+#   3. proxy_cache 的 key 忽略签名 query，缓存文件体；
+#   4. auth_request 通常会每个请求执行；后端接口只做轻量签名。
+# =============================================================================
+
+proxy_cache_path /var/cache/nginx/simple-notes-media
+                 levels=1:2 keys_zone=simple_notes_media:100m
+                 max_size=20g inactive=30d use_temp_path=off;
+
+limit_req_zone $binary_remote_addr zone=simple_notes_media_rl:10m rate=20r/s;
+limit_conn_zone $binary_remote_addr zone=simple_notes_media_conn:10m;
+
+upstream simple_notes_backend {
+    server 127.0.0.1:8080;
+    keepalive 16;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name media.example.com;
+
+    ssl_certificate     /etc/nginx/certs/media.example.com.pem;
+    ssl_certificate_key /etc/nginx/certs/media.example.com.key;
+
+    # 管理端上传仍走这里；下载数据面走 /oss/
+    location /api/admin/media {
+        client_max_body_size 25m;
+        proxy_pass http://simple_notes_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 本地 / DB 附件：后端流式返回
+    location /api/media/ {
+        proxy_pass http://simple_notes_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+    }
+
+    # 内部签名子请求：外部不可访问
+    location = /_media_presign {
+        internal;
+        proxy_pass http://simple_notes_backend/api/internal/media/presign?key=$uri;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Internal-Token "MEDIA_INTERNAL_TOKEN";
+    }
+
+    # 私有 R2 数据面：先签名，再由 Nginx 代理
+    location /oss/ {
+        limit_req zone=simple_notes_media_rl burst=40 nodelay;
+        limit_conn simple_notes_media_conn 20;
+
+        auth_request /_media_presign;
+        auth_request_set $r2_url $upstream_http_x_r2_url;
+        auth_request_set $r2_host $upstream_http_x_r2_host;
+
+        resolver 1.1.1.1 valid=300s ipv6=off;
+        proxy_pass $r2_url;
+        proxy_set_header Host $r2_host;
+        proxy_ssl_server_name on;
+        proxy_ssl_name $r2_host;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+
+        proxy_cache simple_notes_media;
+        proxy_cache_key "$scheme$request_method$host$uri";
+        proxy_cache_valid 200 206 30d;
+        proxy_cache_lock on;
+        proxy_cache_use_stale error timeout updating;
+        proxy_cache_revalidate on;
+
+        add_header X-Content-Type-Options nosniff always;
+        add_header Content-Security-Policy "sandbox" always;
+    }
+
+    # 内部签名接口禁止外部直达
+    location /api/internal/ {
+        return 404;
+    }
+}

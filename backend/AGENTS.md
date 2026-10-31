@@ -28,6 +28,15 @@
 - 已落地的实体基类：`domain/BaseEntity`（UUID 主键预生成 + `Persistable` 新实体判定 + 审计回调 + 软删辅助）；查询侧排除已删除数据用实体级 `@SQLRestriction("delete_flag = 0")`，不再逐查询手写条件
 - **内容模块例外**（设计见 `docs/content-model.md` §3.8）：`note_revision` 为不可变发布快照，仅 `create_by` / `create_time`，无软删除；`note_tag` / `note_revision_tag` 为关联表，物理删除；`note.slug` 唯一索引不带 `delete_flag = 0`（公开 URL 永久保留）
 - **站点配置 / 主题例外**（设计见 `docs/blog-runtime-theme.md` §6）：`site_theme_version` 为不可变主题版本，仅 `create_by` / `create_time`，无软删除；`site_setting` 为 KV 配置，物理 upsert（新增即 INSERT、写入即 UPDATE、移除即 DELETE），无 `delete_flag`；`site_page` 保存即线上，不做发布快照
+- **附件存储例外**（设计见 `docs/attachment-storage.md`）：`attachment.storage_mode` 按行记录实际介质；`attachment_blob` 是 DATABASE 模式的从属二进制，仅 `storage_key` / `content` / `create_time`，无审计七件套（生命周期完全由 `attachment` 决定）；二进制读写用 `JdbcTemplate` 流式 API，不用 JPA `byte[]` / `@Lob`
+
+## 附件存储（docs/attachment-storage.md）
+
+- **写路径读全局、读路径读行**：`site_setting.storage.mode` 只决定新上传；历史读取 / 删除必须按 `attachment.storage_mode` 路由，禁止用全局模式覆盖
+- **R2 私有 bucket + 方案 B**：Nginx `auth_request` 调 `/api/internal/media/presign` 取短期预签名 URL，再代理 R2；内部接口必须校验 `X-Internal-Token`，禁止外部直达
+- **任意文件策略**：魔数检测；禁止 SVG；只有图片 inline，其他强制 `Content-Disposition: attachment`；`cover_attachment_id` 只接受图片；文件名不参与存储路径
+- **流式 I/O**：上传 / 读取不得 `MultipartFile.getBytes()` 或 JPA 大字段整块物化；DATABASE 单文件上限 20 MB，本地 / R2 走流
+- **Nginx 示例**：`deploy/nginx/media.conf.example`；修改缓存 / 限流 / 媒体域策略时同步更新该示例与设计文档
 
 ## 博客前台（壳组装，设计见 docs/blog-runtime-theme.md）
 

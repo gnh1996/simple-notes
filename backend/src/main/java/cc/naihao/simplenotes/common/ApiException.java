@@ -59,4 +59,8 @@ public class ApiException extends RuntimeException {
     public static ApiException permissionDenied(String message) {
         return new ApiException(HttpStatus.FORBIDDEN, ErrorCodes.PERMISSION_DENIED, message);
     }
+
+    public static ApiException serviceUnavailable(String message) {
+        return new ApiException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCodes.STORAGE_UNAVAILABLE, message);
+    }
 }

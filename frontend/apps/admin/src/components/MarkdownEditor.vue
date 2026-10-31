@@ -3,9 +3,11 @@ import { createEditorOptions, sanitizeHtml } from '@simple-notes/markdown'
 import Vditor from 'vditor'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-export interface UploadedImage {
+export interface UploadedFile {
   url: string
   alt?: string
+  name?: string
+  mimeType?: string
 }
 
 const props = defineProps<{
@@ -14,7 +16,7 @@ const props = defineProps<{
   cacheId: string
   placeholder?: string
   height?: string
-  upload?: (files: File[]) => Promise<UploadedImage[]>
+  upload?: (files: File[]) => Promise<UploadedFile[]>
   onUploadError?: (error: unknown) => void
 }>()
 
@@ -32,14 +34,18 @@ function cdn(): string {
   return `${import.meta.env.BASE_URL}vditor`.replace(/\/$/, '')
 }
 
-function insertImages(files: File[]): Promise<string | null> {
+function insertFiles(files: File[]): Promise<string | null> {
   if (!props.upload) {
     return Promise.resolve(null)
   }
   return props.upload(files).then(
     (items) =>
       items
-        .map((item) => `![${item.alt ?? ''}](${item.url})`)
+        .map((item) =>
+          item.mimeType?.startsWith('image/')
+            ? `![${item.alt ?? ''}](${item.url})`
+            : `[${item.name ?? item.alt ?? '附件'}](${item.url})`,
+        )
         .join('\n') || null,
     (error) => {
       props.onUploadError?.(error)
@@ -66,7 +72,7 @@ function create(): void {
         }
         emit('update:modelValue', value)
       },
-      onUpload: props.upload ? insertImages : undefined,
+      onUpload: props.upload ? insertFiles : undefined,
     }),
     after: () => {
       ready = true

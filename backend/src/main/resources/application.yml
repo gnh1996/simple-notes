@@ -23,24 +23,39 @@ spring:
     locations: classpath:db/migration
   servlet:
     multipart:
-      # 图片上传上限；与 AttachmentService 的校验保持一致
-      max-file-size: 10MB
-      max-request-size: 12MB
+      # 附件上传上限；与 StorageProperties.maxBytes 的校验保持一致
+      max-file-size: 20MB
+      max-request-size: 25MB
 
 simple-notes:
   auth:
     # JWT 签名密钥（HS256，32+ 字节随机值，值来源：本地 application-local.yml / 部署环境变量）。
     # 无默认值：缺失或不满足长度时由 AuthProperties 校验在启动时失败（fail-fast，见 docs/auth-rbac.md §9）
     jwt-secret: "${JWT_SECRET}"
-  # 附件存储：v1 先接本地开发适配器，生产仍按 docs/tech-stack.md 使用 Cloudflare R2。
-  # local-root 仅用于开发 / 单机验证；后续接 R2 时替换 AttachmentStorage 实现即可。
+  # 附件存储（docs/attachment-storage.md）：
+  # mode 是 site_setting.storage.mode 缺失时的兜底；运行时切换走 /api/admin/media/storage。
+  # R2 采用私有 bucket + Nginx auth_request 预签名代理（方案 B），凭据只从外部值源读取。
   storage:
+    max-bytes: "${STORAGE_MAX_BYTES:20971520}"
+    public-base-url: "${MEDIA_PUBLIC_BASE_URL:}"
+    url-mode: "${STORAGE_URL_MODE:DIRECT}"
+    mode: "${STORAGE_MODE:LOCAL}"
+    internal-token: "${MEDIA_INTERNAL_TOKEN:}"
     local-root: "${MEDIA_LOCAL_ROOT:${java.io.tmpdir}/simple-notes-media}"
+    database:
+      max-bytes: "${STORAGE_DB_MAX_BYTES:20971520}"
     r2:
       endpoint: "${R2_ENDPOINT}"
+      region: "${R2_REGION:auto}"
       bucket: "${R2_BUCKET:simple-notes}"
       access-key: "${R2_ACCESS_KEY_ID}"
       secret-key: "${R2_SECRET_ACCESS_KEY}"
+      path-style: "${R2_PATH_STYLE:true}"
+      key-prefix: "${R2_KEY_PREFIX:attachments}"
+      presign-ttl: "${R2_PRESIGN_TTL:5m}"
+      signing: "${R2_SIGNING:auth-request}"
+      edge: "${R2_EDGE:nginx}"
+      public-base-url: "${R2_PUBLIC_BASE_URL:}"
   # 博客宿主（docs/blog-runtime-theme.md §5.2）：管理端源用于 CSP frame-ancestors 与预览 iframe
   site:
     admin-origin: "${ADMIN_ORIGIN:http://localhost:5173}"

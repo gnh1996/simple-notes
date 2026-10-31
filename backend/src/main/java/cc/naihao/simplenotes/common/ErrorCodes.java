@@ -37,6 +37,8 @@ public final class ErrorCodes {
     public static final String NO_CHANGES_TO_PUBLISH = "NO_CHANGES_TO_PUBLISH";
     /** 发布字段校验失败（400） */
     public static final String PUBLISH_VALIDATION_FAILED = "PUBLISH_VALIDATION_FAILED";
+    /** 存储介质暂不可用（503）：R2 未配置 / 网络 / 权限错误 */
+    public static final String STORAGE_UNAVAILABLE = "STORAGE_UNAVAILABLE";
     /** 未预期的服务端错误（500） */
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
 

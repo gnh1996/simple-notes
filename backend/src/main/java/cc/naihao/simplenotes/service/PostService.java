@@ -46,6 +46,7 @@ public class PostService {
     private final AttachmentService attachmentService;
     private final PublishService publishService;
     private final SlugService slugService;
+    private final MediaUrlResolver mediaUrlResolver;
     private final JPAQueryFactory queryFactory;
 
     @Transactional(readOnly = true)
@@ -353,7 +354,7 @@ public class PostService {
     }
 
     private String coverUrl(String attachmentId) {
-        return attachmentId == null ? null : "/api/media/" + attachmentId;
+        return attachmentId == null ? null : mediaUrlResolver.mediaPath(attachmentId);
     }
 
     private void requireVersion(Note note, Long requested) {

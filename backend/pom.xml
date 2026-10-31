@@ -27,6 +27,8 @@
         <lombok.version>1.18.46</lombok.version>
         <!-- 与 Spring Boot BOM 内 querydsl.version 属性区分，避免同名歧义 -->
         <openfeign-querydsl.version>7.7</openfeign-querydsl.version>
+        <!-- R2 / S3 兼容对象存储（Apache 2.0）；版本独立于 Spring Boot BOM -->
+        <awssdk.version>2.57.8</awssdk.version>
 
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
@@ -134,6 +136,16 @@
             <groupId>io.github.openfeign.querydsl</groupId>
             <artifactId>querydsl-jpa</artifactId>
             <version>${openfeign-querydsl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>${awssdk.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>url-connection-client</artifactId>
+            <version>${awssdk.version}</version>
         </dependency>
 
         <dependency>

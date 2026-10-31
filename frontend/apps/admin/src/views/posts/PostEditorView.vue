@@ -24,6 +24,7 @@ const publishing = ref(false)
 const loaded = ref(false)
 const dirty = ref(false)
 const lastSavedAt = ref<string | null>(null)
+const coverPreviewUrl = ref('')
 const tagOptions = ref<string[]>([])
 let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
 let suppressWatch = false
@@ -51,7 +52,8 @@ const isPublished = computed(() => form.publishStatus === 'PUBLISHED')
 const isUnpublished = computed(() => form.publishStatus === 'UNPUBLISHED')
 const slugLocked = computed(() => Boolean(form.publishedRevisionId))
 const coverUrl = computed(() =>
-  form.coverAttachmentId ? `/api/media/${form.coverAttachmentId}` : '',
+  coverPreviewUrl.value ||
+  (form.coverAttachmentId ? `/api/media/${form.coverAttachmentId}` : ''),
 )
 const publicLink = computed(() => (isPublished.value ? publicPostUrl(form.slug) : null))
 const tagOptionNames = computed(() =>
@@ -109,6 +111,7 @@ function resetForm(): void {
   form.summary = ''
   form.slug = ''
   form.coverAttachmentId = ''
+  coverPreviewUrl.value = ''
   form.tags = []
   form.pinned = false
   form.publishStatus = 'DRAFT'
@@ -131,6 +134,7 @@ function applyPost(post: PostDetail): void {
   form.summary = post.summary ?? ''
   form.slug = post.slug ?? ''
   form.coverAttachmentId = post.coverAttachmentId ?? ''
+  coverPreviewUrl.value = post.coverUrl ?? ''
   form.tags = tagNames(post.tags)
   form.pinned = post.pinned
   form.publishStatus = post.publishStatus
@@ -272,9 +276,14 @@ async function unpublish(): Promise<void> {
 }
 
 async function uploadCover(options: UploadRequestOptions): Promise<void> {
+  if (options.file.type && !options.file.type.startsWith('image/')) {
+    ElMessage.error('封面必须是图片')
+    return
+  }
   try {
     const attachment = await mediaApi.upload(options.file)
     form.coverAttachmentId = attachment.id
+    coverPreviewUrl.value = attachment.url
     ElMessage.success('封面已上传')
   } catch (error) {
     notifyError(error, '封面上传失败')
@@ -283,19 +292,27 @@ async function uploadCover(options: UploadRequestOptions): Promise<void> {
 
 function removeCover(): void {
   form.coverAttachmentId = ''
+  coverPreviewUrl.value = ''
 }
 
 function setSummaryFromContent(): void {
   fillSummary()
 }
 
-async function uploadImages(files: File[]): Promise<{ url: string; alt?: string }[]> {
+async function uploadImages(
+  files: File[],
+): Promise<{ url: string; alt?: string; name?: string; mimeType?: string }[]> {
   const uploaded = await Promise.all(files.map((file) => mediaApi.upload(file)))
-  return uploaded.map((item) => ({ url: item.url, alt: item.altText ?? item.originalName }))
+  return uploaded.map((item) => ({
+    url: item.url,
+    alt: item.altText ?? item.originalName,
+    name: item.originalName,
+    mimeType: item.mimeType,
+  }))
 }
 
 function handleUploadError(error: unknown): void {
-  notifyError(error, '图片上传失败')
+  notifyError(error, '文件上传失败')
 }
 
 onMounted(load)

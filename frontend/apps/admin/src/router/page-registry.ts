@@ -60,7 +60,7 @@ export const PAGE_REGISTRY: Record<string, PageRegistryItem> = {
     path: '/media',
     name: 'MediaList',
     title: '媒体库',
-    description: '图片上传与站内稳定 URL',
+    description: '任意文件上传、存储介质与站内 URL',
     icon: Picture,
     component: () => import('@/views/media/MediaListView.vue'),
   },
