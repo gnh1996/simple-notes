@@ -231,6 +231,7 @@ create table outbox (
 - 纯本地笔记：`scope_id = 'local'`，`remote_version = null`，永不入 outbox；
 - 令牌沿用现有 `store`（SQLite），不落 `note_local`；
 - `hash` 算法：同步字段 → 规范化 JSON（键序固定；正文 CRLF→LF；标签去重排序）→ SHA-256。两端只需桌面端一致；服务端 v1 不参与。
+- 本地文件相关表（`recent_file`）与保留文件夹 `local-files` 见 `docs/desktop-local-file.md`；它们不参与同步。
 
 ## 5. 接口契约改动
 
@@ -340,7 +341,8 @@ local_hash != remote_hash 且均 != base_hash  → 冲突
 - 全文搜索：在线走服务端 `keyword`，离线仅标题 + 已缓存正文；
 - 服务端无 `content_hash` 时，内容相同但版本不同的场景要拉正文才能确认（低频，可接受）；
 - 文件夹冲突采用 LWW（服务端优先），如需严格需补 `update_time` / `version`；
-- 附件离线、发布历史、字段级合并、多账号同时在线属于 M4 之后。
+- 附件离线、发布历史、字段级合并、多账号同时在线属于 M4 之后；
+- 打开本地 Markdown 文件 / 临时编辑 / 导入为笔记：独立设计见 `docs/desktop-local-file.md`，导入后复用本文的 `scope` / outbox / 冲突协议。
 
 ## 13. 变更记录
 

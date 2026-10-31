@@ -11,10 +11,14 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"cc.naihao/simplenotes/desktop/internal/api"
 	"cc.naihao/simplenotes/desktop/internal/store"
 )
+
+// LocalFilesFolderID 是内置「本地文件」分组的保留 folder_id（不落 folder_local）。
+const LocalFilesFolderID = "local-files"
 
 // Service 通过 Wails binding 暴露列表 / 打开 / 保存能力。
 type Service struct {
@@ -32,6 +36,14 @@ type CreateInput struct {
 	Kind     string `json:"kind"`
 	Title    string `json:"title"`
 	Content  string `json:"content"`
+	FolderID string `json:"folderId"`
+}
+
+// ImportInput 是「纳入管理」请求：临时文件内容 → 本地 / 服务端笔记。
+type ImportInput struct {
+	Title    string `json:"title"`
+	Content  string `json:"content"`
+	Target   string `json:"target"` // local | server
 	FolderID string `json:"folderId"`
 }
 
@@ -123,51 +135,35 @@ func (d remoteDetail) applyTo(row *store.NoteRow) {
 }
 
 // List 返回本地索引；kind 为空时返回全部（NOTE / POST）。
+// 无 active scope 时只返回纯本地笔记（免登录模式）。
 func (s *Service) List(kind, folderID, keyword string) ([]store.NoteRow, error) {
-	scope, ok, err := s.db.ActiveScope()
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, errors.New("请先登录")
-	}
-	var rows []store.NoteRow
-	if kind != "" {
-		rows, err = s.db.ListNotes(scope.ScopeID, kind, folderID, keyword)
-	} else {
-		notes, errNotes := s.db.ListNotes(scope.ScopeID, "NOTE", folderID, keyword)
-		if errNotes != nil {
-			return nil, errNotes
-		}
-		posts, errPosts := s.db.ListNotes(scope.ScopeID, "POST", folderID, keyword)
-		if errPosts != nil {
-			return nil, errPosts
-		}
-		rows = append(notes, posts...)
-	}
+	scope, hasScope, err := s.db.ActiveScope()
 	if err != nil {
 		return nil, err
 	}
 
-	// 纯本地 scope（冲突副本）也进入列表；两种 scope 合并后按置顶 / 更新时间排序。
-	var local []store.NoteRow
-	if kind != "" {
-		local, err = s.db.ListNotes("local", kind, "", keyword)
-	} else {
-		localNotes, errNotes := s.db.ListNotes("local", "NOTE", "", keyword)
-		localPosts, errPosts := s.db.ListNotes("local", "POST", "", keyword)
-		if errNotes != nil || errPosts != nil {
-			return nil, errors.Join(errNotes, errPosts)
+	rows := make([]store.NoteRow, 0, 32)
+	// 服务端 scope：folderID 指向内置「本地文件」时跳过。
+	if hasScope && folderID != LocalFilesFolderID {
+		active, err := s.listScope(scope.ScopeID, kind, folderID, keyword)
+		if err != nil {
+			return nil, err
 		}
-		local = append(localNotes, localPosts...)
+		rows = append(rows, active...)
 	}
-	if err != nil {
-		return nil, err
+
+	// 本地 scope：仅在未筛选服务端文件夹时出现。
+	if folderID == "" || folderID == LocalFilesFolderID {
+		local, err := s.listScope("local", kind, folderID, keyword)
+		if err != nil {
+			return nil, err
+		}
+		for i := range local {
+			local[i].LocalOnly = true
+		}
+		rows = append(rows, local...)
 	}
-	for i := range local {
-		local[i].LocalOnly = true
-	}
-	rows = append(rows, local...)
+
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].Pinned != rows[j].Pinned {
 			return rows[i].Pinned
@@ -176,21 +172,44 @@ func (s *Service) List(kind, folderID, keyword string) ([]store.NoteRow, error) 
 	})
 
 	for i := range rows {
-		rows[i].Conflict = rows[i].Dirty && (rows[i].RemoteVersion != rows[i].BaseVersion || rows[i].RemoteDeleted)
+		rows[i].Conflict = !rows[i].LocalOnly && rows[i].Dirty &&
+			(rows[i].RemoteVersion != rows[i].BaseVersion || rows[i].RemoteDeleted)
 	}
 	return rows, nil
 }
 
-// Folders 返回本地文件夹镜像。
+func (s *Service) listScope(scopeID, kind, folderID, keyword string) ([]store.NoteRow, error) {
+	if kind != "" {
+		return s.db.ListNotes(scopeID, kind, folderID, keyword)
+	}
+	notes, errNotes := s.db.ListNotes(scopeID, "NOTE", folderID, keyword)
+	posts, errPosts := s.db.ListNotes(scopeID, "POST", folderID, keyword)
+	return append(notes, posts...), errors.Join(errNotes, errPosts)
+}
+
+// Folders 返回本地文件夹镜像；有「本地文件」笔记时追加内置分组。
 func (s *Service) Folders() ([]store.FolderRow, error) {
-	scope, ok, err := s.db.ActiveScope()
+	scope, hasScope, err := s.db.ActiveScope()
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
-		return nil, errors.New("请先登录")
+	out := make([]store.FolderRow, 0, 16)
+
+	hasLocal, err := s.db.HasNoteInFolder("local", LocalFilesFolderID)
+	if err != nil {
+		return nil, err
 	}
-	return s.db.ListFolders(scope.ScopeID)
+	if hasLocal {
+		out = append(out, store.FolderRow{ID: LocalFilesFolderID, Name: "本地文件", Sort: -100})
+	}
+	if hasScope {
+		folders, err := s.db.ListFolders(scope.ScopeID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, folders...)
+	}
+	return out, nil
 }
 
 // Open 返回笔记内容：已缓存且版本未变（或本地有未推送修改）时直接读本地，否则拉详情。
@@ -313,39 +332,52 @@ func (s *Service) copyRemoteSide(scopeID, kind string, detail remoteDetail) erro
 	return err
 }
 
-// Create 离线新建：本地先生成 UUID 并写入，再尝试推送；失败进 outbox。
+// Create 离线新建：本地先生成 UUID 并写入，再尝试推送；未登录时只写本地。
 func (s *Service) Create(input CreateInput) (*SaveResult, error) {
-	scope, ok, err := s.db.ActiveScope()
+	scope, hasScope, err := s.db.ActiveScope()
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
-		return nil, errors.New("请先登录")
-	}
 	kind := input.Kind
-	if kind != "POST" {
+	if kind != "POST" || !hasScope {
 		kind = "NOTE"
 	}
 	title := strings.TrimSpace(input.Title)
 	if title == "" {
 		title = "未命名"
 	}
+	scopeID := "local"
+	folderID := ""
+	if hasScope {
+		scopeID = scope.ScopeID
+		folderID = input.FolderID
+	}
 	row := store.NoteRow{
 		ID:            store.NewUUID(),
 		Kind:          kind,
 		Title:         title,
 		Content:       input.Content,
-		FolderID:      input.FolderID,
+		FolderID:      folderID,
 		Tags:          []string{},
 		ContentLoaded: true,
 		UpdatedAt:     time.Now().UnixMilli(),
 	}
 	tagsJSON, _ := json.Marshal(row.Tags)
 	hash := ContentHash(row)
-	if err := s.db.InsertNoteLocal(scope.ScopeID, row, string(tagsJSON), hash); err != nil {
+	if err := s.db.InsertNoteLocal(scopeID, row, string(tagsJSON), hash); err != nil {
 		return nil, fmt.Errorf("保存本地: %w", err)
 	}
+	if !hasScope {
+		_ = s.db.MarkLocalOnlySaved(scopeID, row.ID)
+		row.Dirty = false
+		row.LocalOnly = true
+		return &SaveResult{State: "synced", Note: &row, Message: "本地笔记已保存"}, nil
+	}
+	return s.pushCreate(scopeID, row, hash)
+}
 
+// pushCreate 把一条已写入本地的笔记推到服务端；失败入 outbox。
+func (s *Service) pushCreate(scopeID string, row store.NoteRow, hash string) (*SaveResult, error) {
 	body := map[string]any{
 		"id":       row.ID,
 		"title":    row.Title,
@@ -356,34 +388,148 @@ func (s *Service) Create(input CreateInput) (*SaveResult, error) {
 	}
 	raw, _ := json.Marshal(body)
 	path := "/desktop/notes"
-	if kind == "POST" {
+	if row.Kind == "POST" {
 		path = "/desktop/posts"
 	}
 	resp, err := s.api.Do(api.Request{Method: http.MethodPost, Path: path, Body: string(raw)})
 	if err != nil {
-		s.enqueueCreate(scope.ScopeID, kind, body)
+		s.enqueueCreate(scopeID, row.Kind, body)
 		return &SaveResult{State: "offline", Note: &row, Message: "已离线保存，联网后自动创建"}, nil
 	}
 	if resp.Status == http.StatusOK || resp.Status == http.StatusCreated {
 		version := parseVersion(resp.Body)
-		_ = s.db.MarkNoteSynced(scope.ScopeID, row.ID, version, hash)
+		_ = s.db.MarkNoteSynced(scopeID, row.ID, version, hash)
 		row.BaseVersion = version
 		row.RemoteVersion = version
+		row.Dirty = false
 		return &SaveResult{State: "synced", Note: &row, Message: "已创建"}, nil
 	}
 	if resp.Status == http.StatusConflict {
-		if detail, fetchErr := s.fetchDetail(kind, row.ID); fetchErr == nil {
-			_ = s.db.MarkNoteSynced(scope.ScopeID, row.ID, detail.Version, hash)
+		if detail, fetchErr := s.fetchDetail(row.Kind, row.ID); fetchErr == nil {
+			_ = s.db.MarkNoteSynced(scopeID, row.ID, detail.Version, hash)
 			row.BaseVersion = detail.Version
 			row.RemoteVersion = detail.Version
+			row.Dirty = false
 			return &SaveResult{State: "synced", Note: &row, Message: "已创建"}, nil
 		}
 	}
 	if resp.Status == http.StatusUnauthorized || resp.Status >= 500 {
-		s.enqueueCreate(scope.ScopeID, kind, body)
+		s.enqueueCreate(scopeID, row.Kind, body)
 		return &SaveResult{State: "offline", Note: &row, Message: "已离线保存，联网后自动创建"}, nil
 	}
 	return &SaveResult{State: "error", Note: &row, Message: api.ErrorMessage(resp.Status, resp.Body)}, nil
+}
+
+// ImportFile 把临时编辑内容纳入管理：仅本地（内置「本地文件」）或服务端。
+func (s *Service) ImportFile(input ImportInput) (*SaveResult, error) {
+	title := strings.TrimSpace(input.Title)
+	if title == "" {
+		title = "未命名"
+	}
+	if utf8.RuneCountInString(title) > 200 {
+		return nil, errors.New("标题不能超过 200 个字符")
+	}
+
+	row := store.NoteRow{
+		ID:            store.NewUUID(),
+		Kind:          "NOTE",
+		Title:         title,
+		Content:       input.Content,
+		Tags:          []string{},
+		ContentLoaded: true,
+		UpdatedAt:     time.Now().UnixMilli(),
+	}
+
+	if input.Target != "server" {
+		row.FolderID = LocalFilesFolderID
+		tagsJSON, _ := json.Marshal(row.Tags)
+		hash := ContentHash(row)
+		if err := s.db.InsertNoteLocal("local", row, string(tagsJSON), hash); err != nil {
+			return nil, fmt.Errorf("保存本地: %w", err)
+		}
+		_ = s.db.MarkLocalOnlySaved("local", row.ID)
+		row.Dirty = false
+		row.LocalOnly = true
+		return &SaveResult{State: "synced", Note: &row, Message: "已保存为本地笔记"}, nil
+	}
+
+	scope, ok, err := s.db.ActiveScope()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errors.New("请先登录后再同步到服务端")
+	}
+	folderID := input.FolderID
+	if folderID == LocalFilesFolderID {
+		folderID = ""
+	}
+	row.FolderID = folderID
+	tagsJSON, _ := json.Marshal(row.Tags)
+	hash := ContentHash(row)
+	if err := s.db.InsertNoteLocal(scope.ScopeID, row, string(tagsJSON), hash); err != nil {
+		return nil, fmt.Errorf("保存本地: %w", err)
+	}
+	res, err := s.pushCreate(scope.ScopeID, row, hash)
+	if err != nil {
+		return nil, err
+	}
+	return s.fallbackToLocal(scope.ScopeID, res), nil
+}
+
+// fallbackToLocal 在服务端明确拒绝创建时把笔记退回「本地文件」，避免留下无法保存的脏行。
+func (s *Service) fallbackToLocal(scopeID string, result *SaveResult) *SaveResult {
+	if result == nil || result.State != "error" || result.Note == nil {
+		return result
+	}
+	if err := s.db.MoveNoteScope(scopeID, "local", result.Note.ID, LocalFilesFolderID); err != nil {
+		return result
+	}
+	_ = s.db.MarkLocalOnlySaved("local", result.Note.ID)
+	result.Note.LocalOnly = true
+	result.Note.FolderID = LocalFilesFolderID
+	result.Note.Dirty = false
+	result.Message = "服务端创建失败，已保留为本地笔记：" + result.Message
+	return result
+}
+
+// PromoteLocal 把仅本地笔记迁移到服务端 scope（保留 id，替换文件夹）。
+func (s *Service) PromoteLocal(id, folderID string) (*SaveResult, error) {
+	scope, ok, err := s.db.ActiveScope()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errors.New("请先登录后再同步到服务端")
+	}
+	scopeID, row, found, err := s.db.GetNoteAny(id)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, errors.New("本地索引中没有这篇内容")
+	}
+	if scopeID != "local" {
+		return nil, errors.New("只有纯本地笔记可以同步到服务端")
+	}
+	if !row.ContentLoaded {
+		return nil, errors.New("笔记正文尚未加载")
+	}
+	if folderID == LocalFilesFolderID {
+		folderID = ""
+	}
+	if err := s.db.MoveNoteScope("local", scope.ScopeID, id, folderID); err != nil {
+		return nil, fmt.Errorf("迁移本地笔记: %w", err)
+	}
+	row.FolderID = folderID
+	row.Dirty = true
+	row.LocalOnly = false
+	hash := ContentHash(row)
+	res, err := s.pushCreate(scope.ScopeID, row, hash)
+	if err != nil {
+		return nil, err
+	}
+	return s.fallbackToLocal(scope.ScopeID, res), nil
 }
 
 func (s *Service) enqueueCreate(scopeID, kind string, body map[string]any) {

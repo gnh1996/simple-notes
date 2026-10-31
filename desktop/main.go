@@ -7,10 +7,12 @@ import (
 	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"cc.naihao/simplenotes/desktop/internal/api"
 	"cc.naihao/simplenotes/desktop/internal/auth"
 	"cc.naihao/simplenotes/desktop/internal/folders"
+	"cc.naihao/simplenotes/desktop/internal/localfile"
 	"cc.naihao/simplenotes/desktop/internal/notes"
 	"cc.naihao/simplenotes/desktop/internal/store"
 	"cc.naihao/simplenotes/desktop/internal/syncsvc"
@@ -43,6 +45,7 @@ func main() {
 	}
 
 	apiService := api.New(db, baseURL)
+	fileService := localfile.New(db)
 
 	app := application.New(application.Options{
 		Name:        "Simple Notes",
@@ -53,6 +56,7 @@ func main() {
 			application.NewService(syncsvc.New(db, apiService)),
 			application.NewService(folders.New(db, apiService)),
 			application.NewService(notes.New(db, apiService)),
+			application.NewService(fileService),
 			application.NewService(system.New(db, baseURL)),
 		},
 		Assets: application.AssetOptions{
@@ -64,7 +68,7 @@ func main() {
 		},
 	})
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Simple Notes",
 		Width:            1180,
 		Height:           780,
@@ -72,6 +76,23 @@ func main() {
 		MinHeight:        600,
 		BackgroundColour: application.NewRGB(18, 18, 18),
 		URL:              "/",
+		EnableFileDrop:   true,
+	})
+
+	// 有未保存内容时先拦截关闭，由前端确认保存 / 放弃后再退出。
+	window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		if fileService.ShouldBlockClose() {
+			event.Cancel()
+			window.EmitEvent("app:close-requested")
+		}
+	})
+
+	// 原生拖拽事件由 Go 转发给前端：WebView 侧只监听 app:files-dropped。
+	window.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
+		files := event.Context().DroppedFiles()
+		if len(files) > 0 {
+			window.EmitEvent("app:files-dropped", files)
+		}
 	})
 
 	if err := app.Run(); err != nil {

@@ -2,7 +2,7 @@
 
 桌面客户端：随手记与博客写作、发布到 Web 博客端。UI 为 **Vue 3 + TypeScript**，壳与本地能力由 **Go + Wails v3** 提供。
 
-> **当前阶段：技术骨架 + 编辑器 POC（可构建、可运行）**。包含窗口、Vditor + Lute 编辑器（方言 v2）、Go 侧 HTTP 转发、SQLite 骨架；同步协议见 `docs/desktop-sync.md`（M0–M4），页面信息架构随功能设计推进。
+> **当前阶段：M0–M4 同步骨架 + 本地 Markdown（v1）已实现**。包含窗口、Vditor + Lute 编辑器（方言 v2）、Go 侧 HTTP 转发、SQLite、本地文件打开 / 保存 / 导出、免登录本地笔记；同步协议见 `docs/desktop-sync.md`，本地文件设计见 `docs/desktop-local-file.md`。
 
 ## 架构
 
@@ -12,7 +12,8 @@ desktop/（Go module：cc.naihao/simplenotes/desktop）
 ├── internal/
 │   ├── api/                通用 HTTP 转发（Bearer 注入；前端不直连后端）
 │   ├── auth/               登录 / 登出 / scope（令牌只落 SQLite）
-│   ├── notes/              本地索引查询、打开即拉正文、内容 hash
+│   ├── notes/              本地索引查询、打开即拉正文、导入 / 同步到服务端、内容 hash
+│   ├── localfile/          本地 Markdown 打开 / 保存 / 另存为 / 导出 / 最近记录
 │   ├── syncsvc/            manifest 索引同步（游标 + 墓碑）
 │   ├── store/              SQLite（认证 + scope / note_local / folder_local / outbox）
 │   └── system/             运行状态（版本 / API 地址 / 本地库 / 会话）
@@ -21,7 +22,7 @@ desktop/（Go module：cc.naihao/simplenotes/desktop）
 └── Taskfile.yml            build / dev / run / package / bindings
 
 frontend/apps/desktop/（pnpm workspace 成员：@simple-notes/desktop）
-├── src/                    Vue 应用（登录 / 索引列表 / 只读预览 / 编辑器 POC）
+├── src/                    Vue 应用（登录 / 免登录模式 / 索引列表 / 临时编辑 / 编辑器）
 ├── bindings/               wails3 生成的 TS bindings（随仓库提交）
 └── scripts/sync-wails.mjs  把 dist 同步到 desktop/web/dist
 ```
@@ -90,7 +91,17 @@ pnpm build:desktop        # 只构建；之后在 desktop/ 执行 wails3 build
 - **权限**：`entry:desktop` + `desktop:note` / `desktop:post`（`V13` 迁移）；`DESKTOP` 会话不能调用 `/api/admin/**`
 - **隔离**：本地表按 `scope_id` 归属；切换账号只显示当前 scope 与纯本地数据
 
-## 内存基线（POC 实测）
+## 本地文件与免登录模式（`docs/desktop-local-file.md`）
+
+- **临时编辑**：打开 `.md` / `.markdown`（≤ 5 MB、UTF-8）不写 SQLite、不进列表、不参与同步；`Ctrl+S` 显式写回源文件，保存前比对内容 hash，外部修改时提示覆盖 / 另存为 / 重新加载。
+- **最近打开**：全局记录最多 20 条，只存路径 / 文件名 / 时间；可单条移除 / 清空。
+- **纳入管理**：临时编辑可保存为「仅本地」（`scope='local'`，归入内置「本地文件」分组）或「服务端」（复用离线新建 + outbox + 409 对齐）。
+- **免登录模式**：登录页选择「仅使用本地笔记」；新建 / 搜索 / 编辑 / 删除 / 纳入本地笔记均不调用服务端。
+- **导出**：已管理笔记可导出单篇 `.md`（正文、UTF-8 无 BOM、LF），不改版本 / dirty，不建立文件关联；已管理笔记不支持回退为本地文件。
+- **关闭保护**：有未保存的临时文件时，窗口关闭由 Go `WindowClosing` 钩子拦截，前端确认保存 / 放弃后退出。
+- 本地库新增 `recent_file` 表；`note_local` 结构未变，`local-files` 是保留 `folder_id`，不写 `folder_local`。
+
+
 
 Windows 11 / WebView2，空闲 20s 后按进程树统计：
 
@@ -140,7 +151,7 @@ Windows 11 / WebView2，空闲 20s 后按进程树统计：
 - Linux / macOS 尚未实机验证：需要 GTK4 + WebKitGTK 6.0 / Xcode CLI；中文输入法（Windows 微软拼音、Linux fcitx5 + Wayland）必须在实机走查。
 - 当前开发容器若无图形环境，只能跑 `go test` / 前端 typecheck / build；GUI 需桌面环境。
 
-## 下一步（功能设计阶段）
+## 下一步
 
 - [x] 领域模型与本地存储 schema（笔记、草稿、发布状态、标签；见 `docs/desktop-sync.md`）
 - [x] 同步协议设计（懒加载 manifest、冲突策略、离线新建、账号隔离；见 `docs/desktop-sync.md`）
@@ -149,6 +160,7 @@ Windows 11 / WebView2，空闲 20s 后按进程树统计：
 - [x] M2：删除 / 墓碑 / 文件夹写 / outbox 重试
 - [x] M3：离线新建（客户端 UUID）/ 冲突 diff / 副本
 - [x] M4：发布状态展示 + 管理端深链 + 冲突静默对齐（发布 / 下架只在 admin）
-- [ ] 三平台实机验收（Linux / macOS、输入法、HiDPI）与启动 / 内存打磨
+- [x] 本地文件 v1：临时编辑 / 最近打开 / 免登录本地笔记 / 纳入管理 / 导出（见 `docs/desktop-local-file.md`）
+- [ ] 三平台实机验收（Linux / macOS、输入法、HiDPI、本地文件对话框 / 拖拽）与启动 / 内存打磨
 - [x] 编辑器与方言（Vditor 4.0.1 + Lute，2026-10-31）
 - [ ] 内存 / 启动时间门槛与三平台实机验收

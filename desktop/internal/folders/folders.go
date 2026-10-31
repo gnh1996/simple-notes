@@ -37,11 +37,14 @@ type folderPayload struct {
 	UpdateTime string `json:"updateTime"`
 }
 
-// List 返回本地文件夹镜像。
+// List 返回本地文件夹镜像；未登录 / 免登录模式返回空列表。
 func (s *Service) List() ([]store.FolderRow, error) {
 	scope, ok, err := s.active()
-	if err != nil || !ok {
+	if err != nil {
 		return nil, err
+	}
+	if !ok {
+		return []store.FolderRow{}, nil
 	}
 	return s.db.ListFolders(scope.ScopeID)
 }

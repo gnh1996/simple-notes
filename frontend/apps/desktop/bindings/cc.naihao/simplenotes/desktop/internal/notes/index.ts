@@ -9,6 +9,7 @@ export {
 export type {
     CreateInput,
     DeleteResult,
+    ImportInput,
     RemoteSnapshot,
     SaveInput,
     SaveResult

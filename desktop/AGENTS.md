@@ -27,6 +27,7 @@ Go 1.26+ + Wails v3（WebView）桌面端；前端是 `frontend/apps/desktop`（
 - 本地数据库只存桌面端私有数据；认证数据不参与内容同步 / 导出 / 备份
 - **桌面端接口只走 `/api/desktop/**`**（会话端 `DESKTOP`，权限码 `desktop:note` / `desktop:post`）；`DESKTOP` 会话不能调用 `/api/admin/**`（`SessionJwtFilter` 校验）
 - **同步按 `docs/desktop-sync.md`**：manifest 只写索引，不拉正文；打开时按 `base_version` 拉详情并算 hash；推送用 `version` CAS，409 转冲突
+- **本地文件按 `docs/desktop-local-file.md`**：临时编辑不写 `note_local`；纳入管理走 `notes.ImportFile`；`folder_id='local-files'` 是保留虚拟分组，不写 `folder_local`、同步前必须清空
 - **发布 / 下架只在 admin**：桌面端只展示 `publishStatus` / `hasUnpublishedChanges` 并提供 `System.OpenAdmin` 深链，不新增桌面发布接口
 - JSON 用 Go 标准库；不引入需要 CGO 的库（SQLite 已选纯 Go 驱动）
 

@@ -33,7 +33,7 @@ export function Delete(id: string): $CancellablePromise<$models.Result | null> {
 }
 
 /**
- * List 返回本地文件夹镜像。
+ * List 返回本地文件夹镜像；未登录 / 免登录模式返回空列表。
  */
 export function List(): $CancellablePromise<store$0.FolderRow[] | null> {
     return $Call.ByID(2494583371);

@@ -27,6 +27,20 @@ export interface DeleteResult {
 }
 
 /**
+ * ImportInput 是「纳入管理」请求：临时文件内容 → 本地 / 服务端笔记。
+ */
+export interface ImportInput {
+    "title": string;
+    "content": string;
+
+    /**
+     * local | server
+     */
+    "target": string;
+    "folderId": string;
+}
+
+/**
  * RemoteSnapshot 是冲突时服务端那一侧的完整内容（用于 diff）。
  */
 export interface RemoteSnapshot {

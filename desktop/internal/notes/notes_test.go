@@ -1,8 +1,13 @@
 package notes
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
+	"cc.naihao/simplenotes/desktop/internal/api"
 	"cc.naihao/simplenotes/desktop/internal/store"
 )
 
@@ -45,5 +50,186 @@ func TestSortedTagNames(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("got %v, want %v", got, want)
 		}
+	}
+}
+
+func openTestNotes(t *testing.T) *Service {
+	t.Helper()
+	db, err := store.OpenAt(filepath.Join(t.TempDir(), "desktop.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return New(db, api.New(db, "http://127.0.0.1:1/api"))
+}
+
+func TestImportFileLocalWorksWithoutLogin(t *testing.T) {
+	svc := openTestNotes(t)
+	result, err := svc.ImportFile(ImportInput{Title: "本地导入", Content: "正文", Target: "local"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || result.Note == nil {
+		t.Fatalf("result = %+v", result)
+	}
+	note := result.Note
+	if !note.LocalOnly || note.FolderID != LocalFilesFolderID || note.Dirty {
+		t.Fatalf("本地导入状态错误: %+v", note)
+	}
+
+	rows, err := svc.List("NOTE", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ID != note.ID || !rows[0].LocalOnly {
+		t.Fatalf("列表 = %+v", rows)
+	}
+	filtered, err := svc.List("NOTE", LocalFilesFolderID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 {
+		t.Fatalf("本地文件分组 = %+v", filtered)
+	}
+
+	folders, err := svc.Folders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(folders) != 1 || folders[0].ID != LocalFilesFolderID {
+		t.Fatalf("folders = %+v", folders)
+	}
+
+	saved, err := svc.Save(SaveInput{ID: note.ID, Title: "改名", Content: "新正文"})
+	if err != nil || saved == nil || saved.State != "synced" {
+		t.Fatalf("save = %+v, err=%v", saved, err)
+	}
+	deleted, err := svc.Delete(note.ID)
+	if err != nil || deleted == nil || deleted.State != "deleted" {
+		t.Fatalf("delete = %+v, err=%v", deleted, err)
+	}
+	rows, _ = svc.List("NOTE", "", "")
+	if len(rows) != 0 {
+		t.Fatalf("删除后仍有记录: %+v", rows)
+	}
+}
+
+func TestCreateWithoutLoginWritesLocal(t *testing.T) {
+	svc := openTestNotes(t)
+	result, err := svc.Create(CreateInput{Kind: "POST", Title: "本地新建", Content: ""})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || result.Note == nil || !result.Note.LocalOnly {
+		t.Fatalf("result = %+v", result)
+	}
+	if result.Note.Kind != "NOTE" {
+		t.Fatalf("免登录模式应强制 NOTE，got %s", result.Note.Kind)
+	}
+	if result.Note.FolderID != "" {
+		t.Fatalf("应用内新建应为未分类，got %q", result.Note.FolderID)
+	}
+}
+
+func TestPromoteLocalMovesScopeAndCreates(t *testing.T) {
+	db, err := store.OpenAt(filepath.Join(t.TempDir(), "desktop.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.SaveScope(store.Scope{
+		ScopeID: "srv:s", ServerURL: "http://s", UserID: "u", Username: "u",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := New(db, api.New(db, "http://unused"))
+	imported, err := svc.ImportFile(ImportInput{Title: "待同步", Content: "正文", Target: "local"})
+	if err != nil || imported == nil || imported.Note == nil {
+		t.Fatalf("import: %+v, err=%v", imported, err)
+	}
+
+	var body map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/desktop/notes" || r.Method != http.MethodPost {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"version":7}`))
+	}))
+	defer server.Close()
+	svc = New(db, api.New(db, server.URL))
+
+	result, err := svc.PromoteLocal(imported.Note.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || result.State != "synced" || result.Note == nil {
+		t.Fatalf("result = %+v", result)
+	}
+	if result.Note.LocalOnly || result.Note.FolderID != "" || result.Note.Dirty {
+		t.Fatalf("迁移后状态错误: %+v", result.Note)
+	}
+	if body["id"] != imported.Note.ID {
+		t.Fatalf("POST id = %v, want %s", body["id"], imported.Note.ID)
+	}
+	if body["folderId"] != nil {
+		t.Fatalf("local-files 不应发送到服务端: %v", body["folderId"])
+	}
+	if _, found, _ := db.GetNote("local", imported.Note.ID); found {
+		t.Fatal("迁移后不应仍在 local")
+	}
+	moved, found, err := db.GetNote("srv:s", imported.Note.ID)
+	if err != nil || !found {
+		t.Fatalf("moved: found=%v err=%v", found, err)
+	}
+	if moved.Dirty || moved.BaseVersion != 7 {
+		t.Fatalf("同步后本地状态错误: %+v", moved)
+	}
+}
+
+func TestPromoteLocalFallsBackOnServerRejection(t *testing.T) {
+	db, err := store.OpenAt(filepath.Join(t.TempDir(), "desktop.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.SaveScope(store.Scope{
+		ScopeID: "srv:s", ServerURL: "http://s", UserID: "u", Username: "u",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := New(db, api.New(db, "http://unused"))
+	imported, err := svc.ImportFile(ImportInput{Title: "会被拒绝", Content: "正文", Target: "local"})
+	if err != nil || imported == nil || imported.Note == nil {
+		t.Fatalf("import: %+v, err=%v", imported, err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"message":"bad folder"}`))
+	}))
+	defer server.Close()
+	svc = New(db, api.New(db, server.URL))
+
+	result, err := svc.PromoteLocal(imported.Note.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || result.State != "error" || result.Note == nil {
+		t.Fatalf("result = %+v", result)
+	}
+	if !result.Note.LocalOnly || result.Note.FolderID != LocalFilesFolderID {
+		t.Fatalf("应回退为本地文件: %+v", result.Note)
+	}
+	if _, found, _ := db.GetNote("srv:s", imported.Note.ID); found {
+		t.Fatal("回退后不应留在服务端 scope")
+	}
+	local, found, _ := db.GetNote("local", imported.Note.ID)
+	if !found || local.Dirty {
+		t.Fatalf("回退后的本地行错误: found=%v row=%+v", found, local)
 	}
 }

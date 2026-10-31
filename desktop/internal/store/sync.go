@@ -152,6 +152,13 @@ func (s *Store) migrateSync() error {
 			created_at    INTEGER NOT NULL,
 			PRIMARY KEY (scope_id, entity, id)
 		);
+
+		-- 最近打开的本地文件：只记录路径 / 文件名 / 时间，不存正文（docs/desktop-local-file.md §3.5）。
+		CREATE TABLE IF NOT EXISTS recent_file (
+			path      TEXT PRIMARY KEY,
+			name      TEXT NOT NULL,
+			opened_at INTEGER NOT NULL
+		);
 	`)
 	if err != nil {
 		return fmt.Errorf("初始化同步表结构: %w", err)
@@ -590,6 +597,42 @@ func (s *Store) MarkNoteDeleteSynced(scopeID, id string) error {
 func (s *Store) DeleteNoteLocal(scopeID, id string) error {
 	_, err := s.db.Exec(`DELETE FROM note_local WHERE scope_id = ? AND id = ?`, scopeID, id)
 	return err
+}
+
+// MoveNoteScope 把一条纯本地笔记迁移到服务端 scope（保留 id，替换文件夹）。
+func (s *Store) MoveNoteScope(fromScope, toScope, id, folderID string) error {
+	result, err := s.db.Exec(`
+		UPDATE note_local
+		   SET scope_id = ?, folder_id = ?, dirty = 1, updated_at = ?
+		 WHERE scope_id = ? AND id = ?
+	`, toScope, nullable(folderID), time.Now().UnixMilli(), fromScope, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// HasNoteInFolder 判断某个 scope 下是否存在指定文件夹的笔记（用于内置「本地文件」分组）。
+func (s *Store) HasNoteInFolder(scopeID, folderID string) (bool, error) {
+	var one int
+	err := s.db.QueryRow(`
+		SELECT 1 FROM note_local
+		 WHERE scope_id = ? AND folder_id = ? AND deleted = 0 LIMIT 1
+	`, scopeID, folderID).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // CopyNoteLocal 把一行复制到指定 scope（删除冲突时「保留为本地副本」用）。

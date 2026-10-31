@@ -19,7 +19,7 @@ import * as store$0 from "../store/models.js";
 import * as $models from "./models.js";
 
 /**
- * Create 离线新建：本地先生成 UUID 并写入，再尝试推送；失败进 outbox。
+ * Create 离线新建：本地先生成 UUID 并写入，再尝试推送；未登录时只写本地。
  */
 export function Create(input: $models.CreateInput): $CancellablePromise<$models.SaveResult | null> {
     return $Call.ByID(2191819507, input);
@@ -33,14 +33,22 @@ export function Delete(id: string): $CancellablePromise<$models.DeleteResult | n
 }
 
 /**
- * Folders 返回本地文件夹镜像。
+ * Folders 返回本地文件夹镜像；有「本地文件」笔记时追加内置分组。
  */
 export function Folders(): $CancellablePromise<store$0.FolderRow[] | null> {
     return $Call.ByID(2467069980);
 }
 
 /**
+ * ImportFile 把临时编辑内容纳入管理：仅本地（内置「本地文件」）或服务端。
+ */
+export function ImportFile(input: $models.ImportInput): $CancellablePromise<$models.SaveResult | null> {
+    return $Call.ByID(2516404828, input);
+}
+
+/**
  * List 返回本地索引；kind 为空时返回全部（NOTE / POST）。
+ * 无 active scope 时只返回纯本地笔记（免登录模式）。
  */
 export function List(kind: string, folderID: string, keyword: string): $CancellablePromise<store$0.NoteRow[] | null> {
     return $Call.ByID(2217652139, kind, folderID, keyword);
@@ -51,6 +59,13 @@ export function List(kind: string, folderID: string, keyword: string): $Cancella
  */
 export function Open(id: string): $CancellablePromise<store$0.NoteRow | null> {
     return $Call.ByID(1016524335, id);
+}
+
+/**
+ * PromoteLocal 把仅本地笔记迁移到服务端 scope（保留 id，替换文件夹）。
+ */
+export function PromoteLocal(id: string, folderID: string): $CancellablePromise<$models.SaveResult | null> {
+    return $Call.ByID(1985059508, id, folderID);
 }
 
 /**
