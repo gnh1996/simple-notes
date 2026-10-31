@@ -2,7 +2,7 @@ package cc.naihao.simplenotes.web;
 
 import cc.naihao.simplenotes.service.AttachmentService;
 import cc.naihao.simplenotes.web.dto.AttachmentResponse;
-import java.util.List;
+import cc.naihao.simplenotes.web.dto.PageResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -27,8 +27,11 @@ public class AdminMediaController {
 
     @GetMapping
     @PreAuthorize("@authz.can('admin:media')")
-    public List<AttachmentResponse> list() {
-        return attachmentService.list();
+    public PageResponse<AttachmentResponse> list(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "24") int size,
+            @RequestParam(required = false) String keyword) {
+        return attachmentService.list(page, size, keyword);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

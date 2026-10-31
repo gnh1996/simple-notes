@@ -3,6 +3,7 @@ package cc.naihao.simplenotes.service;
 import cc.naihao.simplenotes.common.ApiException;
 import cc.naihao.simplenotes.config.StorageProperties;
 import cc.naihao.simplenotes.domain.Attachment;
+import cc.naihao.simplenotes.domain.QAttachment;
 import cc.naihao.simplenotes.domain.StorageMode;
 import cc.naihao.simplenotes.repository.AttachmentRepository;
 import cc.naihao.simplenotes.repository.NoteRepository;
@@ -10,6 +11,9 @@ import cc.naihao.simplenotes.repository.NoteRevisionRepository;
 import cc.naihao.simplenotes.security.AuthPrincipal;
 import cc.naihao.simplenotes.security.SecurityUtils;
 import cc.naihao.simplenotes.web.dto.AttachmentResponse;
+import cc.naihao.simplenotes.web.dto.PageResponse;
+import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.jpa.impl.JPAQueryFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -44,6 +48,7 @@ public class AttachmentService {
     private final MediaUrlResolver urlResolver;
     private final R2PresignService presignService;
     private final StorageProperties properties;
+    private final JPAQueryFactory queryFactory;
 
     @Transactional
     public AttachmentResponse upload(MultipartFile file) {
@@ -94,12 +99,28 @@ public class AttachmentService {
     }
 
     @Transactional(readOnly = true)
-    public List<AttachmentResponse> list() {
+    public PageResponse<AttachmentResponse> list(int page, int size, String keyword) {
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.clamp(size, 1, 100);
         AuthPrincipal principal = SecurityUtils.requirePrincipal();
-        List<Attachment> attachments = principal.root()
-                ? attachmentRepository.findAllByOrderByCreateTimeDesc()
-                : attachmentRepository.findAllByOwnerIdOrderByCreateTimeDesc(principal.userId());
-        return attachments.stream().map(this::toResponse).toList();
+        QAttachment attachment = QAttachment.attachment;
+
+        BooleanExpression predicate = principal.root()
+                ? attachment.id.isNotNull()
+                : attachment.ownerId.eq(principal.userId());
+        if (keyword != null && !keyword.isBlank()) {
+            predicate = predicate.and(attachment.originalName.containsIgnoreCase(keyword.trim()));
+        }
+
+        List<Attachment> rows = queryFactory.selectFrom(attachment)
+                .where(predicate)
+                .orderBy(attachment.createTime.desc())
+                .offset((long) (safePage - 1) * safeSize)
+                .limit(safeSize)
+                .fetch();
+        Long total = queryFactory.select(attachment.count()).from(attachment).where(predicate).fetchOne();
+        List<AttachmentResponse> items = rows.stream().map(this::toResponse).toList();
+        return new PageResponse<>(items, total == null ? 0 : total, safePage, safeSize);
     }
 
     /** 删除前检查封面引用；正文内引用 v1 不做完整反向解析（孤儿清理 P1）。 */

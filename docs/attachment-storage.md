@@ -562,7 +562,7 @@ location /oss/ {
 | `GET /api/media/{id}` | 匿名可读；LOCAL / DB 流式返回，OSS 302 到 `/oss/{key}`（稳定端点 / 兜底） |
 | `GET /oss/{key}` | OSS 直链；公开 bucket 由 Nginx 直接代理，私有 bucket 由 Nginx / 后端签名后代理或 302 |
 | `POST /api/admin/media` | 上传；`multipart/form-data`，字段 `file`；任意文件 |
-| `GET /api/admin/media` | 媒体库列表 |
+| `GET /api/admin/media` | 媒体库分页列表：`page`（默认 1）/ `size`（默认 24，上限 100）/ `keyword`（按原始文件名模糊匹配）；返回 `PageResponse<AttachmentResponse>`，按 `create_time DESC` |
 | `DELETE /api/admin/media/{id}` | 删除（软删元数据 + 清理二进制） |
 | `GET /api/admin/media/storage` | 当前模式、可用模式、计数、健康状态（建议新增） |
 | `PUT /api/admin/media/storage` | 运行时切换（建议新增） |
@@ -915,7 +915,7 @@ startup/
 
 ### 15.2 前端 / 运维
 
-- 媒体库支持任意文件、图片缩略图 / 文件卡片、复制 URL、存储状态与切换；
+- 媒体库支持任意文件、图片缩略图 / 文件卡片、复制 URL、存储状态与切换；列表分页（默认每页 24 条）+ 文件名搜索，图片卡片 `loading="lazy"`；
 - 编辑器按 MIME 插入 `![]()` 或 `[]()`；
 - 封面前端与后端双重限制为图片；
 - Nginx 示例：`deploy/nginx/media.conf.example`；
@@ -941,3 +941,4 @@ startup/
 | 2026-10-31 | v0.4 | 复评公开 bucket 滥用风险：公开源站可被直连刷量；独立媒体域提供 origin 隔离但不等同防刷；补充私有 R2 + 预签名 / Nginx 签名方案、限流缓存告警与推荐顺序 |
 | 2026-10-31 | v0.5 | 复评 A/B/C 性价比：B（Nginx `auth_request` + 后端预签名代理）作为首选；A 降为最小回退；C 保留高流量方案；明确 B 的缓存 / 安全头 / 隐藏 R2 收益与每请求签名子请求成本 |
 | 2026-10-31 | v1.0 | 实现 LOCAL / R2 / DATABASE 三介质、流式 SPI、任意文件策略、20MB DATABASE、运行时切换、Nginx auth_request 方案 B、内部签名接口、管理端媒体库 / 存储设置；补 Nginx 示例与测试 |
+| 2026-10-31 | v1.1 | 媒体库列表改为分页：`GET /api/admin/media` 增加 `page` / `size` / `keyword`（文件名），返回 `PageResponse<AttachmentResponse>`；修复全量返回 + 全量渲染原图的性能问题 |

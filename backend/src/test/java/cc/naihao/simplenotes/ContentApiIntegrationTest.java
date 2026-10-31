@@ -223,10 +223,11 @@ class ContentApiIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    @DisplayName("媒体上传 / 公开读取 / 删除")
+    @DisplayName("媒体上传 / 分页列表 / 公开读取 / 删除")
     void mediaUploadAndRead() throws Exception {
         String token = rootToken();
-        MockMultipartFile file = new MockMultipartFile("file", "pixel.png", "image/png",
+        String fileName = "pixel-" + uniqueSuffix() + ".png";
+        MockMultipartFile file = new MockMultipartFile("file", fileName, "image/png",
                 new byte[] { (byte) 0x89, 'P', 'N', 'G', 1, 2, 3 });
 
         MvcResult upload = mockMvc.perform(multipart("/api/admin/media")
@@ -236,6 +237,19 @@ class ContentApiIntegrationTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.url").exists())
                 .andReturn();
         String id = objectMapper.readTree(upload.getResponse().getContentAsString()).path("id").asString();
+
+        authedGet("/api/admin/media?page=1&size=1", token)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(id))
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.size").value(1))
+                .andExpect(jsonPath("$.total").isNumber());
+
+        authedGet("/api/admin/media?keyword=" + fileName, token)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(id));
 
         mockMvc.perform(get("/api/media/" + id))
                 .andExpect(status().isOk())

@@ -228,6 +228,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/media/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["status"];
+        put: operations["switchMode"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/logout": {
         parameters: {
             query?: never;
@@ -558,22 +574,6 @@ export interface paths {
         get: operations["list_7"];
         put?: never;
         post: operations["upload"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/media/storage": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["storageStatus"];
-        put: operations["switchStorageMode"];
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1124,6 +1124,19 @@ export interface components {
             status: number;
             children: components["schemas"]["MenuCatalogNode"][];
         };
+        UpdateStorageModeRequest: {
+            mode: string;
+        };
+        StorageStatusResponse: {
+            mode: string;
+            availableModes: string[];
+            counts: {
+                [key: string]: number;
+            };
+            health: {
+                [key: string]: string;
+            };
+        };
         LoginRequest: {
             username: string;
             password: string;
@@ -1231,19 +1244,7 @@ export interface components {
             /** Format: date-time */
             createTime: string;
         };
-        StorageStatusResponse: {
-            mode: string;
-            availableModes: string[];
-            counts: {
-                [key: string]: number;
-            };
-            health: {
-                [key: string]: string;
-            };
-        };
-        UpdateStorageModeRequest: {
-            mode: string;
-        };
+        StreamingResponseBody: unknown;
         TagCountResponse: {
             id: string;
             name: string;
@@ -1492,6 +1493,15 @@ export interface components {
         };
         PageResponseNoteSummary: {
             items: components["schemas"]["NoteSummary"][];
+            /** Format: int64 */
+            total: number;
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            size: number;
+        };
+        PageResponseAttachmentResponse: {
+            items: components["schemas"]["AttachmentResponse"][];
             /** Format: int64 */
             total: number;
             /** Format: int32 */
@@ -2064,6 +2074,50 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["MenuCatalogNode"];
+                };
+            };
+        };
+    };
+    status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["StorageStatusResponse"];
+                };
+            };
+        };
+    };
+    switchMode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStorageModeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["StorageStatusResponse"];
                 };
             };
         };
@@ -2758,7 +2812,11 @@ export interface operations {
     };
     list_7: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number;
+                size?: number;
+                keyword?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2771,7 +2829,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["AttachmentResponse"][];
+                    "*/*": components["schemas"]["PageResponseAttachmentResponse"];
                 };
             };
         };
@@ -2803,50 +2861,6 @@ export interface operations {
             };
         };
     };
-    storageStatus: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["StorageStatusResponse"];
-                };
-            };
-        };
-    };
-    switchStorageMode: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateStorageModeRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["StorageStatusResponse"];
-                };
-            };
-        };
-    };
     get_2: {
         parameters: {
             query?: never;
@@ -2864,7 +2878,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": string;
+                    "*/*": components["schemas"]["StreamingResponseBody"];
                 };
             };
         };

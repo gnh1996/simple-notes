@@ -58,6 +58,7 @@ export type PageResponsePostSummary = Schema['PageResponsePostSummary']
 export type AttachmentResponse = Schema['AttachmentResponse']
 export type StorageStatusResponse = Schema['StorageStatusResponse']
 export type UpdateStorageModeRequest = Schema['UpdateStorageModeRequest']
+export type PageResponseAttachmentResponse = Schema['PageResponseAttachmentResponse']
 export type TrashItemResponse = Schema['TrashItemResponse']
 
 export type TagAdminSummary = Schema['TagAdminSummary']
@@ -140,6 +141,13 @@ export interface PublishedPostListQuery extends BlogListSortQuery {
 export interface TagListQuery {
   page?: number
   size?: number
+  keyword?: string
+}
+
+export interface MediaListQuery {
+  page?: number
+  size?: number
+  /** 模糊匹配原始文件名 */
   keyword?: string
 }
 
@@ -304,7 +312,8 @@ export function createTagApi(client: ApiClient) {
 /** 媒体库（`/api/admin/media`） */
 export function createMediaApi(client: ApiClient) {
   return {
-    list: () => client.get<AttachmentResponse[]>('/admin/media'),
+    list: (query: MediaListQuery = {}) =>
+      client.get<PageResponseAttachmentResponse>(`/admin/media${queryString(query)}`),
     upload: (file: File) => {
       const form = new FormData()
       form.set('file', file)

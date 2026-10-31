@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { CopyDocument, Delete, Document, Upload } from '@element-plus/icons-vue'
+import { CopyDocument, Delete, Document, Search, Upload } from '@element-plus/icons-vue'
 import type { AttachmentResponse, StorageStatusResponse } from '@simple-notes/api'
 import { isStorageHealthy, labelOf, STORAGE_MODE_LABELS, storageHealthLabel } from '@simple-notes/shared'
 import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 
 import { mediaApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
@@ -14,8 +14,11 @@ const loading = ref(false)
 const uploading = ref(false)
 const savingStorage = ref(false)
 const items = ref<AttachmentResponse[]>([])
+const total = ref(0)
 const storageStatus = ref<StorageStatusResponse>()
 const selectedMode = ref('')
+/** size 取 24：可被网格在小屏 / 中屏 / 宽屏下的 2 / 3 / 4 列整除，末页不出现半行。 */
+const query = reactive({ page: 1, size: 24, keyword: '' })
 
 const canSwitchStorage = computed(() => auth.can('admin:media:storage'))
 
@@ -31,12 +34,34 @@ function formatSize(bytes: number): string {
 async function load(): Promise<void> {
   loading.value = true
   try {
-    items.value = (await mediaApi.list()) ?? []
+    const page = await mediaApi.list({
+      page: query.page,
+      size: query.size,
+      keyword: query.keyword || undefined,
+    })
+    items.value = page.items ?? []
+    total.value = page.total ?? 0
   } catch (error) {
     notifyError(error, '媒体库加载失败')
   } finally {
     loading.value = false
   }
+}
+
+function search(): void {
+  query.page = 1
+  void load()
+}
+
+function handlePageChange(page: number): void {
+  query.page = page
+  void load()
+}
+
+/** 删除后刷新；若删掉的是当页最后一条，回退一页避免停在空页。 */
+async function reloadAfterDelete(): Promise<void> {
+  if (items.value.length === 1 && query.page > 1) query.page -= 1
+  await Promise.allSettled([load(), loadStorage()])
 }
 
 async function loadStorage(): Promise<void> {
@@ -59,6 +84,8 @@ async function upload(options: UploadRequestOptions): Promise<void> {
   try {
     await mediaApi.upload(options.file)
     ElMessage.success('文件已上传')
+    // 列表按创建时间倒序：回到第一页才能看到刚上传的文件
+    query.page = 1
     await Promise.allSettled([load(), loadStorage()])
   } catch (error) {
     notifyError(error, '上传失败')
@@ -90,7 +117,7 @@ async function remove(item: AttachmentResponse): Promise<void> {
   try {
     await mediaApi.remove(item.id)
     ElMessage.success('文件已删除')
-    await Promise.allSettled([load(), loadStorage()])
+    await reloadAfterDelete()
   } catch (error) {
     notifyError(error, '删除失败')
   }
@@ -168,7 +195,17 @@ async function saveStorage(): Promise<void> {
 
     <el-card shadow="never" body-class="py-4">
       <div class="flex flex-wrap items-center gap-2">
-        <el-text size="small" type="info">
+        <el-input
+          v-model="query.keyword"
+          placeholder="搜索文件名"
+          clearable
+          class="w-full sm:w-64"
+          :prefix-icon="Search"
+          @keyup.enter="search"
+          @clear="search"
+        />
+        <el-button type="primary" :icon="Search" @click="search">搜索</el-button>
+        <el-text size="small" type="info" class="hidden lg:inline">
           支持任意文件；图片 inline，其他文件强制下载。删除前会检查文章封面引用。
         </el-text>
         <div class="flex-1" />
@@ -194,6 +231,8 @@ async function saveStorage(): Promise<void> {
               v-if="isImage(item)"
               :src="item.url"
               :alt="item.altText || item.originalName"
+              loading="lazy"
+              decoding="async"
               class="max-h-full max-w-full object-contain"
             />
             <div v-else class="flex flex-col items-center gap-2 px-3 text-center">
@@ -223,7 +262,21 @@ async function saveStorage(): Promise<void> {
           </div>
         </div>
       </div>
-      <el-empty v-else-if="!loading" description="还没有上传文件" :image-size="80" class="py-8" />
+      <el-empty
+        v-else-if="!loading"
+        :description="query.keyword ? '没有匹配的文件' : '还没有上传文件'"
+        :image-size="80"
+        class="py-8"
+      />
+      <div v-if="total > 0" class="mt-4 flex justify-end">
+        <el-pagination
+          v-model:current-page="query.page"
+          :page-size="query.size"
+          :total="total"
+          layout="total, prev, pager, next"
+          @current-change="handlePageChange"
+        />
+      </div>
     </el-card>
   </div>
 </template>
