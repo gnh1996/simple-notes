@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { createEditorOptions, sanitizeHtml } from '@simple-notes/markdown'
+import { TableColumnResize } from '@simple-notes/markdown/table-resize'
 import 'vditor/dist/index.css'
 import Vditor from 'vditor'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -18,6 +19,7 @@ const emit = defineEmits<{
 
 const host = ref<HTMLDivElement>()
 let editor: Vditor | undefined
+let resize: TableColumnResize | undefined
 let ready = false
 let syncing = false
 let pendingValue: string | undefined
@@ -50,6 +52,7 @@ function create(): void {
       if (pendingValue !== undefined && editor && pendingValue !== editor.getValue()) {
         syncing = true
         editor.setValue(pendingValue)
+        resize?.reset()
         syncing = false
       }
       pendingValue = undefined
@@ -59,11 +62,16 @@ function create(): void {
 
 onMounted(() => {
   create()
+  if (host.value) {
+    resize = new TableColumnResize(host.value)
+  }
   host.value?.addEventListener('paste', onPaste, true)
 })
 
 onBeforeUnmount(() => {
   host.value?.removeEventListener('paste', onPaste, true)
+  resize?.destroy()
+  resize = undefined
   editor?.destroy()
   editor = undefined
 })
@@ -80,6 +88,8 @@ watch(
     }
     syncing = true
     editor.setValue(value)
+    // 外部整体替换内容 = 换了一篇文档，列宽属于会话态，回到自动布局
+    resize?.reset()
     syncing = false
   },
 )
@@ -97,6 +107,12 @@ function onPaste(event: ClipboardEvent): void {
     event.clipboardData?.setData('text/html', sanitizeHtml(html))
   }
 }
+
+// 供导出（后续 PDF / 打印）复用：当前文档手动调整过的表格列宽（百分比，按表格序号）。
+// 会话态数据，只存在编辑器的渲染层，getValue() / Markdown 正文不受影响。
+defineExpose({
+  getTableColumnWidths: () => resize?.getWidths() ?? [],
+})
 </script>
 
 <template>
@@ -104,9 +120,10 @@ function onPaste(event: ClipboardEvent): void {
 </template>
 
 <style scoped>
+/* 容器不再裁剪（工具栏气泡 / 下拉面板要能溢出卡片），因此不能给编辑器兜底 min-height，
+   否则窗口较矮时编辑器会画到卡片外面去；高度完全由父级 flex 容器决定。 */
 .sn-editor {
   height: 100%;
-  min-height: 420px;
 }
 
 .sn-editor.vditor {

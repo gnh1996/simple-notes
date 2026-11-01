@@ -1,0 +1,77 @@
+/*
+ * Vditor 编辑器（admin / desktop）共用的渲染层修正。
+ *
+ * 只放「两个编辑器都需要、且不依赖具体布局」的规则；博客前台使用自己的主题样式，
+ * 不引用本文件。新增规则时请确认两端都成立。
+ */
+
+/*
+ * 工具栏气泡：Vditor 默认向上展开（__n / __ne / __nw），而编辑器顶边紧贴卡片，
+ * 卡片 / 外层容器又是 overflow-hidden，气泡会被整块裁掉。改为在图标下方展开，
+ * 气泡与箭头都留在编辑器内（两端容器都不需要为此放开裁剪）。
+ */
+.vditor-toolbar .vditor-tooltipped__n::after,
+.vditor-toolbar .vditor-tooltipped__ne::after,
+.vditor-toolbar .vditor-tooltipped__nw::after {
+  top: 100%;
+  bottom: auto;
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+.vditor-toolbar .vditor-tooltipped__n::before,
+.vditor-toolbar .vditor-tooltipped__ne::before,
+.vditor-toolbar .vditor-tooltipped__nw::before {
+  top: auto;
+  bottom: -5px;
+  margin-top: 0;
+  border-top-color: transparent;
+  border-bottom-color: #3b3e43;
+}
+
+/* 「更多」等 __e 项在工具栏换行后可能贴着右边界，同样改为向下展开并右对齐 */
+.vditor-toolbar .vditor-tooltipped__e::after {
+  top: 100%;
+  right: 0;
+  bottom: auto;
+  left: auto;
+  margin: 4px 0 0;
+  transform: none;
+}
+
+.vditor-toolbar .vditor-tooltipped__e::before {
+  top: auto;
+  right: 50%;
+  bottom: -5px;
+  margin: 0 -5px 0 0;
+  border-top-color: transparent;
+  border-right-color: transparent;
+  border-bottom-color: #3b3e43;
+}
+
+/*
+ * 表格：Vditor 把 table 设成 display:block，导致每行各自计算列宽（首列被压成一字宽），
+ * 单元格又是 nowrap。恢复标准表格布局并允许换行；min-width 兜住多列表格，
+ * 避免每列被挤到一字一行（放不下时由编辑器横向滚动）。
+ *
+ * 这里的 min-width 会被 TableColumnResize 按表格粒度用 inline style 关掉。
+ */
+.vditor .vditor-reset table {
+  display: table;
+  word-break: normal;
+}
+
+.vditor .vditor-reset table th,
+.vditor .vditor-reset table td {
+  min-width: 5em;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+/* 拖动表格列宽期间：锁定光标，避免顺手选中正文 */
+body.sn-col-resizing,
+body.sn-col-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}

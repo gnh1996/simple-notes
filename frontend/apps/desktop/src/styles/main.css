@@ -1,6 +1,7 @@
 @layer theme, base, components, utilities;
 @import 'tailwindcss';
 @import '@simple-notes/ui/tokens.css';
+@import '@simple-notes/markdown/vditor.css';
 
 html,
 body,

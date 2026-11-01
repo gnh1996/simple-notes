@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./render": "./src/render.ts"
+    "./render": "./src/render.ts",
+    "./table-resize": "./src/table-resize.ts",
+    "./vditor.css": "./src/vditor.css"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

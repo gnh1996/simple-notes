@@ -11,6 +11,7 @@
 @import 'tailwindcss';
 @import '@simple-notes/ui/tokens.css';
 @import 'vditor/dist/index.css';
+@import '@simple-notes/markdown/vditor.css';
 @import 'element-plus/dist/index.css' layer(element-plus);
 @import 'element-plus/theme-chalk/dark/css-vars.css' layer(element-plus);
 

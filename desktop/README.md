@@ -102,7 +102,15 @@ pnpm build:desktop        # 只构建；之后在 desktop/ 执行 wails3 build
 - **关闭保护**：有未保存的临时文件时，窗口关闭由 Go `WindowClosing` 钩子拦截，前端确认保存 / 放弃后退出。
 - 本地库新增 `recent_file` 表；`note_local` 结构未变，`local-files` 是保留 `folder_id`，不写 `folder_local`。
 
+## 编辑器
 
+- **表格列宽（会话级）**：IR 编辑器可拖动表头列边界调整列宽（百分比，窗口缩放不变形）。宽度只写在渲染层（`table-layout: fixed` + 首行单元格 inline style），不写入 Markdown、不参与同步，切换文档即还原；Vditor 重建表格（增删行列 / 撤销重做 / 单元格回车）后自动重新套用。
+- 实现约束：**不能插入 `<colgroup>`**——Lute 的 `VditorIRDOM2Md` 解析失败会丢掉整张表格；`MarkdownEditor` 暴露 `getTableColumnWidths()`，后续 PDF / 打印导出可复用同一份百分比列宽。
+- 列宽拖拽与工具栏气泡 / 表格换行样式位于 `@simple-notes/markdown`（`table-resize` + `vditor.css`），与 admin 共用；不要在桌面端另写一份。
+
+
+
+## 内存与性能
 
 Windows 11 / WebView2，空闲 20s 后按进程树统计：
 

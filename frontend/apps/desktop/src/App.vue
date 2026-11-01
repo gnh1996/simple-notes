@@ -1304,7 +1304,7 @@ applyTheme()
 
       <main class="min-h-0 flex-1 p-3">
         <section class="flex h-full min-h-0 flex-col rounded-lg border border-app-border bg-app-panel">
-          <div class="min-h-0 flex-1 overflow-hidden p-3">
+          <div class="min-h-0 flex-1 p-3">
             <MarkdownEditor v-model="tempContent" :theme="editorTheme" placeholder="开始写作…" />
           </div>
         </section>
@@ -1742,7 +1742,7 @@ applyTheme()
               {{ saveMessage }}
             </p>
 
-            <div class="min-h-0 flex-1 overflow-hidden p-3">
+            <div class="min-h-0 flex-1 p-3">
               <p v-if="opening" class="text-xs text-app-muted">正在拉取正文…</p>
               <MarkdownEditor
                 v-else

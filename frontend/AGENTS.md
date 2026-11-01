@@ -13,6 +13,8 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 - 编辑器：**Vditor 4.0.1**（admin / desktop；桌面端 2026-10-31 迁移完成），IR 模式，可切 SV；配置来自 `@simple-notes/markdown`
 - 博客前台：**Lute**（`@simple-notes/markdown` 的 `createPreviewOptions` + `renderToElement`，`method.min.js` 不打包完整编辑器）
 - 单一语义源：`packages/markdown/src/index.ts` 的 `vditorMarkdown`；admin / blog 禁止另写配置
+- **编辑器渲染层修正共用**：`packages/markdown/src/vditor.css`（工具栏气泡向下展开、表格恢复标准布局并允许换行）与 `packages/markdown/src/table-resize.ts`（`TableColumnResize`，会话级列宽）由 admin / desktop 共同引用；改表格 / 气泡样式只改这一份，禁止在单端另写
+- **表格列宽是会话级视图**：拖表头边界只写渲染层（`table-layout: fixed` + 首行单元格 inline style），不写正文 / 不同步 / 切换内容即还原；禁止改成写入 Markdown（GFM 无列宽语法，插入 `<colgroup>` 会让 Lute 直接丢掉整张表格）。`MarkdownEditor` 暴露 `getTableColumnWidths()` 供导出复用
 - 安全：`sanitizeHtml()`（DOMPurify）在所有 `innerHTML` 前执行；Vditor 预览 `transform` + paste 清洗；Lute `sanitize: true` 保留
 - 资源：`pnpm sync:vditor` 裁剪复制到 `public/vditor`（Lute / hljs / KaTeX / Mermaid / icons / i18n / 内容主题）；禁止公共 CDN
 - 代码高亮：自托管 hljs 的 `third-languages.js` 注册 `vue → xml` 别名；新增语言集需同步附录 A 与 fixture
@@ -60,6 +62,7 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 - `bindings/` 由 `wails3 task bindings` 生成（改 Go service 签名后重跑），随仓库提交；禁止手写 IPC 类型
 - API 类型来自 `@simple-notes/api`（OpenAPI 生成），不另写接口类型；Go 侧只做通用转发
 - Markdown 与 admin / blog 同源：`@simple-notes/markdown` 的 `createEditorOptions` / `sanitizeHtml` / `vditorMarkdown`；资源由 `pnpm sync:vditor` 自托管；方言 v2 由三端 fixture 验收
+- 表格列宽 / 工具栏气泡 / 表格换行与 admin 共用 `@simple-notes/markdown` 的 `vditor.css` 与 `table-resize`，不要在本端另写一份
 - 构建产物先 `pnpm build:desktop`，再由 `desktop/` 的 `wails3 build` 执行 `pnpm sync:wails` 同步进 `desktop/web/dist`
 - 内存按 WebView 进程树评估：新增常驻面板 / 依赖前先实测（见 `desktop/README.md`）
 
