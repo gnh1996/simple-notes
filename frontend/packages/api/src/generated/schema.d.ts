@@ -1131,6 +1131,8 @@ export interface components {
             name: string;
             /** Format: int32 */
             sort: number;
+            /** Format: int64 */
+            noteCount: number;
             /** Format: date-time */
             createTime: string;
             /** Format: date-time */

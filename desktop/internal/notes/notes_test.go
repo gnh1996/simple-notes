@@ -96,11 +96,27 @@ func TestImportFileLocalWorksWithoutLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(folders) != 1 || folders[0].ID != LocalFilesFolderID {
+	wantFolders := []struct {
+		id    string
+		name  string
+		count int
+	}{
+		{"", "全部笔记", 1},
+		{UncategorizedFolderID, "未分类", 0},
+		{LocalFilesFolderID, "本地文件", 1},
+	}
+	if len(folders) != len(wantFolders) {
 		t.Fatalf("folders = %+v", folders)
 	}
+	for i, want := range wantFolders {
+		if folders[i].ID != want.id || folders[i].Name != want.name || folders[i].NoteCount != want.count {
+			t.Fatalf("folders[%d] = %+v, want %+v", i, folders[i], want)
+		}
+	}
 
-	saved, err := svc.Save(SaveInput{ID: note.ID, Title: "改名", Content: "新正文"})
+	saved, err := svc.Save(SaveInput{
+		ID: note.ID, Title: "改名", Content: "新正文", FolderID: LocalFilesFolderID,
+	})
 	if err != nil || saved == nil || saved.State != "synced" {
 		t.Fatalf("save = %+v, err=%v", saved, err)
 	}
@@ -111,6 +127,49 @@ func TestImportFileLocalWorksWithoutLogin(t *testing.T) {
 	rows, _ = svc.List("NOTE", "", "")
 	if len(rows) != 0 {
 		t.Fatalf("删除后仍有记录: %+v", rows)
+	}
+}
+
+func TestSaveLocalNoteMovesBetweenUncategorizedAndLocalFiles(t *testing.T) {
+	svc := openTestNotes(t)
+	imported, err := svc.ImportFile(ImportInput{Title: "归类测试", Content: "正文", Target: "local"})
+	if err != nil || imported == nil || imported.Note == nil {
+		t.Fatalf("import: %+v, err=%v", imported, err)
+	}
+
+	// 移到未分类
+	saved, err := svc.Save(SaveInput{
+		ID: imported.Note.ID, Title: "归类测试", Content: "正文", FolderID: UncategorizedFolderID,
+	})
+	if err != nil || saved == nil || saved.Note == nil {
+		t.Fatalf("save uncategorized: %+v, err=%v", saved, err)
+	}
+	if saved.Note.FolderID != "" {
+		t.Fatalf("应落到未分类，got %q", saved.Note.FolderID)
+	}
+	rows, err := svc.List("NOTE", UncategorizedFolderID, "")
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("未分类列表 = %+v, err=%v", rows, err)
+	}
+
+	// 再移回「本地文件」
+	saved, err = svc.Save(SaveInput{
+		ID: imported.Note.ID, Title: "归类测试", Content: "正文", FolderID: LocalFilesFolderID,
+	})
+	if err != nil || saved == nil || saved.Note == nil || saved.Note.FolderID != LocalFilesFolderID {
+		t.Fatalf("save local-files: %+v, err=%v", saved, err)
+	}
+	folders, err := svc.Folders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, folder := range folders {
+		if folder.ID == LocalFilesFolderID && folder.NoteCount != 1 {
+			t.Fatalf("本地文件数量 = %d", folder.NoteCount)
+		}
+		if folder.ID == UncategorizedFolderID && folder.NoteCount != 0 {
+			t.Fatalf("未分类数量 = %d", folder.NoteCount)
+		}
 	}
 }
 

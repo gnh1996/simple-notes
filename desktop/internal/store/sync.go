@@ -63,12 +63,22 @@ type NoteRow struct {
 	UpdatedAt             int64    `json:"updatedAt"`
 }
 
-// FolderRow 是本地镜像的文件夹。
+// 虚拟文件夹：只存在于桌面端，不写入 folder_local、不参与同步。
+const (
+	// LocalFilesFolderID 是内置「本地文件」分组（只挂在 scope='local' 的行上）。
+	LocalFilesFolderID = "local-files"
+	// UncategorizedFolderID 是「未分类」筛选（folder_id 为空）。
+	UncategorizedFolderID = "uncategorized"
+)
+
+// FolderRow 是本地镜像的文件夹；虚拟分组也复用该结构。
 type FolderRow struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Sort      int    `json:"sort"`
-	UpdatedAt int64  `json:"updatedAt"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Sort       int    `json:"sort"`
+	NoteCount  int    `json:"noteCount"`
+	CreateTime int64  `json:"createTime"`
+	UpdatedAt  int64  `json:"updatedAt"`
 }
 
 // OutboxItem 是待重试的写操作。
@@ -136,6 +146,7 @@ func (s *Store) migrateSync() error {
 			id         TEXT NOT NULL,
 			name       TEXT NOT NULL,
 			sort       INTEGER NOT NULL DEFAULT 0,
+			create_time INTEGER NOT NULL DEFAULT 0,
 			dirty      INTEGER NOT NULL DEFAULT 0,
 			updated_at INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (scope_id, id)
@@ -168,6 +179,10 @@ func (s *Store) migrateSync() error {
 		return err
 	}
 	if err := s.ensureColumn("folder_local", "dirty", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	// 与服务端排序对齐：sort ASC, create_time DESC（folder_local 原名缺失时补 0）。
+	if err := s.ensureColumn("folder_local", "create_time", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	return nil
@@ -287,7 +302,9 @@ func (s *Store) ApplyRemoteNotes(scopeID string, rows []RemoteNote) error {
 			ON CONFLICT(scope_id, id) DO UPDATE SET
 				kind           = excluded.kind,
 				title          = excluded.title,
-				folder_id      = excluded.folder_id,
+				-- 本地有未推送的归类修改时保留本地 folder_id，避免离线改文件夹被 manifest 打回
+				folder_id      = CASE WHEN note_local.dirty = 1 THEN note_local.folder_id
+				                      ELSE excluded.folder_id END,
 				pinned         = excluded.pinned,
 				publish_status = excluded.publish_status,
 				remote_version = excluded.remote_version,
@@ -313,7 +330,9 @@ func (s *Store) ListNotes(scopeID, kind, folderID, keyword string) ([]NoteRow, e
 		  FROM note_local
 		 WHERE scope_id = ? AND kind = ? AND deleted = 0`
 	args := []any{scopeID, kind}
-	if folderID != "" {
+	if folderID == UncategorizedFolderID {
+		sqlText += ` AND (folder_id IS NULL OR folder_id = '')`
+	} else if folderID != "" {
 		sqlText += ` AND folder_id = ?`
 		args = append(args, folderID)
 	}
@@ -523,28 +542,31 @@ func (s *Store) UpsertRemoteFolders(scopeID string, folders []FolderRow) error {
 
 	for _, folder := range folders {
 		if _, err := tx.Exec(`
-			INSERT INTO folder_local (scope_id, id, name, sort, dirty, updated_at)
-			VALUES (?, ?, ?, ?, 0, ?)
+			INSERT INTO folder_local (scope_id, id, name, sort, create_time, dirty, updated_at)
+			VALUES (?, ?, ?, ?, ?, 0, ?)
 			ON CONFLICT(scope_id, id) DO UPDATE SET
 				name       = excluded.name,
 				sort       = excluded.sort,
+				create_time = CASE WHEN folder_local.create_time = 0 THEN excluded.create_time
+				                   ELSE folder_local.create_time END,
 				updated_at = excluded.updated_at
 			WHERE folder_local.dirty = 0
-		`, scopeID, folder.ID, folder.Name, folder.Sort, folder.UpdatedAt); err != nil {
+		`, scopeID, folder.ID, folder.Name, folder.Sort, folder.CreateTime, folder.UpdatedAt); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 
-// SaveFolderLocal 写入本地新建 / 改名（dirty=1）。
+// SaveFolderLocal 写入本地新建 / 改名（dirty=1）；create_time 只在首次写入时设置。
 func (s *Store) SaveFolderLocal(scopeID, id, name string, sort int) error {
+	now := time.Now().UnixMilli()
 	_, err := s.db.Exec(`
-		INSERT INTO folder_local (scope_id, id, name, sort, dirty, updated_at)
-		VALUES (?, ?, ?, ?, 1, ?)
+		INSERT INTO folder_local (scope_id, id, name, sort, create_time, dirty, updated_at)
+		VALUES (?, ?, ?, ?, ?, 1, ?)
 		ON CONFLICT(scope_id, id) DO UPDATE SET
 			name = excluded.name, sort = excluded.sort, dirty = 1, updated_at = excluded.updated_at
-	`, scopeID, id, name, sort, time.Now().UnixMilli())
+	`, scopeID, id, name, sort, now, now)
 	return err
 }
 
@@ -723,11 +745,11 @@ func NewUUID() string {
 		hex.EncodeToString(buf[10:16])
 }
 
-// ListFolders 返回本地文件夹镜像。
+// ListFolders 返回本地文件夹镜像；排序与服务端一致（sort ASC, create_time DESC）。
 func (s *Store) ListFolders(scopeID string) ([]FolderRow, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, sort, updated_at FROM folder_local
-		 WHERE scope_id = ? ORDER BY sort ASC, name ASC
+		SELECT id, name, sort, create_time, updated_at FROM folder_local
+		 WHERE scope_id = ? ORDER BY sort ASC, create_time DESC, name ASC
 	`, scopeID)
 	if err != nil {
 		return nil, err
@@ -736,12 +758,39 @@ func (s *Store) ListFolders(scopeID string) ([]FolderRow, error) {
 	out := make([]FolderRow, 0, 16)
 	for rows.Next() {
 		var folder FolderRow
-		if err := rows.Scan(&folder.ID, &folder.Name, &folder.Sort, &folder.UpdatedAt); err != nil {
+		if err := rows.Scan(&folder.ID, &folder.Name, &folder.Sort, &folder.CreateTime,
+			&folder.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, folder)
 	}
 	return out, rows.Err()
+}
+
+// CountNotesByFolder 按 folder_id 聚合未删除的随手记数量。
+//
+// 返回的 map 用空字符串表示「未分类」；只统计 NOTE，POST 没有文件夹语义。
+func (s *Store) CountNotesByFolder(scopeID string) (map[string]int, error) {
+	rows, err := s.db.Query(`
+		SELECT COALESCE(folder_id, ''), COUNT(*)
+		  FROM note_local
+		 WHERE scope_id = ? AND kind = 'NOTE' AND deleted = 0
+		 GROUP BY COALESCE(folder_id, '')
+	`, scopeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := make(map[string]int)
+	for rows.Next() {
+		var folderID string
+		var count int
+		if err := rows.Scan(&folderID, &count); err != nil {
+			return nil, err
+		}
+		counts[folderID] = count
+	}
+	return counts, rows.Err()
 }
 
 func nullable(value string) any {

@@ -4,12 +4,16 @@ import cc.naihao.simplenotes.common.ApiException;
 import cc.naihao.simplenotes.domain.Note;
 import cc.naihao.simplenotes.domain.NoteFolder;
 import cc.naihao.simplenotes.domain.NoteKind;
+import cc.naihao.simplenotes.domain.QNote;
 import cc.naihao.simplenotes.repository.NoteFolderRepository;
 import cc.naihao.simplenotes.repository.NoteRepository;
 import cc.naihao.simplenotes.security.SecurityUtils;
 import cc.naihao.simplenotes.web.dto.NoteFolderRequest;
 import cc.naihao.simplenotes.web.dto.NoteFolderResponse;
+import com.querydsl.jpa.impl.JPAQueryFactory;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,12 +27,19 @@ public class NoteFolderService {
 
     private final NoteFolderRepository folderRepository;
     private final NoteRepository noteRepository;
+    private final JPAQueryFactory queryFactory;
 
     @Transactional(readOnly = true)
     public List<NoteFolderResponse> list() {
         String userId = SecurityUtils.requirePrincipal().userId();
-        return folderRepository.findByOwnerIdOrderBySortAscCreateTimeDesc(userId).stream()
-                .map(this::toResponse)
+        List<NoteFolder> folders = folderRepository.findByOwnerIdOrderBySortAscCreateTimeDesc(userId);
+        if (folders.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Long> counts = noteCounts(
+                folders.stream().map(NoteFolder::getId).toList());
+        return folders.stream()
+                .map(folder -> toResponse(folder, counts.getOrDefault(folder.getId(), 0L)))
                 .toList();
     }
 
@@ -45,7 +56,7 @@ public class NoteFolderService {
         folder.setSort(request.sort() == null ? 0 : request.sort());
         folder.setCreateBy(userId);
         folderRepository.save(folder);
-        return toResponse(folder);
+        return toResponse(folder, 0L);
     }
 
     @Transactional
@@ -62,7 +73,7 @@ public class NoteFolderService {
         }
         folder.setUpdateBy(userId);
         folderRepository.save(folder);
-        return toResponse(folder);
+        return toResponse(folder, noteRepository.countByFolderIdAndKind(folder.getId(), NoteKind.NOTE));
     }
 
     /** 删除文件夹不删除笔记：先把该文件夹下的笔记移到未分类。 */
@@ -94,8 +105,22 @@ public class NoteFolderService {
                 .orElseThrow(() -> ApiException.notFound("文件夹不存在"));
     }
 
-    private NoteFolderResponse toResponse(NoteFolder folder) {
-        return new NoteFolderResponse(folder.getId(), folder.getName(), folder.getSort(),
+    /** 按 folder_id 聚合未删除随手记数量；一次查询覆盖整个列表。 */
+    private Map<String, Long> noteCounts(List<String> folderIds) {
+        QNote note = QNote.note;
+        return queryFactory.select(note.folderId, note.count())
+                .from(note)
+                .where(note.kind.eq(NoteKind.NOTE), note.folderId.in(folderIds))
+                .groupBy(note.folderId)
+                .fetch()
+                .stream()
+                .collect(Collectors.toMap(
+                        tuple -> tuple.get(note.folderId),
+                        tuple -> tuple.get(note.count())));
+    }
+
+    private NoteFolderResponse toResponse(NoteFolder folder, long noteCount) {
+        return new NoteFolderResponse(folder.getId(), folder.getName(), folder.getSort(), noteCount,
                 folder.getCreateTime(), folder.getUpdateTime());
     }
 }

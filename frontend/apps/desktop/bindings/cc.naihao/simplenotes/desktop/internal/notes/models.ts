@@ -59,6 +59,7 @@ export interface SaveInput {
     "id": string;
     "title": string;
     "content": string;
+    "folderId": string;
 }
 
 /**

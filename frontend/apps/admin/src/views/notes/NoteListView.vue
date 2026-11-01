@@ -11,8 +11,16 @@ import { formatDateTime, notifyError } from '@/utils/feedback'
 const router = useRouter()
 const loading = ref(false)
 const rows = ref<NoteSummary[]>([])
+/** 当前筛选 / 搜索结果的笔记数，供分页使用。 */
 const total = ref(0)
+/** 侧栏「全部笔记」的统计：不带任何筛选，避免跟随当前文件夹变化。 */
+const allTotal = ref(0)
+/** 侧栏「未分类」的统计（folder_id 为空）。 */
+const uncategorizedTotal = ref(0)
 const folders = ref<NoteFolderResponse[]>([])
+
+/** 「未分类」筛选的保留值；后端按 folder_id IS NULL 处理。 */
+const UNCATEGORIZED_FOLDER = 'uncategorized'
 
 const query = reactive({
   page: 1,
@@ -51,9 +59,32 @@ async function loadFolders(): Promise<void> {
   }
 }
 
-onMounted(async () => {
-  await Promise.all([load(), loadFolders()])
-})
+/** 侧栏统计只统计全部笔记；失败时保留上一次的值，不打断列表。 */
+async function loadAllTotal(): Promise<void> {
+  try {
+    const page = await noteApi.list({ page: 1, size: 1 })
+    allTotal.value = page.total ?? 0
+  } catch {
+    // 统计属于非关键路径，静默失败即可
+  }
+}
+
+/** 未分类数量：folder_id 为空的随手记。 */
+async function loadUncategorizedTotal(): Promise<void> {
+  try {
+    const page = await noteApi.list({ page: 1, size: 1, folderId: UNCATEGORIZED_FOLDER })
+    uncategorizedTotal.value = page.total ?? 0
+  } catch {
+    // 统计属于非关键路径，静默失败即可
+  }
+}
+
+/** 列表、文件夹（含各自数量）与统计一起刷新。 */
+async function refreshAll(): Promise<void> {
+  await Promise.all([load(), loadFolders(), loadAllTotal(), loadUncategorizedTotal()])
+}
+
+onMounted(refreshAll)
 
 function search(): void {
   query.page = 1
@@ -94,7 +125,7 @@ async function removeNote(row: NoteSummary): Promise<void> {
   try {
     await noteApi.remove(row.id)
     ElMessage.success('笔记已移入回收站')
-    await load()
+    await refreshAll()
   } catch (error) {
     notifyError(error, '删除失败')
   }
@@ -161,7 +192,7 @@ async function removeFolder(folder: NoteFolderResponse): Promise<void> {
     await noteFolderApi.remove(folder.id)
     ElMessage.success('文件夹已删除')
     if (query.folderId === folder.id) query.folderId = ''
-    await Promise.all([loadFolders(), load()])
+    await refreshAll()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') notifyError(error, '删除文件夹失败')
   }
@@ -191,13 +222,19 @@ function handlePageChange(page: number): void {
           @clear="search"
         />
         <el-select v-model="query.folderId" placeholder="全部文件夹" clearable class="w-40" @change="search">
-          <el-option v-for="folder in folders" :key="folder.id" :label="folder.name" :value="folder.id" />
+          <el-option label="未分类" :value="UNCATEGORIZED_FOLDER" />
+          <el-option
+            v-for="folder in folders"
+            :key="folder.id"
+            :label="`${folder.name}（${folder.noteCount}）`"
+            :value="folder.id"
+          />
         </el-select>
         <el-checkbox v-model="query.pinnedOnly" @change="search">仅置顶</el-checkbox>
         <el-button type="primary" :icon="Search" @click="search">搜索</el-button>
         <el-button @click="reset">重置</el-button>
         <div class="flex-1" />
-        <el-button :icon="Refresh" circle title="刷新" @click="load" />
+        <el-button :icon="Refresh" circle title="刷新" @click="refreshAll" />
         <el-button v-perm="'admin:note:delete'" @click="router.push('/trash')">回收站</el-button>
         <el-button v-perm="'admin:note:create'" type="primary" :icon="Plus" @click="createNote">
           新建笔记
@@ -225,7 +262,15 @@ function handlePageChange(page: number): void {
           @click="selectFolder()"
         >
           <span>全部笔记</span>
-          <span class="text-xs text-[var(--el-text-color-secondary)]">{{ total }}</span>
+          <span class="text-xs text-[var(--el-text-color-secondary)]">{{ allTotal }}</span>
+        </button>
+        <button
+          class="mb-1 flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors"
+          :class="query.folderId === UNCATEGORIZED_FOLDER ? 'bg-[var(--el-color-primary-light-9)] text-[var(--el-color-primary)]' : 'hover:bg-[var(--el-fill-color-light)]'"
+          @click="selectFolder(UNCATEGORIZED_FOLDER)"
+        >
+          <span>未分类</span>
+          <span class="text-xs text-[var(--el-text-color-secondary)]">{{ uncategorizedTotal }}</span>
         </button>
         <div
           v-for="folder in folders"
@@ -236,6 +281,7 @@ function handlePageChange(page: number): void {
           <button class="min-w-0 flex-1 truncate px-2 py-2 text-left text-sm" @click="selectFolder(folder.id)">
             {{ folder.name }}
           </button>
+          <span class="shrink-0 text-xs text-[var(--el-text-color-secondary)]">{{ folder.noteCount }}</span>
           <el-dropdown trigger="click">
             <el-button link :icon="MoreFilled" size="small" />
             <template #dropdown>

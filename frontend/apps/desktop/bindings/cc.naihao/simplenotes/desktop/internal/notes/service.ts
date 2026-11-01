@@ -33,7 +33,7 @@ export function Delete(id: string): $CancellablePromise<$models.DeleteResult | n
 }
 
 /**
- * Folders 返回本地文件夹镜像；有「本地文件」笔记时追加内置分组。
+ * Folders 返回文件夹列表：虚拟「全部 / 未分类 / 本地文件」+ 服务端镜像，并带上各自数量。
  */
 export function Folders(): $CancellablePromise<store$0.FolderRow[] | null> {
     return $Call.ByID(2467069980);

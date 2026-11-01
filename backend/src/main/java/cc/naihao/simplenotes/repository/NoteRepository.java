@@ -20,4 +20,6 @@ public interface NoteRepository extends JpaRepository<Note, String> {
     boolean existsByCoverAttachmentId(String coverAttachmentId);
 
     List<Note> findByFolderIdAndKind(String folderId, NoteKind kind);
+
+    long countByFolderIdAndKind(String folderId, NoteKind kind);
 }

@@ -62,6 +62,7 @@ type folderItem struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	Sort       int    `json:"sort"`
+	CreateTime string `json:"createTime"`
 	UpdateTime string `json:"updateTime"`
 }
 
@@ -94,10 +95,11 @@ func (s *Service) Refresh() (*Result, error) {
 	rows := make([]store.FolderRow, 0, len(folders))
 	for _, folder := range folders {
 		rows = append(rows, store.FolderRow{
-			ID:        folder.ID,
-			Name:      folder.Name,
-			Sort:      folder.Sort,
-			UpdatedAt: parseTime(folder.UpdateTime),
+			ID:         folder.ID,
+			Name:       folder.Name,
+			Sort:       folder.Sort,
+			CreateTime: parseTime(folder.CreateTime),
+			UpdatedAt:  parseTime(folder.UpdateTime),
 		})
 	}
 	if err := s.db.UpsertRemoteFolders(scope.ScopeID, rows); err != nil {
@@ -207,7 +209,10 @@ func (s *Service) enqueueUpdateIfDiverged(scopeID, id, kind string, version int6
 	}
 	sentTitle, _ := sent["title"].(string)
 	sentContent, _ := sent["content"].(string)
-	if strings.TrimSpace(row.Title) == strings.TrimSpace(sentTitle) && row.Content == sentContent {
+	sentFolder := folderFromPayload(sent["folderId"])
+	if strings.TrimSpace(row.Title) == strings.TrimSpace(sentTitle) &&
+		row.Content == sentContent &&
+		(kind != "NOTE" || sentFolder == row.FolderID) {
 		return
 	}
 	body := map[string]any{
@@ -217,11 +222,32 @@ func (s *Service) enqueueUpdateIfDiverged(scopeID, id, kind string, version int6
 		"tags":    row.Tags,
 		"pinned":  row.Pinned,
 	}
-	if row.FolderID != "" {
-		body["folderId"] = row.FolderID
+	// 只有随手记有文件夹语义；空值也要显式发送 null，否则服务端会保留旧文件夹。
+	if kind == "NOTE" {
+		body["folderId"] = nullableFolder(row.FolderID)
 	}
 	payload, _ := json.Marshal(map[string]any{"kind": kind, "body": body})
 	_ = s.db.Enqueue(scopeID, "note", id, "update", string(payload))
+}
+
+// folderFromPayload 兼容 outbox 里两种形态：map（create 入队）与 JSON 解码后的 string/nil。
+func folderFromPayload(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case *string:
+		if typed != nil {
+			return *typed
+		}
+	}
+	return ""
+}
+
+func nullableFolder(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func (s *Service) replayUpdate(scopeID string, item store.OutboxItem) bool {

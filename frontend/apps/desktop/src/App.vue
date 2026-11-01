@@ -20,6 +20,7 @@ import LoginView from './components/LoginView.vue'
 const MarkdownEditor = defineAsyncComponent(() => import('./components/MarkdownEditor.vue'))
 
 const LOCAL_FILES_FOLDER = 'local-files'
+const UNCATEGORIZED_FOLDER = 'uncategorized'
 
 type Kind = 'NOTE' | 'POST'
 type TempState = 'idle' | 'saving' | 'saved' | 'modified' | 'missing' | 'error'
@@ -35,6 +36,7 @@ const notes = ref<NoteRow[]>([])
 const selected = ref<NoteRow | null>(null)
 const editTitle = ref('')
 const editContent = ref('')
+const editFolderId = ref('')
 const saveState = ref<'idle' | 'saving' | 'synced' | 'conflict' | 'offline' | 'error'>('idle')
 const saveMessage = ref('')
 const dirty = ref(false)
@@ -78,11 +80,15 @@ interface DiffLine {
 }
 const message = ref('')
 const error = ref('')
+const online = ref(navigator.onLine)
 const isDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
 
 const editorTheme = computed(() => (isDark.value ? 'dark' : 'light'))
 const currentFolder = computed(() => {
   const id = selected.value?.folderId ?? folderId.value
+  if (!id || id === UNCATEGORIZED_FOLDER) {
+    return '未分类'
+  }
   return folders.value.find((folder) => folder.id === id)?.name ?? '未分类'
 })
 const stateLabel = computed(() => {
@@ -114,7 +120,49 @@ const stateClass = computed(() =>
       ? 'text-amber-400'
       : 'text-app-muted',
 )
-const serverFolders = computed(() => folders.value.filter((folder) => folder.id !== LOCAL_FILES_FOLDER))
+function isServerFolder(id: string): boolean {
+  return id !== '' && id !== LOCAL_FILES_FOLDER && id !== UNCATEGORIZED_FOLDER
+}
+const serverFolders = computed(() => folders.value.filter((folder) => isServerFolder(folder.id)))
+// 「全部笔记 / 未分类」是固定预设项，不依赖 Go 侧返回；Go 返回对应行时补上数量。
+// noteCount = -1 表示当前拿不到统计（例如浏览器预览 / 旧进程），UI 不显示数字。
+const displayFolders = computed<FolderRow[]>(() => {
+  const all: FolderRow = {
+    id: '', name: '全部笔记', sort: -102, noteCount: -1, createTime: 0, updatedAt: 0,
+  }
+  const uncategorized: FolderRow = {
+    id: UNCATEGORIZED_FOLDER, name: '未分类', sort: -101, noteCount: -1, createTime: 0, updatedAt: 0,
+  }
+  const rest: FolderRow[] = []
+  for (const folder of folders.value) {
+    if (folder.id === '') {
+      all.noteCount = folder.noteCount
+    } else if (folder.id === UNCATEGORIZED_FOLDER) {
+      uncategorized.noteCount = folder.noteCount
+    } else {
+      rest.push(folder)
+    }
+  }
+  return [all, uncategorized, ...rest]
+})
+
+/** 除「全部 / 未分类」外的真实分组（服务端文件夹 + 本地文件）。 */
+const customFolders = computed(() =>
+  displayFolders.value.filter((folder) => folder.id !== '' && folder.id !== UNCATEGORIZED_FOLDER),
+)
+const editorFolderOptions = computed(() => {
+  const note = selected.value
+  if (!note || note.kind !== 'NOTE') {
+    return []
+  }
+  if (note.localOnly) {
+    return [
+      { id: '', name: '未分类' },
+      ...folders.value.filter((folder) => folder.id === LOCAL_FILES_FOLDER),
+    ]
+  }
+  return [{ id: '', name: '未分类' }, ...serverFolders.value]
+})
 const unsaved = computed(
   () => tempDirty.value || (!!selected.value && (dirty.value || saveState.value === 'saving')),
 )
@@ -240,6 +288,7 @@ async function selectNote(note: NoteRow): Promise<void> {
     loadingEditor = true
     editTitle.value = opened.title
     editContent.value = opened.content
+    editFolderId.value = opened.folderId ?? ''
     loadingEditor = false
     dirty.value = false
     saveState.value = 'idle'
@@ -311,6 +360,7 @@ async function saveNow(id: string): Promise<boolean> {
     return true
   }
   window.clearTimeout(saveTimer)
+  const previousFolder = selected.value.folderId ?? ''
   dirty.value = false
   saveState.value = 'saving'
   try {
@@ -318,8 +368,14 @@ async function saveNow(id: string): Promise<boolean> {
       id,
       title: editTitle.value,
       content: editContent.value,
+      folderId: selected.value.kind === 'NOTE' ? editFolderId.value : '',
     })
     applySaveResult(result)
+    if (result?.note && (result.note.folderId ?? '') !== previousFolder) {
+      // 归类变化会影响侧栏数量与当前筛选下的可见性
+      void reloadFolders()
+      void loadList()
+    }
     return !!result && result.state !== 'error'
   } catch (err) {
     saveState.value = 'error'
@@ -350,6 +406,7 @@ async function resolveConflict(side: 'local' | 'remote'): Promise<void> {
       loadingEditor = true
       editTitle.value = result.note.title
       editContent.value = result.note.content
+      editFolderId.value = result.note.folderId ?? ''
       loadingEditor = false
       dirty.value = false
     }
@@ -423,7 +480,7 @@ async function newNote(): Promise<void> {
       title: '未命名',
       content: '',
       folderId:
-        session.value && kind.value === 'NOTE' && folderId.value !== LOCAL_FILES_FOLDER
+        session.value && kind.value === 'NOTE' && isServerFolder(folderId.value)
           ? folderId.value
           : '',
     })
@@ -448,7 +505,7 @@ async function newNote(): Promise<void> {
 async function reloadFolders(): Promise<void> {
   try {
     folders.value = (await NotesService.Folders()) ?? []
-    if (folderId.value && !folders.value.some((folder) => folder.id === folderId.value)) {
+    if (folderId.value && !displayFolders.value.some((folder) => folder.id === folderId.value)) {
       folderId.value = ''
     }
   } catch (err) {
@@ -541,6 +598,7 @@ async function closeNote(): Promise<void> {
   loadingEditor = true
   editTitle.value = ''
   editContent.value = ''
+  editFolderId.value = ''
   loadingEditor = false
   dirty.value = false
   saveState.value = 'idle'
@@ -740,6 +798,7 @@ function applySelectedNote(note: NoteRow): void {
   loadingEditor = true
   editTitle.value = note.title
   editContent.value = note.content
+  editFolderId.value = note.folderId ?? ''
   loadingEditor = false
   dirty.value = false
   saveState.value = 'idle'
@@ -982,7 +1041,7 @@ async function retryOutbox(): Promise<void> {
 }
 
 watch(
-  [editTitle, editContent],
+  [editTitle, editContent, editFolderId],
   () => {
     if (loadingEditor || !selected.value) {
       return
@@ -1083,6 +1142,8 @@ let offClose: (() => void) | undefined
 onMounted(() => {
   applyTheme()
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('online', updateOnline)
+  window.addEventListener('offline', updateOnline)
   LocalFileService.SetUnsaved(false).catch(() => {})
   offDrop = Events.On('app:files-dropped', (event) => {
     const data = event.data as string[] | { filenames?: string[] } | null | undefined
@@ -1107,9 +1168,15 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('online', updateOnline)
+  window.removeEventListener('offline', updateOnline)
   offDrop?.()
   offClose?.()
 })
+
+function updateOnline(): void {
+  online.value = navigator.onLine
+}
 
 function formatTime(value: number): string {
   if (!value) {
@@ -1389,13 +1456,14 @@ applyTheme()
             </p>
           </section>
 
-          <section v-if="kind === 'NOTE' && folders.length" class="rounded-lg border border-app-border bg-app-panel p-2">
+          <section v-if="kind === 'NOTE'" class="rounded-lg border border-app-border bg-app-panel p-2">
             <div class="flex items-center justify-between px-2 py-1">
               <p class="text-[11px] uppercase tracking-wide text-app-muted">文件夹</p>
               <button
                 v-if="session"
-                class="rounded px-1.5 text-sm leading-none text-app-muted hover:text-brand-400"
-                title="新建文件夹"
+                class="rounded px-1.5 text-sm leading-none text-app-muted hover:text-brand-400 disabled:opacity-40"
+                :disabled="!online"
+                :title="online ? '新建文件夹' : '离线时不能新建文件夹'"
                 type="button"
                 @click="creatingFolder = true"
               >
@@ -1413,20 +1481,8 @@ applyTheme()
               />
             </div>
             <div
-              class="flex items-center gap-1 rounded"
-              :class="folderId === '' ? 'bg-brand-500/10 text-brand-400' : 'hover:bg-app-bg'"
-            >
-              <button
-                class="min-w-0 flex-1 truncate rounded px-2 py-1.5 text-left text-sm"
-                type="button"
-                @click="folderId = ''"
-              >
-                未分类
-              </button>
-            </div>
-            <div
-              v-for="folder in folders"
-              :key="folder.id"
+              v-for="folder in displayFolders"
+              :key="folder.id || 'all'"
               class="group flex items-center gap-1 rounded"
               :class="folderId === folder.id ? 'bg-brand-500/10 text-brand-400' : 'hover:bg-app-bg'"
             >
@@ -1446,8 +1502,14 @@ applyTheme()
                 @keydown.esc="renamingId = ''"
                 @blur="submitRenameFolder(folder)"
               />
+              <span
+                v-if="renamingId !== folder.id && folder.noteCount >= 0"
+                class="shrink-0 text-[10px] text-app-muted"
+              >
+                {{ folder.noteCount }}
+              </span>
               <button
-                v-if="session && folder.id !== LOCAL_FILES_FOLDER && renamingId !== folder.id"
+                v-if="session && isServerFolder(folder.id) && renamingId !== folder.id"
                 class="hidden px-1 text-[10px] text-app-muted group-hover:block hover:text-brand-400"
                 type="button"
                 title="重命名"
@@ -1456,7 +1518,7 @@ applyTheme()
                 改
               </button>
               <button
-                v-if="session && folder.id !== LOCAL_FILES_FOLDER"
+                v-if="session && isServerFolder(folder.id)"
                 class="hidden px-1 text-[10px] text-red-400 group-hover:block"
                 type="button"
                 title="删除"
@@ -1465,6 +1527,7 @@ applyTheme()
                 删
               </button>
             </div>
+            <p v-if="!customFolders.length" class="px-2 py-1 text-[11px] text-app-muted">暂无文件夹</p>
           </section>
         </aside>
 
@@ -1550,7 +1613,21 @@ applyTheme()
                 placeholder="标题"
               />
               <p class="mt-1 flex flex-wrap items-center gap-2 px-1 text-[11px] text-app-muted">
-                <span>{{ selected.kind === 'POST' ? '博客文章' : currentFolder }}</span>
+                <span v-if="selected.kind === 'POST'">博客文章</span>
+                <select
+                  v-else
+                  v-model="editFolderId"
+                  class="rounded border border-app-border bg-app-bg px-1 py-0.5 text-[11px] text-app-fg outline-none focus:border-brand-400"
+                  :title="currentFolder"
+                >
+                  <option
+                    v-for="option in editorFolderOptions"
+                    :key="option.id || 'uncategorized'"
+                    :value="option.id"
+                  >
+                    {{ option.name }}
+                  </option>
+                </select>
                 <span v-if="!selected.localOnly">v{{ selected.remoteVersion }}</span>
                 <span v-if="selected.kind === 'POST' && selected.publishStatus">{{ publishLabel(selected.publishStatus) }}</span>
                 <span

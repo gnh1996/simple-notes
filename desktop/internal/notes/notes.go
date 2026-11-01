@@ -17,8 +17,13 @@ import (
 	"cc.naihao/simplenotes/desktop/internal/store"
 )
 
-// LocalFilesFolderID 是内置「本地文件」分组的保留 folder_id（不落 folder_local）。
-const LocalFilesFolderID = "local-files"
+// 虚拟文件夹：由桌面端本地维护，不写入 folder_local、不参与同步。
+const (
+	// LocalFilesFolderID 是内置「本地文件」分组的保留 folder_id。
+	LocalFilesFolderID = store.LocalFilesFolderID
+	// UncategorizedFolderID 是「未分类」筛选：folder_id 为空。
+	UncategorizedFolderID = store.UncategorizedFolderID
+)
 
 // Service 通过 Wails binding 暴露列表 / 打开 / 保存能力。
 type Service struct {
@@ -49,9 +54,10 @@ type ImportInput struct {
 
 // SaveInput 是编辑器提交的本地保存请求。
 type SaveInput struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Content string `json:"content"`
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Content  string `json:"content"`
+	FolderID string `json:"folderId"`
 }
 
 // SaveResult 是一次保存 / 冲突处理的结果。
@@ -143,7 +149,7 @@ func (s *Service) List(kind, folderID, keyword string) ([]store.NoteRow, error) 
 	}
 
 	rows := make([]store.NoteRow, 0, 32)
-	// 服务端 scope：folderID 指向内置「本地文件」时跳过。
+	// 服务端 scope：folderID 指向内置「本地文件」时跳过；其余文件夹只查服务端。
 	if hasScope && folderID != LocalFilesFolderID {
 		active, err := s.listScope(scope.ScopeID, kind, folderID, keyword)
 		if err != nil {
@@ -152,8 +158,8 @@ func (s *Service) List(kind, folderID, keyword string) ([]store.NoteRow, error) 
 		rows = append(rows, active...)
 	}
 
-	// 本地 scope：仅在未筛选服务端文件夹时出现。
-	if folderID == "" || folderID == LocalFilesFolderID {
+	// 本地 scope：全部 / 未分类 / 本地文件时参与；筛选服务端文件夹时不混入本地笔记。
+	if folderID == "" || folderID == LocalFilesFolderID || folderID == UncategorizedFolderID {
 		local, err := s.listScope("local", kind, folderID, keyword)
 		if err != nil {
 			return nil, err
@@ -187,25 +193,52 @@ func (s *Service) listScope(scopeID, kind, folderID, keyword string) ([]store.No
 	return append(notes, posts...), errors.Join(errNotes, errPosts)
 }
 
-// Folders 返回本地文件夹镜像；有「本地文件」笔记时追加内置分组。
+// Folders 返回文件夹列表：虚拟「全部 / 未分类 / 本地文件」+ 服务端镜像，并带上各自数量。
 func (s *Service) Folders() ([]store.FolderRow, error) {
 	scope, hasScope, err := s.db.ActiveScope()
 	if err != nil {
 		return nil, err
 	}
-	out := make([]store.FolderRow, 0, 16)
-
-	hasLocal, err := s.db.HasNoteInFolder("local", LocalFilesFolderID)
+	localCounts, err := s.db.CountNotesByFolder("local")
 	if err != nil {
 		return nil, err
 	}
-	if hasLocal {
-		out = append(out, store.FolderRow{ID: LocalFilesFolderID, Name: "本地文件", Sort: -100})
+	activeCounts := map[string]int{}
+	if hasScope {
+		activeCounts, err = s.db.CountNotesByFolder(scope.ScopeID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	total := 0
+	for _, count := range localCounts {
+		total += count
+	}
+	for _, count := range activeCounts {
+		total += count
+	}
+
+	out := make([]store.FolderRow, 0, 4+len(activeCounts))
+	out = append(out,
+		store.FolderRow{ID: "", Name: "全部笔记", Sort: -102, NoteCount: total},
+		store.FolderRow{
+			ID: UncategorizedFolderID, Name: "未分类", Sort: -101,
+			NoteCount: localCounts[""] + activeCounts[""],
+		},
+	)
+	if count := localCounts[LocalFilesFolderID]; count > 0 {
+		out = append(out, store.FolderRow{
+			ID: LocalFilesFolderID, Name: "本地文件", Sort: -100, NoteCount: count,
+		})
 	}
 	if hasScope {
 		folders, err := s.db.ListFolders(scope.ScopeID)
 		if err != nil {
 			return nil, err
+		}
+		for i := range folders {
+			folders[i].NoteCount = activeCounts[folders[i].ID]
 		}
 		out = append(out, folders...)
 	}
@@ -262,6 +295,7 @@ func (s *Service) Save(input SaveInput) (*SaveResult, error) {
 	row.Title = title
 	row.Content = input.Content
 	row.ContentLoaded = true
+	row.FolderID = normalizeFolderID(scopeID, input.FolderID)
 	tagsJSON, _ := json.Marshal(row.Tags)
 	hash := ContentHash(row)
 	if err := s.db.SaveNoteLocal(scopeID, row, string(tagsJSON), hash); err != nil {
@@ -350,7 +384,7 @@ func (s *Service) Create(input CreateInput) (*SaveResult, error) {
 	folderID := ""
 	if hasScope {
 		scopeID = scope.ScopeID
-		folderID = input.FolderID
+		folderID = normalizeFolderID(scopeID, input.FolderID)
 	}
 	row := store.NoteRow{
 		ID:            store.NewUUID(),
@@ -460,10 +494,7 @@ func (s *Service) ImportFile(input ImportInput) (*SaveResult, error) {
 	if !ok {
 		return nil, errors.New("请先登录后再同步到服务端")
 	}
-	folderID := input.FolderID
-	if folderID == LocalFilesFolderID {
-		folderID = ""
-	}
+	folderID := normalizeFolderID(scope.ScopeID, input.FolderID)
 	row.FolderID = folderID
 	tagsJSON, _ := json.Marshal(row.Tags)
 	hash := ContentHash(row)
@@ -515,9 +546,7 @@ func (s *Service) PromoteLocal(id, folderID string) (*SaveResult, error) {
 	if !row.ContentLoaded {
 		return nil, errors.New("笔记正文尚未加载")
 	}
-	if folderID == LocalFilesFolderID {
-		folderID = ""
-	}
+	folderID = normalizeFolderID(scope.ScopeID, folderID)
 	if err := s.db.MoveNoteScope("local", scope.ScopeID, id, folderID); err != nil {
 		return nil, fmt.Errorf("迁移本地笔记: %w", err)
 	}
@@ -804,6 +833,21 @@ func nullableString(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+// normalizeFolderID 把前端传来的归类收敛到当前 scope 的合法值：
+// 纯本地笔记只接受「本地文件」或未分类；服务端笔记的虚拟分组一律落未分类。
+func normalizeFolderID(scopeID, folderID string) string {
+	if scopeID == "local" {
+		if folderID == LocalFilesFolderID {
+			return LocalFilesFolderID
+		}
+		return ""
+	}
+	if folderID == "" || folderID == UncategorizedFolderID || folderID == LocalFilesFolderID {
+		return ""
+	}
+	return folderID
 }
 
 // ContentHash 计算同步字段的规范化指纹（docs/desktop-sync.md §4）：

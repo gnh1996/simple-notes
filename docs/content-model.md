@@ -180,6 +180,8 @@ POST / UNPUBLISHED（后台保留，公开不可见）
 - 同一所有者下 `lower(name)` 唯一（`delete_flag = 0`）。
 - 删除文件夹不删除笔记，笔记回到「未分类」。
 - `folder_id` 只对 `NOTE` 有意义；`promote` 时清空。
+- 文件夹接口返回 `noteCount`（该文件夹下未删除的随手记数量，按 `folder_id` 聚合），仅用于列表统计，不参与新建 / 编辑请求。
+- 列表筛选参数 `folderId=uncategorized` 表示「未分类」（`folder_id IS NULL`），是查询保留值，不对应任何 `note_folder` 行。
 
 ### 3.5 附件 `attachment`
 

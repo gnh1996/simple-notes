@@ -112,7 +112,7 @@
 
 方案 B 的约定：
 
-- `folder_id='local-files'` 只出现在 `scope='local'` 的行上；`Folders()` 仅在存在这类行（或处于免登录模式）时追加内置文件夹；
+- `folder_id='local-files'` 只出现在 `scope='local'` 的行上；`Folders()` 仅在存在这类行时追加「本地文件」虚拟分组，「全部笔记 / 未分类」始终返回；
 - 用户可以在列表里按「本地文件」筛选，也可以把笔记移出到「未分类」（v1 不提供本地自定义文件夹）；
 - 「同步到服务端」时**必须清空** `local-files`（服务端不认识这个 id），默认落「未分类」，可在同步对话框选择真实文件夹；
 - 不写 `folder_local`，因此不参与 `UpsertRemoteFolders`、outbox 与账号切换。
@@ -299,10 +299,10 @@ notes.PromoteLocal(id, folderId)
 
 | 方法 | 职责 / 改动 |
 | --- | --- |
-| `List(kind, folderID, keyword)` | 无 active scope 时**只查 `local`**，不再报「请先登录」；支持 `folderID='local-files'` 过滤 |
-| `Folders()` | 无 active scope 时返回空；存在 `local-files` 笔记时追加内置文件夹行 |
+| `List(kind, folderID, keyword)` | 无 active scope 时**只查 `local`**，不再报「请先登录」；`''`=全部、`uncategorized`=未分类（`folder_id` 为空）、`local-files`=仅本地文件、其他值=服务端文件夹（只查 active scope） |
+| `Folders()` | 返回虚拟分组「全部笔记 / 未分类 / 本地文件」+ 服务端文件夹镜像，并带本地聚合的 `noteCount` |
 | `Open(id)` | 已支持 `local`，无需改动 |
-| `Save(input)` | 已支持 `local`，无需改动 |
+| `Save(input)` | 支持 `folderId`；按 scope 归一（纯本地只接受「本地文件 / 未分类」），本地 / 服务端都生效 |
 | `Create(input)` | 无 active scope 时插入 `scope='local'`（未分类）并 `MarkLocalOnlySaved` |
 | `Delete(id)` | 已支持 `local`，无需改动 |
 | `ImportFile(input)` | 临时内容 → 本地（`local-files`）/ 服务端（清空保留 id） |

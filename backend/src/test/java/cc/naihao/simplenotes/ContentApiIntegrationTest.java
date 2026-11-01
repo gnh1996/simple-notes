@@ -259,4 +259,56 @@ class ContentApiIntegrationTest extends IntegrationTestBase {
         authedDelete("/api/admin/media/" + id, token).andExpect(status().isNoContent());
         mockMvc.perform(get("/api/media/" + id)).andExpect(status().isNotFound());
     }
+
+    @Test
+    @DisplayName("文件夹列表：noteCount 按文件夹统计未删除随手记，删除笔记 / 改名后同步变化")
+    void folderNoteCounts() throws Exception {
+        String token = rootToken();
+        String suffix = uniqueSuffix();
+        String folderName = "计数文件夹-" + suffix;
+
+        var folder = body(authedPost("/api/admin/note-folders", token, Map.of("name", folderName))
+                .andExpect(status().isOk()));
+        String folderId = folder.path("id").asString();
+        assertThat(folder.path("noteCount").asLong()).isZero();
+
+        String firstId = body(authedPost("/api/admin/notes", token, Map.of(
+                "title", "计数笔记-A-" + suffix, "content", "a", "folderId", folderId))
+                .andExpect(status().isOk())).path("id").asString();
+        body(authedPost("/api/admin/notes", token, Map.of(
+                "title", "计数笔记-B-" + suffix, "content", "b", "folderId", folderId))
+                .andExpect(status().isOk()));
+        // 未分类笔记不计入任何文件夹
+        body(authedPost("/api/admin/notes", token, Map.of(
+                "title", "计数笔记-C-" + suffix, "content", "c"))
+                .andExpect(status().isOk()));
+
+        assertThat(folderCount(token, folderId)).isEqualTo(2);
+
+        // 「未分类」筛选只返回 folder_id 为空的笔记
+        var uncategorized = body(authedGet(
+                "/api/admin/notes?folderId=uncategorized&keyword=" + suffix, token)
+                .andExpect(status().isOk()));
+        assertThat(uncategorized.path("total").asInt()).isEqualTo(1);
+        assertThat(uncategorized.path("items").get(0).path("title").asString())
+                .contains("计数笔记-C");
+
+        authedDelete("/api/admin/notes/" + firstId, token).andExpect(status().isNoContent());
+        assertThat(folderCount(token, folderId)).isEqualTo(1);
+
+        // 改名不改变数量
+        var renamed = body(authedPut("/api/admin/note-folders/" + folderId, token,
+                Map.of("name", folderName + "-改", "sort", 0)).andExpect(status().isOk()));
+        assertThat(renamed.path("noteCount").asLong()).isEqualTo(1);
+    }
+
+    private long folderCount(String token, String folderId) throws Exception {
+        var folders = body(authedGet("/api/admin/note-folders", token).andExpect(status().isOk()));
+        for (var item : folders) {
+            if (folderId.equals(item.path("id").asString())) {
+                return item.path("noteCount").asLong();
+            }
+        }
+        throw new AssertionError("文件夹不存在：" + folderId);
+    }
 }

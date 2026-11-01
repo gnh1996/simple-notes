@@ -233,8 +233,8 @@ func TestReplaceAndListFolders(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := db.UpsertRemoteFolders(scope.ScopeID, []FolderRow{
-		{ID: "f2", Name: "B", Sort: 2},
-		{ID: "f1", Name: "A", Sort: 1},
+		{ID: "f2", Name: "B", Sort: 2, CreateTime: 2000},
+		{ID: "f1", Name: "A", Sort: 1, CreateTime: 1000},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -244,5 +244,87 @@ func TestReplaceAndListFolders(t *testing.T) {
 	}
 	if len(folders) != 2 || folders[0].Name != "A" {
 		t.Fatalf("folders = %+v", folders)
+	}
+}
+
+func TestListFoldersSortsBySortThenCreateTimeDesc(t *testing.T) {
+	db := openTestStore(t)
+	scope := Scope{ScopeID: "s", ServerURL: "http://x/api", UserID: "u", Username: "u"}
+	if err := db.SaveScope(scope); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertRemoteFolders(scope.ScopeID, []FolderRow{
+		{ID: "old", Name: "旧", Sort: 0, CreateTime: 1000},
+		{ID: "new", Name: "新", Sort: 0, CreateTime: 2000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	folders, err := db.ListFolders(scope.ScopeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(folders) != 2 || folders[0].ID != "new" || folders[1].ID != "old" {
+		t.Fatalf("排序应与服务端一致（sort ASC, create_time DESC）: %+v", folders)
+	}
+}
+
+func TestApplyRemoteNotesPreservesDirtyFolder(t *testing.T) {
+	db := openTestStore(t)
+	scope := Scope{ScopeID: "s", ServerURL: "http://x/api", UserID: "u", Username: "u"}
+	if err := db.SaveScope(scope); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ApplyRemoteNotes(scope.ScopeID, []RemoteNote{
+		{ID: "n1", Kind: "NOTE", Title: "a", FolderID: "f1", Version: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	row, _, _ := db.GetNote(scope.ScopeID, "n1")
+	row.FolderID = "f2"
+	if err := db.SaveNoteLocal(scope.ScopeID, row, `[]`, "h"); err != nil {
+		t.Fatal(err)
+	}
+
+	// 离线改归类后，manifest 不应把它打回 f1
+	if err := db.ApplyRemoteNotes(scope.ScopeID, []RemoteNote{
+		{ID: "n1", Kind: "NOTE", Title: "a", FolderID: "f1", Version: 2},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	row, _, _ = db.GetNote(scope.ScopeID, "n1")
+	if row.FolderID != "f2" || !row.Dirty {
+		t.Fatalf("dirty 行的 folder_id 应保留本地值: %+v", row)
+	}
+}
+
+func TestUncategorizedFilterAndFolderCounts(t *testing.T) {
+	db := openTestStore(t)
+	scope := Scope{ScopeID: "s", ServerURL: "http://x/api", UserID: "u", Username: "u"}
+	if err := db.SaveScope(scope); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ApplyRemoteNotes(scope.ScopeID, []RemoteNote{
+		{ID: "n1", Kind: "NOTE", Title: "a", FolderID: "f1", Version: 1},
+		{ID: "n2", Kind: "NOTE", Title: "b", FolderID: "f1", Version: 1},
+		{ID: "n3", Kind: "NOTE", Title: "c", Version: 1},
+		{ID: "p1", Kind: "POST", Title: "d", Version: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := db.ListNotes(scope.ScopeID, "NOTE", UncategorizedFolderID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ID != "n3" {
+		t.Fatalf("未分类 = %+v", rows)
+	}
+
+	counts, err := db.CountNotesByFolder(scope.ScopeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts["f1"] != 2 || counts[""] != 1 || counts["p1"] != 0 {
+		t.Fatalf("counts = %+v", counts)
 	}
 }

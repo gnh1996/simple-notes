@@ -37,6 +37,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class NoteService {
 
+    /** 「未分类」筛选的保留值：folder_id 为空。 */
+    public static final String UNCATEGORIZED_FOLDER_ID = "uncategorized";
+
     private final NoteRepository noteRepository;
     private final NoteFolderRepository folderRepository;
     private final NoteFolderService folderService;
@@ -62,7 +65,9 @@ public class NoteService {
                     .or(note.content.containsIgnoreCase(kw)));
         }
         if (folderId != null && !folderId.isBlank()) {
-            predicate = predicate.and(note.folderId.eq(folderId));
+            predicate = UNCATEGORIZED_FOLDER_ID.equals(folderId)
+                    ? predicate.and(note.folderId.isNull())
+                    : predicate.and(note.folderId.eq(folderId));
         }
         if (tagId != null && !tagId.isBlank()) {
             predicate = predicate.and(JPAExpressions.selectOne()
