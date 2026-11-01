@@ -13,6 +13,11 @@ export interface CreateInput {
     "title": string;
     "content": string;
     "folderId": string;
+
+    /**
+     * Target 为空时沿用旧行为（登录后落服务端，否则本地）；"local" 强制仅本地。
+     */
+    "target": string;
 }
 
 /**

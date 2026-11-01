@@ -58,6 +58,7 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 - UI 由 `desktop/` 的 Wails WebView 加载；窗口、SQLite、HTTP、令牌都在 Go 侧
 - **M0–M4 已实现**：登录 / 索引列表 / 打开即拉取 / Vditor 编辑 / 防抖推送 / 409 冲突二选一 / 删除与墓碑 / 文件夹写 / outbox / 离线新建 / 冲突 diff + 副本 / 发布状态展示 + 管理端深链（发布与下架只在 admin）；剩余三平台实机验收
 - **本地文件 v1.1 已实现**（`docs/desktop-local-file.md`）：打开文件=临时编辑（不入库）、**启动默认本地模式（不弹登录页）**、登录为顶栏可选模态、最近打开、纳入管理（内置「本地文件」/ 服务端）、导出 Markdown；临时内容与最近路径不进入同步
+- **多标签 v1.2 已实现（Windows）**（`docs/desktop-layout.md` §3）：文件 / 本地 / 服务端笔记统一标签栏；单 Vditor 实例，切标签清空撤销栈；标签上限 12；文件标签只存路径、激活时读盘；不要为每个标签常驻一个编辑器
 - **不直连后端**：只调用 Go binding `api.Do({ method, path, body })`；token 不进入 JS / localStorage
 - `bindings/` 由 `wails3 task bindings` 生成（改 Go service 签名后重跑），随仓库提交；禁止手写 IPC 类型
 - API 类型来自 `@simple-notes/api`（OpenAPI 生成），不另写接口类型；Go 侧只做通用转发

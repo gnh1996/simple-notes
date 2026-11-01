@@ -1,12 +1,12 @@
 # desktop 端规则
 
-Go 1.26+ + Wails v3（WebView）桌面端；前端是 `frontend/apps/desktop`（Vue 3 / TS，pnpm workspace 成员）。**当前为技术骨架**：功能设计定稿后才进入实现。结构与选型见 `README.md` 与 `docs/tech-stack.md`。
+Go 1.26+ + Wails v3（WebView）桌面端；前端是 `frontend/apps/desktop`（Vue 3 / TS，pnpm workspace 成员）。**当前已实现同步骨架 + 本地多标签 / 文档工作台（Windows；三平台验收待做）**。结构与选型见 `README.md` 与 `docs/tech-stack.md`。
 
 ## 已定技术项
 
 - 壳 / 本地能力：Go + Wails v3.0.0-beta.34（锁版本）；services + bindings
 - UI：Vue 3 + Vite + Tailwind（复用 `packages/shared`、`packages/ui`、`packages/api` 类型）
-- 数据：本地优先（SQLite，`modernc.org/sqlite`；离线 + 后台同步，协议待设计）
+- 数据：本地优先（SQLite，`modernc.org/sqlite`；离线 + 后台同步，协议见 `docs/desktop-sync.md`）
 - Markdown：**Vditor 4.0.1 + Lute**（方言 v2，与 admin / blog 同源，2026-10-31 迁移完成）；资源由 `pnpm sync:vditor` 自托管
 - 分发：三平台各自构建（Wails Taskfile / CI 矩阵），不再使用 .NET NativeAOT
 
@@ -28,6 +28,7 @@ Go 1.26+ + Wails v3（WebView）桌面端；前端是 `frontend/apps/desktop`（
 - **桌面端接口只走 `/api/desktop/**`**（会话端 `DESKTOP`，权限码 `desktop:note` / `desktop:post`）；`DESKTOP` 会话不能调用 `/api/admin/**`（`SessionJwtFilter` 校验）
 - **同步按 `docs/desktop-sync.md`**：manifest 只写索引，不拉正文；打开时按 `base_version` 拉详情并算 hash；推送用 `version` CAS，409 转冲突
 - **本地文件按 `docs/desktop-local-file.md`**：临时编辑不写 `note_local`；纳入管理走 `notes.ImportFile`；`folder_id='local-files'` 是保留虚拟分组，不写 `folder_local`、同步前必须清空
+- **多标签按 `docs/desktop-layout.md` §3（v1.2 已实现，Windows）**：文件 / 本地 / 服务端笔记统一标签栏；单 Vditor 实例，切标签清空撤销栈；标签上限 12；文件标签只存路径、激活时读盘，不存正文；`ui_state` 只存标签顺序 / 侧栏宽度
 - **发布 / 下架只在 admin**：桌面端只展示 `publishStatus` / `hasUnpublishedChanges` 并提供 `System.OpenAdmin` 深链，不新增桌面发布接口
 - JSON 用 Go 标准库；不引入需要 CGO 的库（SQLite 已选纯 Go 驱动）
 

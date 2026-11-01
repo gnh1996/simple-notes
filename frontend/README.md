@@ -70,7 +70,8 @@ apps/admin/src/
 - **不直连后端**：调用 Go binding `api.Do({ method, path, body })`；Bearer 由 Go 注入，token 不进入 JS
 - `bindings/` 由 `wails3 task bindings` 生成（改 Go service 签名后重跑），随仓库提交；**禁止手写 IPC 类型**
 - API 类型仍来自 `@simple-notes/api` 的 OpenAPI 生成物；Go 侧只做通用转发
-- Markdown 过渡期使用 `configureMarkdown()` + `packages/shared`（md-editor-v3 / markdown-it）；与 admin 的 Vditor + Lute **尚未同源**，迁移前不参与方言 v2 验收。编辑器高度按容器计算，不做移动端分叉
+- Markdown 使用 **Vditor 4.0.1 + Lute**（与 admin / blog 同源，`@simple-notes/markdown`）；资源由 `pnpm sync:vditor` 自托管；编辑器按需加载
+- **多标签 / 资料库 / 快速打开**：见 `docs/desktop-layout.md`；单 Vditor 实例，切标签清空撤销栈；文件标签只存路径、激活时读盘
 - 构建产物由 `pnpm build:desktop` → `pnpm sync:wails` 同步到 `desktop/web/dist`（`//go:embed` 不能跨 module）
 
 ## 已定选型（设计阶段记录）

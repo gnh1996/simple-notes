@@ -42,6 +42,8 @@ type CreateInput struct {
 	Title    string `json:"title"`
 	Content  string `json:"content"`
 	FolderID string `json:"folderId"`
+	// Target 为空时沿用旧行为（登录后落服务端，否则本地）；"local" 强制仅本地。
+	Target string `json:"target"`
 }
 
 // ImportInput 是「纳入管理」请求：临时文件内容 → 本地 / 服务端笔记。
@@ -278,6 +280,24 @@ func (s *Service) Open(id string) (*store.NoteRow, error) {
 	return &row, nil
 }
 
+// OpenCached 只读本地缓存，不触网；用于启动恢复标签 / 避免首屏等待网络。
+// 未缓存正文时仍返回索引行（ContentLoaded=false），由前端显示占位。
+func (s *Service) OpenCached(id string) (*store.NoteRow, error) {
+	scopeID, row, found, err := s.db.GetNoteAny(id)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, errors.New("本地索引中没有这篇内容")
+	}
+	if scopeID == "local" {
+		row.LocalOnly = true
+		return &row, nil
+	}
+	row.Conflict = row.Dirty && (row.RemoteVersion != row.BaseVersion || row.RemoteDeleted)
+	return &row, nil
+}
+
 // Save 先写本地（dirty），再按 base_version 推送；纯本地笔记只落本地。
 func (s *Service) Save(input SaveInput) (*SaveResult, error) {
 	scopeID, row, found, err := s.db.GetNoteAny(input.ID)
@@ -373,7 +393,7 @@ func (s *Service) Create(input CreateInput) (*SaveResult, error) {
 		return nil, err
 	}
 	kind := input.Kind
-	if kind != "POST" || !hasScope {
+	if kind != "POST" || !hasScope || input.Target == "local" {
 		kind = "NOTE"
 	}
 	title := strings.TrimSpace(input.Title)
@@ -382,7 +402,8 @@ func (s *Service) Create(input CreateInput) (*SaveResult, error) {
 	}
 	scopeID := "local"
 	folderID := ""
-	if hasScope {
+	forceLocal := input.Target == "local"
+	if hasScope && !forceLocal {
 		scopeID = scope.ScopeID
 		folderID = normalizeFolderID(scopeID, input.FolderID)
 	}
@@ -401,7 +422,7 @@ func (s *Service) Create(input CreateInput) (*SaveResult, error) {
 	if err := s.db.InsertNoteLocal(scopeID, row, string(tagsJSON), hash); err != nil {
 		return nil, fmt.Errorf("保存本地: %w", err)
 	}
-	if !hasScope {
+	if !hasScope || forceLocal {
 		_ = s.db.MarkLocalOnlySaved(scopeID, row.ID)
 		row.Dirty = false
 		row.LocalOnly = true

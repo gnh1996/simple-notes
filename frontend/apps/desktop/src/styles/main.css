@@ -37,6 +37,16 @@ html.dark {
   border-radius: 8px;
 }
 
+/* 标签栏横向滚动但不显示原生滚动条；用滚轮 / Ctrl+Tab / 切换自动滚入视野 */
+.tab-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tab-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .vditor code,
 .vditor-ir__preview code {
   background-image: none;

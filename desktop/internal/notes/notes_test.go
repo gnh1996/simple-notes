@@ -190,6 +190,37 @@ func TestCreateWithoutLoginWritesLocal(t *testing.T) {
 	}
 }
 
+func TestCreateTargetLocalWhileLoggedIn(t *testing.T) {
+	db, err := store.OpenAt(filepath.Join(t.TempDir(), "desktop.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.SaveScope(store.Scope{
+		ScopeID: "srv:s", ServerURL: "http://s", UserID: "u", Username: "u",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	svc := New(db, api.New(db, "http://unused"))
+
+	result, err := svc.Create(CreateInput{Kind: "POST", Title: "本地优先", Target: "local"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || result.Note == nil || !result.Note.LocalOnly {
+		t.Fatalf("result = %+v", result)
+	}
+	if result.Note.Kind != "NOTE" || result.Note.FolderID != "" || result.Note.Dirty {
+		t.Fatalf("本地新建状态错误: %+v", result.Note)
+	}
+	if _, found, err := db.GetNote("local", result.Note.ID); err != nil || !found {
+		t.Fatalf("应写入 local scope: found=%v err=%v", found, err)
+	}
+	if _, found, err := db.GetNote("srv:s", result.Note.ID); err != nil || found {
+		t.Fatalf("不应写入服务端 scope: found=%v err=%v", found, err)
+	}
+}
+
 func TestPromoteLocalMovesScopeAndCreates(t *testing.T) {
 	db, err := store.OpenAt(filepath.Join(t.TempDir(), "desktop.db"))
 	if err != nil {

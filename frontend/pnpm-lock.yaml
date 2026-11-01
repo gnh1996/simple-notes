@@ -178,6 +178,9 @@ importers:
       '@simple-notes/markdown':
         specifier: workspace:*
         version: link:../../packages/markdown
+      '@simple-notes/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@simple-notes/ui':
         specifier: workspace:*
         version: link:../../packages/ui

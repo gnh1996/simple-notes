@@ -15,6 +15,7 @@
   "dependencies": {
     "@simple-notes/api": "workspace:*",
     "@simple-notes/markdown": "workspace:*",
+    "@simple-notes/shared": "workspace:*",
     "@simple-notes/ui": "workspace:*",
     "@wailsio/runtime": "catalog:",
     "vditor": "catalog:",

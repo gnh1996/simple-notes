@@ -170,6 +170,12 @@ func (s *Store) migrateSync() error {
 			name      TEXT NOT NULL,
 			opened_at INTEGER NOT NULL
 		);
+
+		-- 桌面端界面状态：标签顺序 / 侧栏宽度等；不参与同步，不存令牌与正文。
+		CREATE TABLE IF NOT EXISTS ui_state (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		);
 	`)
 	if err != nil {
 		return fmt.Errorf("初始化同步表结构: %w", err)

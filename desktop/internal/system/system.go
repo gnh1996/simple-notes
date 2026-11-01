@@ -61,6 +61,35 @@ func (s *Service) Status() Status {
 	return status
 }
 
+// GetUIState 读取本机界面状态（标签顺序 / 侧栏宽度等）；不存在返回空串。
+func (s *Service) GetUIState(key string) (string, error) {
+	value, _, err := s.db.GetUIState(key)
+	return value, err
+}
+
+// SetUIState 写入本机界面状态；不参与同步 / 导出。
+func (s *Service) SetUIState(key, value string) error {
+	return s.db.SetUIState(key, value)
+}
+
+// SetTitle 更新窗口标题（当前标签标题 + 未保存标记）。
+func (s *Service) SetTitle(title string) error {
+	app := application.Get()
+	if app == nil {
+		return nil
+	}
+	window := app.Window.Current()
+	if window == nil {
+		return nil
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "Simple Notes"
+	}
+	window.SetTitle(title)
+	return nil
+}
+
 // OpenAdmin 在系统浏览器打开管理端页面（发布 / 下架留在 admin）。
 // 管理端默认按 <server>/admin 推导，可用 SIMPLE_NOTES_ADMIN_BASE 覆盖部署形态。
 func (s *Service) OpenAdmin(path string) error {

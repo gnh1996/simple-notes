@@ -2,7 +2,7 @@
 
 桌面客户端：随手记与博客写作、发布到 Web 博客端。UI 为 **Vue 3 + TypeScript**，壳与本地能力由 **Go + Wails v3** 提供。
 
-> **当前阶段：M0–M4 同步骨架 + 本地 Markdown（v1.1）已实现**。包含窗口、Vditor + Lute 编辑器（方言 v2）、Go 侧 HTTP 转发、SQLite、本地文件打开 / 保存 / 导出、默认本地模式与可选登录；同步协议见 `docs/desktop-sync.md`，本地文件设计见 `docs/desktop-local-file.md`。
+> **当前阶段：M0–M4 同步骨架 + 本地 Markdown（v1.2 多标签 / 文档工作台，Windows 已实现）**。包含窗口、Vditor + Lute 编辑器（方言 v2）、Go 侧 HTTP 转发、SQLite、本地文件打开 / 保存 / 导出、默认本地模式与可选登录、多标签与快速打开；同步协议见 `docs/desktop-sync.md`，本地文件设计见 `docs/desktop-local-file.md`，布局见 `docs/desktop-layout.md`。
 
 ## 架构
 
@@ -22,7 +22,7 @@ desktop/（Go module：cc.naihao/simplenotes/desktop）
 └── Taskfile.yml            build / dev / run / package / bindings
 
 frontend/apps/desktop/（pnpm workspace 成员：@simple-notes/desktop）
-├── src/                    Vue 应用（本地模式 / 登录模态 / 索引列表 / 临时编辑 / 编辑器）
+├── src/                    Vue 应用（文档标签 / 资料库 / 快速打开 / 本地模式 / 登录模态 / 编辑器）
 ├── bindings/               wails3 生成的 TS bindings（随仓库提交）
 └── scripts/sync-wails.mjs  把 dist 同步到 desktop/web/dist
 ```
@@ -94,13 +94,14 @@ pnpm build:desktop        # 只构建；之后在 desktop/ 执行 wails3 build
 ## 本地文件与本地模式（`docs/desktop-local-file.md`）
 
 - **临时编辑**：打开 `.md` / `.markdown`（≤ 5 MB、UTF-8）不写 SQLite、不进列表、不参与同步；`Ctrl+S` 显式写回源文件，保存前比对内容 hash，外部修改时提示覆盖 / 另存为 / 重新加载。
+- **多标签（v1.2）**：文件 / 本地笔记 / 服务端笔记统一标签栏，上限 12；切换标签不弹保存框，关闭 / 退出时汇总处理；标签恢复只存路径，文件激活时才读盘；单 Vditor 实例，切标签清空撤销栈。布局见 `docs/desktop-layout.md`。
 - **最近打开**：全局记录最多 20 条，只存路径 / 文件名 / 时间；可单条移除 / 清空。
 - **纳入管理**：临时编辑可保存为「仅本地」（`scope='local'`，归入内置「本地文件」分组）或「服务端」（复用离线新建 + outbox + 409 对齐）。
 - **本地模式（默认）**：启动不弹登录页，直接进入本地 Markdown 编辑器；新建 / 搜索 / 编辑 / 删除 / 纳入本地笔记均不调用服务端。
 - **登录（可选）**：顶栏「登录」打开模态框，登录后接入服务端同步；退出登录回到本地模式，本地数据始终保留。
 - **导出**：已管理笔记可导出单篇 `.md`（正文、UTF-8 无 BOM、LF），不改版本 / dirty，不建立文件关联；已管理笔记不支持回退为本地文件。
 - **关闭保护**：有未保存的临时文件时，窗口关闭由 Go `WindowClosing` 钩子拦截，前端确认保存 / 放弃后退出。
-- 本地库新增 `recent_file` 表；`note_local` 结构未变，`local-files` 是保留 `folder_id`，不写 `folder_local`。
+- 本地库新增 `recent_file` / `ui_state` 表；`note_local` 结构未变，`local-files` 是保留 `folder_id`，不写 `folder_local`。
 
 ## 编辑器
 
@@ -170,6 +171,7 @@ Windows 11 / WebView2，空闲 20s 后按进程树统计：
 - [x] M3：离线新建（客户端 UUID）/ 冲突 diff / 副本
 - [x] M4：发布状态展示 + 管理端深链 + 冲突静默对齐（发布 / 下架只在 admin）
 - [x] 本地文件 v1：临时编辑 / 最近打开 / 默认本地模式 / 纳入管理 / 导出（见 `docs/desktop-local-file.md`）
+- [x] 本地文件 v1.2：多标签 / 独立未保存 / 标签恢复 / 退出汇总 / 快速打开 / 文档工作台（Windows；见 `docs/desktop-layout.md`）
 - [ ] 三平台实机验收（Linux / macOS、输入法、HiDPI、本地文件对话框 / 拖拽）与启动 / 内存打磨
 - [x] 编辑器与方言（Vditor 4.0.1 + Lute，2026-10-31）
 - [ ] 内存 / 启动时间门槛与三平台实机验收

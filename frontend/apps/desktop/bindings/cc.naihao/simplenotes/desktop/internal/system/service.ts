@@ -15,11 +15,32 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * GetUIState 读取本机界面状态（标签顺序 / 侧栏宽度等）；不存在返回空串。
+ */
+export function GetUIState(key: string): $CancellablePromise<string> {
+    return $Call.ByID(2745229402, key);
+}
+
+/**
  * OpenAdmin 在系统浏览器打开管理端页面（发布 / 下架留在 admin）。
  * 管理端默认按 <server>/admin 推导，可用 SIMPLE_NOTES_ADMIN_BASE 覆盖部署形态。
  */
 export function OpenAdmin(path: string): $CancellablePromise<void> {
     return $Call.ByID(1186510580, path);
+}
+
+/**
+ * SetTitle 更新窗口标题（当前标签标题 + 未保存标记）。
+ */
+export function SetTitle(title: string): $CancellablePromise<void> {
+    return $Call.ByID(387333895, title);
+}
+
+/**
+ * SetUIState 写入本机界面状态；不参与同步 / 导出。
+ */
+export function SetUIState(key: string, value: string): $CancellablePromise<void> {
+    return $Call.ByID(1270161782, key, value);
 }
 
 /**

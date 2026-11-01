@@ -3,7 +3,7 @@ import { createEditorOptions, sanitizeHtml } from '@simple-notes/markdown'
 import { TableColumnResize } from '@simple-notes/markdown/table-resize'
 import 'vditor/dist/index.css'
 import Vditor from 'vditor'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 // 桌面端编辑器 POC：与 admin / blog 同源的 Vditor + Lute（方言 v2）。
 // 资源由 `pnpm sync:vditor` 自托管到 public/vditor，禁止公共 CDN。
@@ -11,21 +11,75 @@ const props = defineProps<{
   modelValue: string
   theme: 'light' | 'dark'
   placeholder?: string
+  resetKey?: string
+  scrollTop?: number
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
+  scroll: [top: number]
 }>()
 
 const host = ref<HTMLDivElement>()
 let editor: Vditor | undefined
 let resize: TableColumnResize | undefined
+let scrollEl: HTMLElement | undefined
 let ready = false
 let syncing = false
+let restoring = false
 let pendingValue: string | undefined
 
 function cdn(): string {
   return `${import.meta.env.BASE_URL}vditor`.replace(/\/$/, '')
+}
+
+function bindScroll(): void {
+  scrollEl = host.value?.querySelector('.vditor-ir .vditor-reset') as HTMLElement | undefined
+  scrollEl?.addEventListener('scroll', onScroll, { passive: true })
+}
+
+function unbindScroll(): void {
+  scrollEl?.removeEventListener('scroll', onScroll)
+  scrollEl = undefined
+}
+
+function onScroll(): void {
+  if (!syncing && !restoring) {
+    emit('scroll', scrollEl?.scrollTop ?? 0)
+  }
+}
+
+function applyScroll(): void {
+  const top = props.scrollTop ?? 0
+  if (!scrollEl) {
+    return
+  }
+  restoring = true
+  requestAnimationFrame(() => {
+    if (scrollEl) {
+      scrollEl.scrollTop = top
+    }
+    requestAnimationFrame(() => {
+      restoring = false
+    })
+  })
+}
+
+function replaceContent(value: string): void {
+  if (!editor) {
+    pendingValue = value
+    return
+  }
+  syncing = true
+  // 外部整体替换内容（换标签 / 冲突处理）= 换了一篇文档：清空撤销栈，列宽回到自动布局。
+  editor.setValue(value, true)
+  resize?.reset()
+  syncing = false
+  if (!scrollEl || !host.value?.contains(scrollEl)) {
+    unbindScroll()
+    bindScroll()
+  }
+  applyScroll()
 }
 
 function create(): void {
@@ -49,13 +103,12 @@ function create(): void {
     }),
     after: () => {
       ready = true
+      bindScroll()
       if (pendingValue !== undefined && editor && pendingValue !== editor.getValue()) {
-        syncing = true
-        editor.setValue(pendingValue)
-        resize?.reset()
-        syncing = false
+        replaceContent(pendingValue)
       }
       pendingValue = undefined
+      applyScroll()
     },
   })
 }
@@ -70,6 +123,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   host.value?.removeEventListener('paste', onPaste, true)
+  unbindScroll()
   resize?.destroy()
   resize = undefined
   editor?.destroy()
@@ -86,11 +140,19 @@ watch(
     if (value === editor.getValue()) {
       return
     }
-    syncing = true
-    editor.setValue(value)
-    // 外部整体替换内容 = 换了一篇文档，列宽属于会话态，回到自动布局
-    resize?.reset()
-    syncing = false
+    replaceContent(value)
+  },
+)
+
+watch(
+  () => props.resetKey,
+  async () => {
+    await nextTick()
+    if (!ready || !editor) {
+      return
+    }
+    // 即使两篇内容相同也要清空撤销栈，避免 A 标签的撤销影响 B。
+    replaceContent(props.modelValue)
   },
 )
 
@@ -112,6 +174,12 @@ function onPaste(event: ClipboardEvent): void {
 // 会话态数据，只存在编辑器的渲染层，getValue() / Markdown 正文不受影响。
 defineExpose({
   getTableColumnWidths: () => resize?.getWidths() ?? [],
+  getScrollTop: () => scrollEl?.scrollTop ?? 0,
+  setScrollTop: (top: number) => {
+    if (scrollEl) {
+      scrollEl.scrollTop = top
+    }
+  },
 })
 </script>
 

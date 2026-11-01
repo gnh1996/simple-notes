@@ -62,6 +62,14 @@ export function Open(id: string): $CancellablePromise<store$0.NoteRow | null> {
 }
 
 /**
+ * OpenCached 只读本地缓存，不触网；用于启动恢复标签 / 避免首屏等待网络。
+ * 未缓存正文时仍返回索引行（ContentLoaded=false），由前端显示占位。
+ */
+export function OpenCached(id: string): $CancellablePromise<store$0.NoteRow | null> {
+    return $Call.ByID(217791013, id);
+}
+
+/**
  * PromoteLocal 把仅本地笔记迁移到服务端 scope（保留 id，替换文件夹）。
  */
 export function PromoteLocal(id: string, folderID: string): $CancellablePromise<$models.SaveResult | null> {
