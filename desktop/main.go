@@ -2,9 +2,12 @@ package main
 
 import (
 	"embed"
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -36,7 +39,10 @@ var appIcon []byte
 func main() {
 	db, err := store.Open()
 	if err != nil {
-		log.Fatalf("打开本地数据库失败: %v", err)
+		// 迁移失败 / 库版本过新都在这里阻塞启动：先落日志，再弹原生对话框。
+		writeStartupLog(err)
+		showStartupError("Simple Notes 无法启动", store.StartupMessage(err))
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -107,4 +113,22 @@ func main() {
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// writeStartupLog 把启动失败写入用户配置目录：GUI 进程通常没有可见的 stderr。
+func writeStartupLog(err error) {
+	dir, dirErr := os.UserConfigDir()
+	if dirErr != nil {
+		return
+	}
+	logPath := filepath.Join(dir, "simple-notes", "desktop-error.log")
+	if mkErr := os.MkdirAll(filepath.Dir(logPath), 0o700); mkErr != nil {
+		return
+	}
+	file, openErr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if openErr != nil {
+		return
+	}
+	defer file.Close()
+	fmt.Fprintf(file, "[%s] %v\n", time.Now().Format(time.RFC3339), err)
 }

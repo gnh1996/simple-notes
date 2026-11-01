@@ -52,7 +52,7 @@
 1. **认证机制**（已定，2026-10-18）：JWT + 服务端会话记录（存数据库）；桌面端令牌存本地 SQLite（不采用系统钥匙串）——详见 `docs/auth-rbac.md`
 2. **附件 / 图片访问链路（已定，2026-10-31）**：私有 Cloudflare R2 + 独立媒体域 Nginx；方案 B：`/oss/{key}` → Nginx `auth_request` → 后端短期预签名 → Nginx 代理 R2；本地 / DB 走 `/api/media/{id}`；三介质、任意文件、20MB、DIRECT 外链见 `docs/attachment-storage.md`（v1.2 已实现；A 预签名 302 作为回退）
 3. **部署形态**：admin 挂 `/admin` 子路径 vs 子域（影响 vite `base` 与资源 / 代理配置；认证已不依赖 Cookie，无跨域 Cookie 约束）
-4. **桌面本地存储实现**（已定，2026-10-25）：SQLite + `modernc.org/sqlite`（纯 Go，无额外 CGO）；当前为 `app_kv` + `auth_session` 骨架，业务表随功能设计补迁移
+4. **桌面本地存储实现**（已定，2026-10-25）：SQLite + `modernc.org/sqlite`（纯 Go，无额外 CGO）；表结构由 `internal/store/migrations` 的有序迁移维护（`PRAGMA user_version`），版本与备份规则见 `docs/desktop-local-schema.md`
 5. **API 客户端生成工具**（Web 端已定，2026-10-18）：**openapi-typescript**（仅生成类型到 `packages/api/src/generated`，请求侧沿用 `packages/api` 的轻量 fetch 封装）；契约来自后端 springdoc 的 `/v3/api-docs`（`pnpm gen:api` 拉取生成）。桌面端复用同一份 TS 类型，由 Go transport 转发（C# 客户端方案作废，2026-10-25）
 6. **工程化**：Vitest、ESLint/Prettier、后端 Testcontainers、机密防泄漏扫描（gitleaks 等）随实现补 —— **后端 Testcontainers 已补**（2026-10-18，随 RBAC 集成测试起用：`spring-boot-testcontainers` + `testcontainers-postgresql`，`@ServiceConnection` 注入）；其余待补
 7. **桌面 Markdown 编辑库**（已定，2026-10-31）：桌面端已迁移到 Vditor 4.0.1 + Lute，与 admin / blog 同源；md-editor-v3 / markdown-it 在桌面端退役，方言 v2 三端一致。见 `docs/markdown-dialect.md`

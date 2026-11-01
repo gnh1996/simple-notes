@@ -89,7 +89,7 @@ func (s *Service) Refresh() (*Result, error) {
 	}
 
 	var folders []folderItem
-	if err := s.api.Get("/desktop/note-folders", &folders); err != nil {
+	if err := s.api.GetEndpoint("/desktop/note-folders", &folders); err != nil {
 		return nil, err
 	}
 	rows := make([]store.FolderRow, 0, len(folders))
@@ -332,7 +332,7 @@ func (s *Service) pull(scopeID, kind string) (int, error) {
 			path += "&cursor=" + url.QueryEscape(cursor)
 		}
 		var result syncPage
-		if err := s.api.Get(path, &result); err != nil {
+		if err := s.api.GetEndpoint(path, &result); err != nil {
 			return total, err
 		}
 

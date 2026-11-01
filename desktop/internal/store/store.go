@@ -1,7 +1,7 @@
 // Package store 提供桌面端的本地 SQLite 存储。
 //
-// 当前只落地骨架所需的最小能力：会话令牌（独立表，不参与内容同步 / 导出）
-// 与通用键值。领域表（笔记、草稿、同步队列等）随功能设计定稿后再补迁移。
+// 表结构由 internal/store/migrations 的有序迁移维护（docs/desktop-local-schema.md）：
+// 启动时读取 PRAGMA user_version，按需执行未应用的迁移；版本高于应用支持范围时拒绝启动。
 package store
 
 import (
@@ -46,27 +46,8 @@ func OpenAt(path string) (*Store, error) {
 		return nil, fmt.Errorf("初始化 SQLite: %w", err)
 	}
 
-	if _, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS app_kv (
-			key         TEXT PRIMARY KEY,
-			value       TEXT NOT NULL,
-			update_time TEXT NOT NULL DEFAULT (datetime('now'))
-		);
-
-		-- 认证数据独立成表：永不参与内容同步 / 导出 / 备份（docs/auth-rbac.md §6.4）。
-		-- 单会话：id 固定为 1；未来多账号 / 多会话再扩展主键。
-		CREATE TABLE IF NOT EXISTS auth_session (
-			id          INTEGER PRIMARY KEY CHECK (id = 1),
-			token       TEXT NOT NULL,
-			update_time TEXT NOT NULL DEFAULT (datetime('now'))
-		);
-	`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("初始化表结构: %w", err)
-	}
-
 	store := &Store{db: db, path: path}
-	if err := store.migrateSync(); err != nil {
+	if err := store.migrate(); err != nil {
 		db.Close()
 		return nil, err
 	}

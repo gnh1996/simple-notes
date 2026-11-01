@@ -15,7 +15,7 @@ desktop/（Go module：cc.naihao/simplenotes/desktop）
 │   ├── notes/              本地索引查询、打开即拉正文、导入 / 同步到服务端、内容 hash
 │   ├── localfile/          本地 Markdown 打开 / 保存 / 另存为 / 导出 / 最近记录
 │   ├── syncsvc/            manifest 索引同步（游标 + 墓碑）
-│   ├── store/              SQLite（认证 + scope / note_local / folder_local / outbox）
+│   ├── store/              SQLite（认证 + scope / note_local / folder_local / outbox；migrations/ 为有序迁移）
 │   └── system/             运行状态（版本 / API 地址 / 本地库 / 会话）
 ├── web/dist/               //go:embed 目标；由 pnpm sync:wails 从 Vue 构建产物同步
 ├── build/                  Wails 平台构建资产与 Taskfile
@@ -37,7 +37,7 @@ Go 的 `//go:embed` 不能引用 module 之外的路径，因此构建后把 `di
 | 壳 | **Wails v3.0.0-beta.34**（锁版本；MIT/ISC） |
 | 语言 | Go **1.26+**（本机 1.27.3）；三平台各自构建（CGO + 平台 WebView，无交叉编译） |
 | UI | Vue 3.5 + Vite 8 + TypeScript 6 + Tailwind v4 |
-| 本地存储 | SQLite（`modernc.org/sqlite`），库文件在 `os.UserConfigDir()/simple-notes/desktop.db` |
+| 本地存储 | SQLite（`modernc.org/sqlite`），库文件在 `os.UserConfigDir()/simple-notes/desktop.db`；表结构由 `internal/store/migrations` 的有序迁移维护（`PRAGMA user_version`，见 `docs/desktop-local-schema.md`） |
 | 网络 | Go `net/http`；前端通过 Wails binding `api.Do` 调用，**WebView 不直接 fetch 后端** |
 | Markdown | **Vditor 4.0.1 + Lute**（方言 v2，与 admin / blog 同源）；配置取自 `@simple-notes/markdown`；资源由 `pnpm sync:vditor` 自托管到 `public/vditor` |
 | 平台 | Windows（WebView2）、macOS 11+（WKWebView）、Linux（GTK4 + WebKitGTK 6.0；Ubuntu 24.04 基线） |

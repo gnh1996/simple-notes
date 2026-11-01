@@ -8,6 +8,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,10 @@ import (
 
 	"cc.naihao/simplenotes/desktop/internal/store"
 )
+
+// ErrServerTooOld 表示服务端不认识 desktop 接口（通常是对端版本较旧）。
+// 见 docs/desktop-local-schema.md §8.5：未知端点不当作泛化错误。
+var ErrServerTooOld = errors.New("服务端版本较低，请升级服务端")
 
 // Request 是一次转发请求。Body 为 JSON 字符串（为空表示无请求体）。
 type Request struct {
@@ -56,9 +61,22 @@ func (s *Service) BaseURL() string {
 
 // Get 发起 GET 并把 2xx JSON 响应解码到 out；非 2xx 转成错误（含服务端 message）。
 func (s *Service) Get(path string, out any) error {
+	return s.get(path, out, false)
+}
+
+// GetEndpoint 用于「路径本身必须存在」的请求（如 manifest / 文件夹列表）：
+// 404 / 405 说明服务端没有这个接口，按「服务端过旧」处理，而不是「资源不存在」。
+func (s *Service) GetEndpoint(path string, out any) error {
+	return s.get(path, out, true)
+}
+
+func (s *Service) get(path string, out any, endpoint bool) error {
 	resp, err := s.Do(Request{Method: http.MethodGet, Path: path})
 	if err != nil {
 		return err
+	}
+	if endpoint && (resp.Status == http.StatusNotFound || resp.Status == http.StatusMethodNotAllowed) {
+		return ErrServerTooOld
 	}
 	if resp.Status < 200 || resp.Status >= 300 {
 		return fmt.Errorf("%s", errorMessage(resp.Status, resp.Body))

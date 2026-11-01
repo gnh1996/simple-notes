@@ -1,6 +1,6 @@
 # 桌面端同步设计（本地优先 + 懒加载）
 
-> **状态：v1.4 · 2026-10-31（M0–M3 已实现：登录 / 索引同步 / 按需拉正文 / 编辑推送 / 删除墓碑 / 文件夹 / outbox / 离线新建 / 冲突 diff + 副本）**
+> **状态：v1.6 · 2026-11-01（M0–M4 已实现；本地表结构改由有序迁移维护，见 `docs/desktop-local-schema.md`）**
 > 范围：桌面端本地数据模型、同步协议、冲突处理、账号隔离、后端接口增量
 > 关联：`docs/content-model.md`（内容模型 / 发布快照）、`docs/auth-rbac.md`（JWT 会话）、`docs/tech-stack.md`、`desktop/README.md`、`desktop/AGENTS.md`
 > 非目标：多服务器 / 多账号同时在线、附件离线缓存、发布历史同步、实时协作、全文索引
@@ -173,46 +173,48 @@ GET /api/desktop/posts/sync?cursor=<opaque>&limit=500
 -- 数据归属；当前只允许一个远端 scope 处于激活状态
 create table sync_scope (
     scope_id    text primary key,           -- 'local' | 'srv:<id>:user:<id>'
-    server_url  text,                       -- 仅远端 scope
-    user_id     text,
-    username    text,
+    server_url  text not null,              -- 仅远端 scope
+    user_id     text not null,
+    username    text not null,
+    nickname    text not null default '',
     active      integer not null default 0,
     created_at  integer not null
 );
 
 create table note_local (
-    scope_id              text    not null,
-    id                    text    not null,
-    kind                  text    not null, -- NOTE | POST
-    title                 text    not null,
-    content               text,             -- null = 未缓存
-    content_loaded        integer not null default 0,
-    folder_id             text,
-    pinned                integer not null default 0,
-    tags_json             text    not null default '[]',
-    publish_status        text,
-    has_unpublished_changes integer,
-    remote_version        integer,
-    base_version          integer,
-    local_hash            text,             -- 未缓存为 null
-    base_hash             text,
-    dirty                 integer not null default 0,
-    deleted               integer not null default 0, -- 本地墓碑
-    updated_at            integer not null, -- epoch ms（本地编辑时间）
-    synced_at             integer,
+    scope_id                text    not null,
+    id                      text    not null,
+    kind                    text    not null, -- NOTE | POST
+    title                   text    not null,
+    content                 text,             -- null = 未缓存
+    content_loaded          integer not null default 0,
+    folder_id               text,
+    pinned                  integer not null default 0,
+    tags_json               text    not null default '[]',
+    publish_status          text,
+    has_unpublished_changes integer,          -- null = 服务端未返回
+    remote_version          integer not null default 0,
+    base_version            integer not null default 0,
+    local_hash              text,             -- 未缓存为 null
+    base_hash               text,
+    dirty                   integer not null default 0,
+    deleted                 integer not null default 0, -- 本地墓碑
+    remote_deleted          integer not null default 0, -- 服务端墓碑
+    updated_at              integer not null default 0, -- epoch ms（本地编辑时间）
+    synced_at               integer,
     primary key (scope_id, id)
 );
-create index idx_note_local_scope_updated on note_local(scope_id, updated_at desc);
-create index idx_note_local_dirty on note_local(scope_id, dirty);
+create index idx_note_local_list
+    on note_local (scope_id, kind, deleted, pinned desc, updated_at desc);
 
 create table folder_local (
-    scope_id     text not null,
-    id           text not null,
-    name         text not null,
-    sort         integer not null default 0,
-    dirty        integer not null default 0,
-    deleted      integer not null default 0,
-    updated_at   integer not null,
+    scope_id    text not null,
+    id          text not null,
+    name        text not null,
+    sort        integer not null default 0,
+    create_time integer not null default 0,
+    dirty       integer not null default 0,
+    updated_at  integer not null default 0,
     primary key (scope_id, id)
 );
 
@@ -221,9 +223,9 @@ create table outbox (
     id            text not null,            -- 内容 id 或 folder id
     entity        text not null,            -- note | folder | publish
     op            text not null,            -- upsert | delete
-    payload       text not null,            -- JSON
+    payload       text not null default '', -- JSON
     retry_count   integer not null default 0,
-    next_retry_at integer not null,
+    next_retry_at integer not null default 0,
     created_at    integer not null,
     primary key (scope_id, entity, id)
 );
@@ -231,8 +233,10 @@ create table outbox (
 
 约定：
 
+- **DDL 以 `desktop/internal/store/migrations/0001_init.sql` 为准**，本文只描述语义；结构版本与迁移规则见 `docs/desktop-local-schema.md`；
 - 正文只在 `content_loaded = 1` 时有值；存根只有标题 / 文件夹 / 版本；
-- 纯本地笔记：`scope_id = 'local'`，`remote_version = null`，永不入 outbox；
+- 纯本地笔记：`scope_id = 'local'`，`remote_version = 0`，永不入 outbox；
+- 文件夹删除是**物理删除**（`folder_local` 没有 `deleted` 列），未推送的删除由 outbox 重放；
 - 令牌沿用现有 `store`（SQLite），不落 `note_local`；
 - `hash` 算法：同步字段 → 规范化 JSON（键序固定；正文 CRLF→LF；标签去重排序）→ SHA-256。两端只需桌面端一致；服务端 v1 不参与。
 - 本地文件相关表（`recent_file`）与保留文件夹 `local-files` 见 `docs/desktop-local-file.md`；它们不参与同步。
@@ -358,3 +362,4 @@ local_hash != remote_hash 且均 != base_hash  → 冲突
 | 2026-10-31 | v1.3 | 落地 M2：删除接口与墓碑（`remote_deleted` 区分本地待删 / 远端已删）、删除冲突「保留本地副本 / 放弃本地」、文件夹新建 / 改名 / 删除、outbox + 指数退避 + 手动重试（V15）；已验证在线增删改、离线改名入队并在启动时重放 |
 | 2026-10-31 | v1.4 | 落地 M3：`POST /api/desktop/notes|posts` 接受客户端 UUID、正文允许空白（V16）；离线新建 + create/update 链式重放；冲突 diff 弹窗（行级 LCS）；被覆盖一侧自动存为 `scope=local` 副本并进入列表；已验证「离线新建 → 重连创建 → 冲突 → diff → 以本地为准」 |
 | 2026-10-31 | v1.5 | 调整 M4：发布 / 下架只在 admin（摘要 / slug / 封面 / 预览 / 校验不复刻）；桌面端展示发布状态 + 「管理端发布」深链；409 先比内容 hash，一致则静默对齐，避免发布引起的假冲突 |
+| 2026-11-01 | v1.6 | §4 与实现对齐：补 `nickname` / `remote_deleted` / `base_hash` / `synced_at` / `create_time`，去掉不存在的 `folder_local.deleted`，索引统一为 `idx_note_local_list`；DDL 以 `migrations/0001_init.sql` 为准，版本与迁移规则见 `docs/desktop-local-schema.md` |

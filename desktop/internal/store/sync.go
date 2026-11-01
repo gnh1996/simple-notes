@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -101,123 +100,6 @@ func tagsJSON(tags []string) string {
 		return "[]"
 	}
 	return string(raw)
-}
-
-func (s *Store) migrateSync() error {
-	_, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS sync_scope (
-			scope_id    TEXT PRIMARY KEY,
-			server_url  TEXT NOT NULL,
-			user_id     TEXT NOT NULL,
-			username    TEXT NOT NULL,
-			nickname    TEXT NOT NULL DEFAULT '',
-			active      INTEGER NOT NULL DEFAULT 0,
-			created_at  INTEGER NOT NULL
-		);
-
-		CREATE TABLE IF NOT EXISTS note_local (
-			scope_id                TEXT    NOT NULL,
-			id                      TEXT    NOT NULL,
-			kind                    TEXT    NOT NULL,
-			title                   TEXT    NOT NULL,
-			content                 TEXT,
-			content_loaded          INTEGER NOT NULL DEFAULT 0,
-			folder_id               TEXT,
-			pinned                  INTEGER NOT NULL DEFAULT 0,
-			tags_json               TEXT    NOT NULL DEFAULT '[]',
-			publish_status          TEXT,
-			has_unpublished_changes INTEGER,
-			remote_version          INTEGER NOT NULL DEFAULT 0,
-			base_version            INTEGER NOT NULL DEFAULT 0,
-			local_hash              TEXT,
-			base_hash               TEXT,
-			dirty                   INTEGER NOT NULL DEFAULT 0,
-			deleted                 INTEGER NOT NULL DEFAULT 0,
-			remote_deleted          INTEGER NOT NULL DEFAULT 0,
-			updated_at              INTEGER NOT NULL DEFAULT 0,
-			synced_at               INTEGER,
-			PRIMARY KEY (scope_id, id)
-		);
-		CREATE INDEX IF NOT EXISTS idx_note_local_list
-			ON note_local (scope_id, kind, deleted, pinned DESC, updated_at DESC);
-
-		CREATE TABLE IF NOT EXISTS folder_local (
-			scope_id   TEXT NOT NULL,
-			id         TEXT NOT NULL,
-			name       TEXT NOT NULL,
-			sort       INTEGER NOT NULL DEFAULT 0,
-			create_time INTEGER NOT NULL DEFAULT 0,
-			dirty      INTEGER NOT NULL DEFAULT 0,
-			updated_at INTEGER NOT NULL DEFAULT 0,
-			PRIMARY KEY (scope_id, id)
-		);
-
-		CREATE TABLE IF NOT EXISTS outbox (
-			scope_id      TEXT NOT NULL,
-			entity        TEXT NOT NULL,
-			id            TEXT NOT NULL,
-			op            TEXT NOT NULL,
-			payload       TEXT NOT NULL DEFAULT '',
-			retry_count   INTEGER NOT NULL DEFAULT 0,
-			next_retry_at INTEGER NOT NULL DEFAULT 0,
-			created_at    INTEGER NOT NULL,
-			PRIMARY KEY (scope_id, entity, id)
-		);
-
-		-- 最近打开的本地文件：只记录路径 / 文件名 / 时间，不存正文（docs/desktop-local-file.md §3.5）。
-		CREATE TABLE IF NOT EXISTS recent_file (
-			path      TEXT PRIMARY KEY,
-			name      TEXT NOT NULL,
-			opened_at INTEGER NOT NULL
-		);
-
-		-- 桌面端界面状态：标签顺序 / 侧栏宽度等；不参与同步，不存令牌与正文。
-		CREATE TABLE IF NOT EXISTS ui_state (
-			key   TEXT PRIMARY KEY,
-			value TEXT NOT NULL
-		);
-	`)
-	if err != nil {
-		return fmt.Errorf("初始化同步表结构: %w", err)
-	}
-	// 老库升级：remote_deleted 用于区分「服务端已删除」与「本地待删除」。
-	if err := s.ensureColumn("note_local", "remote_deleted", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("folder_local", "dirty", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	// 与服务端排序对齐：sort ASC, create_time DESC（folder_local 原名缺失时补 0）。
-	if err := s.ensureColumn("folder_local", "create_time", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	return nil
-}
-
-// ensureColumn 为已有表补列（SQLite 不支持 ADD COLUMN IF NOT EXISTS）。
-func (s *Store) ensureColumn(table, column, definition string) error {
-	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var cid int
-		var name, ctype string
-		var notnull, pk int
-		var dflt any
-		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
-			return err
-		}
-		if name == column {
-			return nil
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + definition)
-	return err
 }
 
 // SaveScope 写入并激活一个 scope；同一时间只允许一个远端 scope 处于激活状态。

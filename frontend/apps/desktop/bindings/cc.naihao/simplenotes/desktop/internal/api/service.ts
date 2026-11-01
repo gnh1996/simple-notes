@@ -34,3 +34,11 @@ export function Do(req: $models.Request): $CancellablePromise<$models.Response |
 export function Get(path: string, out: any): $CancellablePromise<void> {
     return $Call.ByID(2862013052, path, out);
 }
+
+/**
+ * GetEndpoint 用于「路径本身必须存在」的请求（如 manifest / 文件夹列表）：
+ * 404 / 405 说明服务端没有这个接口，按「服务端过旧」处理，而不是「资源不存在」。
+ */
+export function GetEndpoint(path: string, out: any): $CancellablePromise<void> {
+    return $Call.ByID(3355609165, path, out);
+}

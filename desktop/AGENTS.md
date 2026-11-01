@@ -32,6 +32,16 @@ Go 1.26+ + Wails v3（WebView）桌面端；前端是 `frontend/apps/desktop`（
 - **发布 / 下架只在 admin**：桌面端只展示 `publishStatus` / `hasUnpublishedChanges` 并提供 `System.OpenAdmin` 深链，不新增桌面发布接口
 - JSON 用 Go 标准库；不引入需要 CGO 的库（SQLite 已选纯 Go 驱动）
 
+## 本地库结构（docs/desktop-local-schema.md）
+
+- 表结构只走 `internal/store/migrations` 的有序迁移；`PRAGMA user_version` 是**唯一版本源**，不再用运行时 `CREATE IF NOT EXISTS` 兜底
+- **已发布迁移不可修改 / 删除 / 重排**；新变更只在末尾追加编号（`%04d_*.sql` 或注册表里的 Go 函数）
+- 新增 SQL 迁移：文件放 `internal/store/migrations/`，并在 `migrate.go` 的 `migrations` 注册表登记；启动时校验编号连续、文件名与编号一致
+- 条件性 DDL / 数据回填用 Go 函数（`ensureColumnTx` 模式），必须幂等；常规 DDL 用 SQL
+- **迁移失败或库版本高于应用 → 阻塞启动**，不自动重建 / 清空；错误写入 `desktop-error.log` 并弹原生对话框
+- 迁移前备份为 `desktop.db.bak.v<N>`（只保留最近一份；全新安装跳过）；恢复由用户手动覆盖
+- **`user_version` 不上报服务端**；本地 schema 与 API 契约版本解耦，协议协商见设计 §8
+
 ## 环境注意
 
 - 本仓库开发机为 Windows，**Windows 构建 / 运行已验证**；Linux / macOS 与中文输入法（fcitx5 + Wayland、微软拼音）需实机验证
