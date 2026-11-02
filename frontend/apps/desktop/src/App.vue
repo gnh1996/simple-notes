@@ -69,7 +69,7 @@ const UNCATEGORIZED_FOLDER = 'uncategorized'
 const session = ref<Session | null>(null)
 const status = ref<Status | null>(null)
 const kind = ref<Kind>('NOTE')
-const sourceFilter = ref<LibraryFilter>('all')
+const sourceFilter = ref<LibraryFilter>('local')
 const folderId = ref('')
 const keyword = ref('')
 const folders = ref<FolderRow[]>([])
@@ -139,10 +139,28 @@ function folderRow(id: string, name: string, sort: number): FolderRow {
   }
 }
 
+interface FolderCounts {
+  total: number
+  byFolder: Map<string, number>
+}
+
+function countNotes(localOnly: boolean): FolderCounts {
+  const counts: FolderCounts = { total: 0, byFolder: new Map() }
+  for (const note of quickNotes.value) {
+    if (note.kind !== 'NOTE' || note.localOnly !== localOnly) {
+      continue
+    }
+    counts.total += 1
+    const key = note.folderId || ''
+    counts.byFolder.set(key, (counts.byFolder.get(key) ?? 0) + 1)
+  }
+  return counts
+}
+
+const localFolderCounts = computed(() => countNotes(true))
+const serverFolderCounts = computed(() => countNotes(false))
+
 const displayFolders = computed<FolderRow[]>(() => {
-  const all = folderRow('', '全部笔记', -102)
-  const uncategorized = folderRow(UNCATEGORIZED_FOLDER, '未分类', -101)
-  const localFiles = folders.value.filter((folder) => folder.id === LOCAL_FILES_FOLDER)
   if (sourceFilter.value === 'file') {
     return []
   }
@@ -150,13 +168,24 @@ const displayFolders = computed<FolderRow[]>(() => {
   if (kind.value === 'POST') {
     return []
   }
+  const all = folderRow('', '全部笔记', -102)
+  const uncategorized = folderRow(UNCATEGORIZED_FOLDER, '未分类', -101)
   if (sourceFilter.value === 'local') {
-    return [{ ...all, noteCount: -1 }, uncategorized, ...localFiles]
+    const counts = localFolderCounts.value
+    return [
+      { ...all, noteCount: counts.total },
+      { ...uncategorized, noteCount: counts.byFolder.get('') ?? 0 },
+      ...folders.value
+        .filter((folder) => folder.id === LOCAL_FILES_FOLDER)
+        .map((folder) => ({ ...folder, noteCount: counts.byFolder.get(folder.id) ?? 0 })),
+    ]
   }
-  if (sourceFilter.value === 'server') {
-    return [{ ...all, noteCount: -1 }, uncategorized, ...serverFolders.value]
-  }
-  return [all, uncategorized, ...localFiles, ...serverFolders.value]
+  const counts = serverFolderCounts.value
+  return [
+    { ...all, noteCount: counts.total },
+    { ...uncategorized, noteCount: counts.byFolder.get('') ?? 0 },
+    ...serverFolders.value.map((folder) => ({ ...folder, noteCount: counts.byFolder.get(folder.id) ?? 0 })),
+  ]
 })
 
 const folderOptions = computed(() => {
@@ -229,30 +258,13 @@ function fileItem(file: RecentFile): LibraryItem {
 
 const libraryItems = computed<LibraryItem[]>(() => {
   const value = keyword.value.trim().toLowerCase()
-  const recentItems = recent.value
-    .filter((file) => !value || `${file.name} ${file.path}`.toLowerCase().includes(value))
-    .map(fileItem)
   if (sourceFilter.value === 'file') {
-    return recentItems.sort((a, b) => b.updatedAt - a.updatedAt)
+    return recent.value
+      .filter((file) => !value || `${file.name} ${file.path}`.toLowerCase().includes(value))
+      .map(fileItem)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
   }
-  const noteItems = notes.value.map(noteItem)
-  if (sourceFilter.value === 'local' || sourceFilter.value === 'server') {
-    return noteItems
-  }
-  // 文章没有文件夹语义，也不混入最近文件。
-  if (kind.value === 'POST') {
-    return noteItems
-  }
-  // 文件夹筛选只作用于笔记；「全部笔记」下才混入最近文件。
-  if (folderId.value !== '') {
-    return noteItems
-  }
-  return [...noteItems, ...recentItems].sort((a, b) => {
-    if (!!a.pinned !== !!b.pinned) {
-      return a.pinned ? -1 : 1
-    }
-    return b.updatedAt - a.updatedAt
-  })
+  return notes.value.map(noteItem)
 })
 
 const quickItems = computed<QuickItem[]>(() => {
@@ -1124,6 +1136,7 @@ async function confirmPromote(): Promise<void> {
     }
     promoteOpen.value = false
     if (result.note && !result.note.localOnly) {
+      folderId.value = ''
       sourceFilter.value = 'server'
     }
     await refreshAfterMutation()
@@ -1777,9 +1790,7 @@ async function onLoggedIn(value: Session): Promise<void> {
   } catch (err) {
     error.value = String(err)
   }
-  kind.value = 'NOTE'
-  sourceFilter.value = 'all'
-  folderId.value = ''
+  message.value = '已登录，服务端页签已可用'
   await refreshAfterMutation()
   if (session.value) {
     void refreshIndex(false)
@@ -1808,9 +1819,13 @@ async function logout(): Promise<void> {
   status.value = null
   pendingOutbox.value = 0
   syncError.value = ''
+  if (sourceFilter.value === 'server') {
+    sourceFilter.value = 'local'
+  }
   kind.value = 'NOTE'
-  sourceFilter.value = 'all'
-  folderId.value = ''
+  if (isServerFolder(folderId.value)) {
+    folderId.value = ''
+  }
   keyword.value = ''
   await closeServerTabs()
   await refreshAfterMutation()
@@ -1827,11 +1842,11 @@ function setSourceFilter(value: LibraryFilter): void {
     if (isServerFolder(folderId.value)) {
       folderId.value = ''
     }
-  }
-  if (value === 'server' && folderId.value === LOCAL_FILES_FOLDER) {
-    folderId.value = ''
-  }
-  if (value === 'file') {
+  } else if (value === 'server') {
+    if (folderId.value === LOCAL_FILES_FOLDER) {
+      folderId.value = ''
+    }
+  } else {
     kind.value = 'NOTE'
     folderId.value = ''
   }
@@ -1852,22 +1867,6 @@ function setKind(value: Kind): void {
 }
 
 function selectFolder(id: string): void {
-  if (id === LOCAL_FILES_FOLDER) {
-    sourceFilter.value = 'local'
-    kind.value = 'NOTE'
-  } else if (isServerFolder(id)) {
-    sourceFilter.value = 'server'
-    kind.value = 'NOTE'
-  } else if (id === '') {
-    if (sourceFilter.value === 'file') {
-      sourceFilter.value = 'all'
-    }
-  } else {
-    kind.value = 'NOTE'
-    if (sourceFilter.value === 'file') {
-      sourceFilter.value = 'all'
-    }
-  }
   folderId.value = id
 }
 
@@ -2220,6 +2219,7 @@ applyTheme()
             @update:keyword="keyword = $event"
             @select="selectItem"
             @new-note="newNote('local')"
+            @open-file="openFileDialog()"
             @new-folder="createFolder"
             @rename-folder="renameFolder"
             @delete-folder="deleteFolder"

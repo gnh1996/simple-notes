@@ -88,7 +88,7 @@ function formatTime(value: number): string {
             type="button"
             @click="emit('expand-library')"
           >
-            查看全部
+            打开资料库
           </button>
         </div>
         <div v-if="items.length" class="mt-2 overflow-hidden rounded-lg border border-app-border bg-app-panel">

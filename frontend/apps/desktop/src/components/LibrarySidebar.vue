@@ -11,6 +11,7 @@ const emit = defineEmits<{
   'update:keyword': [value: string]
   select: [item: LibraryItem]
   'new-note': []
+  'open-file': []
   'new-folder': [name: string]
   'rename-folder': [folder: FolderRow, name: string]
   'delete-folder': [folder: FolderRow]
@@ -119,8 +120,7 @@ function formatTime(value: number): string {
     <div class="flex shrink-0 items-center gap-0.5 border-b border-app-border px-1.5 py-1 text-[11px]">
       <button
         v-for="option in [
-          { id: 'all', label: '全部' },
-          { id: 'file', label: '文件' },
+          { id: 'file', label: '最近文件' },
           { id: 'local', label: '本地' },
           ...(session ? [{ id: 'server', label: '服务端' }] : []),
         ]"
@@ -132,47 +132,30 @@ function formatTime(value: number): string {
       >
         {{ option.label }}
       </button>
-      <div v-if="session && sourceFilter === 'all'" class="ml-auto flex items-center gap-0.5">
+    </div>
+
+    <div
+      v-if="session && sourceFilter === 'server'"
+      class="flex shrink-0 items-center gap-2 border-b border-app-border px-2 py-1.5 text-[11px]"
+    >
+      <div class="flex items-center gap-0.5 rounded border border-app-border/60 bg-app-bg p-0.5">
         <button
-          class="rounded px-1.5 py-1"
-          :class="kind === 'NOTE' ? 'bg-app-bg text-app-fg' : 'text-app-muted hover:bg-app-bg'"
+          class="rounded px-2 py-1"
+          :class="kind === 'NOTE' ? 'bg-brand-500/10 text-brand-400' : 'text-app-muted hover:text-app-fg'"
           type="button"
           @click="emit('update:kind', 'NOTE')"
         >
           随手记
         </button>
         <button
-          class="rounded px-1.5 py-1"
-          :class="kind === 'POST' ? 'bg-app-bg text-app-fg' : 'text-app-muted hover:bg-app-bg'"
+          class="rounded px-2 py-1"
+          :class="kind === 'POST' ? 'bg-brand-500/10 text-brand-400' : 'text-app-muted hover:text-app-fg'"
           type="button"
           @click="emit('update:kind', 'POST')"
         >
           文章
         </button>
       </div>
-    </div>
-
-    <div
-      v-if="session && sourceFilter === 'server'"
-      class="flex shrink-0 items-center gap-1 border-b border-app-border px-2 py-1 text-[11px]"
-    >
-      <span class="mr-1 text-app-muted">类型</span>
-      <button
-        class="rounded px-2 py-1"
-        :class="kind === 'NOTE' ? 'bg-brand-500/10 text-brand-400' : 'text-app-muted hover:bg-app-bg'"
-        type="button"
-        @click="emit('update:kind', 'NOTE')"
-      >
-        随手记
-      </button>
-      <button
-        class="rounded px-2 py-1"
-        :class="kind === 'POST' ? 'bg-brand-500/10 text-brand-400' : 'text-app-muted hover:bg-app-bg'"
-        type="button"
-        @click="emit('update:kind', 'POST')"
-      >
-        文章
-      </button>
       <span v-if="kind === 'POST'" class="ml-auto text-[10px] text-app-muted">文章没有文件夹</span>
     </div>
 
@@ -228,7 +211,7 @@ function formatTime(value: number): string {
         </div>
 
         <button
-          v-if="session && (sourceFilter === 'all' || sourceFilter === 'server')"
+          v-if="session && sourceFilter === 'server'"
           class="mt-1 rounded px-1.5 py-1 text-left text-[11px] text-app-muted hover:bg-app-bg hover:text-brand-400 disabled:opacity-40"
           :disabled="!online"
           :title="online ? '新建文件夹' : '离线时不能新建文件夹'"
@@ -257,6 +240,7 @@ function formatTime(value: number): string {
             @input="emit('update:keyword', ($event.target as HTMLInputElement).value)"
           />
           <button
+            v-if="sourceFilter !== 'file'"
             class="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-app-border text-sm leading-none text-app-muted hover:bg-app-bg hover:text-brand-400"
             type="button"
             title="新建本地笔记（Ctrl+N）"
@@ -308,9 +292,25 @@ function formatTime(value: number): string {
               </button>
             </div>
           </div>
-          <p v-if="!items.length" class="p-3 text-[11px] leading-relaxed text-app-muted">
-            {{ sourceFilter === 'file' ? '还没有最近打开的文件。' : session ? '暂无内容；同步索引或新建一篇。' : '暂无本地笔记；新建或打开本地文件。' }}
-          </p>
+          <div v-if="!items.length" class="p-3 text-[11px] leading-relaxed text-app-muted">
+            <p>
+              {{ sourceFilter === 'file'
+                ? '还没有最近打开的文件。'
+                : sourceFilter === 'local'
+                  ? '暂无本地笔记；新建或打开本地文件。'
+                  : kind === 'POST'
+                    ? '暂无文章；同步索引或新建一篇。'
+                    : '暂无服务端笔记；同步索引或新建一篇。' }}
+            </p>
+            <button
+              v-if="sourceFilter === 'file'"
+              class="mt-2 rounded border border-app-border px-2 py-1 text-[11px] text-brand-400 hover:bg-app-bg"
+              type="button"
+              @click="emit('open-file')"
+            >
+              打开 Markdown 文件…
+            </button>
+          </div>
         </div>
 
         <div class="flex shrink-0 items-center gap-2 border-t border-app-border px-2 py-1.5 text-[10px] text-app-muted">
