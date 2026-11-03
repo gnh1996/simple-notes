@@ -19,14 +19,15 @@ import * as store$0 from "../store/models.js";
 import * as $models from "./models.js";
 
 /**
- * Create 在线新建文件夹（离线不支持：服务端 id 无法预生成）。
+ * Create 新建文件夹：target='local' 时只写本地库（离线可用、永不参与同步）；
+ * 否则在线新建服务端文件夹（服务端生成 id，离线不支持）。
  */
-export function Create(name: string): $CancellablePromise<$models.Result | null> {
-    return $Call.ByID(1832791187, name);
+export function Create(name: string, target: string): $CancellablePromise<$models.Result | null> {
+    return $Call.ByID(1832791187, name, target);
 }
 
 /**
- * Delete 本地删除后推送；失败进 outbox。
+ * Delete 删除：本地文件夹连同归类一起清理（笔记移回未分类）；服务端文件夹本地删除后推送。
  */
 export function Delete(id: string): $CancellablePromise<$models.Result | null> {
     return $Call.ByID(4161900896, id);
@@ -40,7 +41,7 @@ export function List(): $CancellablePromise<store$0.FolderRow[] | null> {
 }
 
 /**
- * Rename 本地改名后推送；失败进 outbox。
+ * Rename 改名：本地文件夹只改本地库；服务端文件夹本地改名后推送，失败进 outbox。
  */
 export function Rename(id: string, name: string): $CancellablePromise<$models.Result | null> {
     return $Call.ByID(1407516409, id, name);

@@ -66,6 +66,8 @@ interface CloseState {
 
 const LOCAL_FILES_FOLDER = 'local-files'
 const UNCATEGORIZED_FOLDER = 'uncategorized'
+// 同步到服务端时表示「在服务端新建同名文件夹」的哨兵值。
+const PROMOTE_NEW_FOLDER = '__new__'
 
 const session = ref<Session | null>(null)
 const status = ref<Status | null>(null)
@@ -123,10 +125,15 @@ const windowTitle = computed(() => {
 })
 
 function isServerFolder(id: string): boolean {
-  return id !== '' && id !== LOCAL_FILES_FOLDER && id !== UNCATEGORIZED_FOLDER
+  return serverFolders.value.some((folder) => folder.id === id)
 }
 
-const serverFolders = computed(() => folders.value.filter((folder) => isServerFolder(folder.id)))
+const localFolders = computed(() => folders.value.filter((folder) => folder.local))
+const serverFolders = computed(() => folders.value.filter((folder) => !folder.local))
+
+function isLocalFolder(id: string): boolean {
+  return id === LOCAL_FILES_FOLDER || localFolders.value.some((folder) => folder.id === id)
+}
 
 function folderRow(id: string, name: string, sort: number): FolderRow {
   const found = folders.value.find((folder) => folder.id === id)
@@ -137,6 +144,7 @@ function folderRow(id: string, name: string, sort: number): FolderRow {
     noteCount: found?.noteCount ?? -1,
     createTime: found?.createTime ?? 0,
     updatedAt: found?.updatedAt ?? 0,
+    local: found?.local ?? false,
   }
 }
 
@@ -176,9 +184,7 @@ const displayFolders = computed<FolderRow[]>(() => {
     return [
       { ...all, noteCount: counts.total },
       { ...uncategorized, noteCount: counts.byFolder.get('') ?? 0 },
-      ...folders.value
-        .filter((folder) => folder.id === LOCAL_FILES_FOLDER)
-        .map((folder) => ({ ...folder, noteCount: counts.byFolder.get(folder.id) ?? 0 })),
+      ...localFolders.value.map((folder) => ({ ...folder, noteCount: counts.byFolder.get(folder.id) ?? 0 })),
     ]
   }
   const counts = serverFolderCounts.value
@@ -195,12 +201,7 @@ const folderOptions = computed(() => {
     return []
   }
   if (tab.note.localOnly) {
-    return [
-      { id: '', name: '未分类' },
-      ...folders.value
-        .filter((folder) => folder.id === LOCAL_FILES_FOLDER)
-        .map((folder) => ({ id: folder.id, name: folder.name })),
-    ]
+    return [{ id: '', name: '未分类' }, ...localFolders.value.map((folder) => ({ id: folder.id, name: folder.name }))]
   }
   return [{ id: '', name: '未分类' }, ...serverFolders.value.map((folder) => ({ id: folder.id, name: folder.name }))]
 })
@@ -231,7 +232,7 @@ function noteItem(note: NoteRow): LibraryItem {
     subtitle: local
       ? note.folderId === LOCAL_FILES_FOLDER
         ? '本地文件'
-        : '本地 · 未分类'
+        : `本地 · ${folderName(note.folderId)}`
       : note.kind === 'POST'
         ? '文章'
         : folderName(note.folderId),
@@ -279,8 +280,8 @@ const quickItems = computed<QuickItem[]>(() => {
       subtitle: note.localOnly
         ? `本地 · ${folderName(note.folderId)}`
         : note.kind === 'POST'
-          ? '服务端 · 文章'
-          : `服务端 · ${folderName(note.folderId)}`,
+          ? '云端 · 文章'
+          : `云端 · ${folderName(note.folderId)}`,
       updatedAt: note.updatedAt,
       note,
       opened: opened.has(key),
@@ -670,7 +671,7 @@ async function loadTab(tab: DocumentTab): Promise<void> {
 
 async function openNote(note: NoteRow): Promise<void> {
   if (!note.localOnly && !session.value) {
-    error.value = '请先登录后再打开服务端笔记'
+    error.value = '请先登录后再打开云端笔记'
     return
   }
   if (opening.value) {
@@ -758,8 +759,13 @@ async function newNote(target: 'local' | 'server' = 'local'): Promise<void> {
   error.value = ''
   try {
     const serverTarget = target === 'server' && !!session.value
-    const folder =
-      serverTarget && sourceFilter.value === 'server' && isServerFolder(folderId.value) ? folderId.value : ''
+    const folder = serverTarget
+      ? sourceFilter.value === 'server' && isServerFolder(folderId.value)
+        ? folderId.value
+        : ''
+      : sourceFilter.value === 'local' && isLocalFolder(folderId.value)
+        ? folderId.value
+        : ''
     const result = await NotesService.Create({
       kind: serverTarget ? kind.value : 'NOTE',
       title: '未命名',
@@ -1030,7 +1036,7 @@ async function reloadTab(tab: DocumentTab): Promise<void> {
     }
     return
   }
-  if (tab.dirty && !window.confirm('重新从本地 / 服务端读取？未同步的修改会保留在本地库。')) {
+  if (tab.dirty && !window.confirm('重新从本地 / 云端读取？未同步的修改会保留在本地库。')) {
     return
   }
   if (tab.note?.contentLoaded) {
@@ -1104,13 +1110,43 @@ async function confirmImport(payload: { title: string; target: 'local' | 'server
   }
 }
 
+// 同名以服务端 id 为准：本地文件夹在服务端有同名文件夹时直接用它；
+// 没有则预选「新建同名文件夹」，确认同步时在服务端创建（离线不可用）。
+function serverFolderByName(name: string): FolderRow | undefined {
+  const value = name.trim().toLowerCase()
+  return serverFolders.value.find((folder) => folder.name.trim().toLowerCase() === value)
+}
+
+// 所有本地文件夹（含内置「本地文件」）都参与同名映射；只有未分类不参与。
+// 这样从文件纳入的笔记同步到服务端时，也会保留「本地文件」这个分类。
+function localFolderName(id: string | undefined): string {
+  if (!id || id === UNCATEGORIZED_FOLDER) {
+    return ''
+  }
+  return localFolders.value.find((folder) => folder.id === id)?.name ?? ''
+}
+
+const promoteNewFolderName = computed(() => {
+  const id = promoteTab.value?.note?.folderId ?? promoteNoteRow.value?.folderId
+  const name = localFolderName(id)
+  return name && !serverFolderByName(name) ? name : ''
+})
+
+function defaultServerFolder(localFolderId: string): string {
+  const name = localFolderName(localFolderId)
+  if (!name) {
+    return ''
+  }
+  return serverFolderByName(name)?.id ?? PROMOTE_NEW_FOLDER
+}
+
 function startPromote(tab: DocumentTab | null = activeTab.value): void {
   if (!tab?.note || !tab.note.localOnly || !session.value) {
     return
   }
   promoteTab.value = tab
   promoteNoteRow.value = null
-  promoteFolderId.value = ''
+  promoteFolderId.value = defaultServerFolder(tab.note.folderId)
   promoteOpen.value = true
 }
 
@@ -1120,7 +1156,7 @@ function startPromoteNote(note: NoteRow): void {
   }
   promoteTab.value = findTab(tabKeyForNote(note, 'local'))
   promoteNoteRow.value = note
-  promoteFolderId.value = ''
+  promoteFolderId.value = defaultServerFolder(note.folderId)
   promoteOpen.value = true
 }
 
@@ -1132,9 +1168,36 @@ async function confirmPromote(): Promise<void> {
   promoting.value = true
   error.value = ''
   try {
-    const result = await NotesService.PromoteLocal(id, promoteFolderId.value)
+    let targetFolderId = promoteFolderId.value
+    if (targetFolderId === PROMOTE_NEW_FOLDER) {
+      const name = promoteNewFolderName.value
+      if (!name) {
+        targetFolderId = ''
+      } else {
+        const created = await FoldersService.Create(name, 'server')
+        if (created?.state === 'ok' && created.folder) {
+          targetFolderId = created.folder.id
+          await reloadFolders()
+        } else {
+          // 可能是并发创建 / 名称已存在：拉一次索引后按同名复用服务端 id。
+          try {
+            await SyncService.Refresh()
+          } catch {
+            // 离线时保持原错误提示
+          }
+          await reloadFolders()
+          const existing = serverFolderByName(name)
+          if (!existing) {
+            error.value = created?.message ?? '创建云端文件夹失败'
+            return
+          }
+          targetFolderId = existing.id
+        }
+      }
+    }
+    const result = await NotesService.PromoteLocal(id, targetFolderId)
     if (!result?.note) {
-      error.value = result?.message ?? '同步到服务端失败'
+      error.value = result?.message ?? '同步到云端失败'
       return
     }
     const tab = promoteTab.value
@@ -1599,14 +1662,15 @@ async function retryOutbox(): Promise<void> {
 
 async function createFolder(name: string): Promise<void> {
   try {
-    const result = await FoldersService.Create(name)
+    const target = sourceFilter.value === 'local' ? 'local' : 'server'
+    const result = await FoldersService.Create(name, target)
     if (result?.state !== 'ok') {
       error.value = result?.message ?? '创建文件夹失败'
       return
     }
     await refreshPending()
     await reloadFolders()
-    message.value = '文件夹已创建'
+    message.value = result.message || '文件夹已创建'
   } catch (err) {
     error.value = String(err)
   }
@@ -1639,6 +1703,11 @@ async function deleteFolder(folder: FolderRow): Promise<void> {
     }
     if (folderId.value === folder.id) {
       folderId.value = ''
+    }
+    for (const tab of tabs.value) {
+      if (tab.note?.localOnly && tab.note.folderId === folder.id) {
+        tab.note.folderId = ''
+      }
     }
     await refreshPending()
     await refreshAfterMutation()
@@ -1811,7 +1880,7 @@ async function onLoggedIn(value: Session): Promise<void> {
   } catch (err) {
     error.value = String(err)
   }
-  message.value = '已登录，服务端页签已可用'
+  message.value = '已登录，云端页签已可用'
   await refreshAfterMutation()
   if (session.value) {
     void refreshIndex(false)
@@ -1860,11 +1929,11 @@ function toggleSidebar(): void {
 function setSourceFilter(value: LibraryFilter): void {
   if (value === 'local') {
     kind.value = 'NOTE'
-    if (isServerFolder(folderId.value)) {
+    if (folderId.value && !isLocalFolder(folderId.value)) {
       folderId.value = ''
     }
   } else if (value === 'server') {
-    if (folderId.value === LOCAL_FILES_FOLDER) {
+    if (folderId.value && !isServerFolder(folderId.value)) {
       folderId.value = ''
     }
   } else {
@@ -2305,6 +2374,7 @@ applyTheme()
       :session="session"
       :online="online"
       :pending="pendingOutbox"
+      :folder-label="activeTab?.note && !activeTab.note.localOnly ? '云端' : activeTab?.note ? folderName(activeTab.note.folderId) : ''"
       :message="message"
       :error="error"
       :sync-error="syncError"
@@ -2325,6 +2395,7 @@ applyTheme()
       :default-title="importTitle"
       :can-server="!!session"
       :folders="serverFolders"
+      :local-folders="localFolders"
       @confirm="confirmImport"
       @cancel="importOpen = false"
     />
@@ -2341,9 +2412,10 @@ applyTheme()
 
     <div v-if="promoteOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
       <div class="w-full max-w-sm rounded-xl border border-app-border bg-app-panel p-4 shadow-xl">
-        <h3 class="text-sm font-medium">同步到服务端</h3>
+        <h3 class="text-sm font-medium">同步到云端</h3>
         <p class="mt-1 text-[11px] leading-relaxed text-app-muted">
-          「{{ promoteTab?.title || promoteNoteRow?.title || '未命名' }}」将移动到当前账号；「本地文件」分组会被清空。
+          「{{ promoteTab?.title || promoteNoteRow?.title || '未命名' }}」将移动到当前账号；本地文件夹不会同步，
+          请在下方选择云端文件夹（同名会自动选中，没有时可新建）。
         </p>
         <label class="mt-4 block text-xs text-app-muted">
           文件夹
@@ -2352,9 +2424,13 @@ applyTheme()
             class="mt-1 w-full rounded border border-app-border bg-app-bg px-3 py-2 text-sm text-app-fg outline-none focus:border-brand-400"
           >
             <option value="">未分类</option>
+            <option v-if="promoteNewFolderName" :value="PROMOTE_NEW_FOLDER">新建「{{ promoteNewFolderName }}」</option>
             <option v-for="folder in serverFolders" :key="folder.id" :value="folder.id">{{ folder.name }}</option>
           </select>
         </label>
+        <p v-if="promoteFolderId === PROMOTE_NEW_FOLDER" class="mt-2 text-[11px] text-amber-400">
+          云端没有同名文件夹，同步时自动创建；离线时无法创建。
+        </p>
         <div class="mt-5 flex justify-end gap-2">
           <button class="rounded border border-app-border px-3 py-1.5 text-xs hover:bg-app-bg" type="button" @click="promoteOpen = false">
             取消
@@ -2390,7 +2466,7 @@ applyTheme()
           <div>
             <h3 class="text-sm font-medium">冲突对比</h3>
             <p class="mt-0.5 text-[11px] text-app-muted">
-              服务端 v{{ activeTab.remoteVersion }} ↔ 本地；红色为服务端独有，绿色为本地独有
+              云端 v{{ activeTab.remoteVersion }} ↔ 本地；红色为云端独有，绿色为本地独有
             </p>
           </div>
           <button class="rounded border border-app-border px-2 py-1 text-xs hover:bg-app-bg" type="button" @click="diffOpen = false">
@@ -2418,7 +2494,7 @@ applyTheme()
             以本地为准
           </button>
           <button class="rounded border border-app-border px-3 py-1 text-xs hover:bg-app-bg" type="button" @click="resolveConflict('remote')">
-            以服务端为准
+            以云端为准
           </button>
         </footer>
       </div>
@@ -2439,7 +2515,7 @@ applyTheme()
           type="button"
           @click="startPromoteNote(listMenu.note); listMenu = null"
         >
-          同步到服务端
+          同步到云端
         </button>
       </div>
     </div>

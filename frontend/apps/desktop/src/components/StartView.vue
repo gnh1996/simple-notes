@@ -23,7 +23,7 @@ function sourceLabel(item: LibraryItem): string {
   if (item.source === 'local') {
     return '本地'
   }
-  return '服务端'
+  return '云端'
 }
 
 function sourceClass(item: LibraryItem): string {
@@ -52,7 +52,7 @@ function formatTime(value: number): string {
     <div class="mx-auto flex w-full max-w-2xl flex-col px-8 py-16">
       <p class="text-2xl font-semibold tracking-tight">写点什么，先存在本地。</p>
       <p class="mt-2 text-sm leading-relaxed text-app-muted">
-        文件、本地笔记与服务端笔记都在标签页里打开；不登录也能完整写作。
+        文件、本地笔记与云端笔记都在标签页里打开；不登录也能完整写作。
       </p>
 
       <div class="mt-8 flex flex-wrap items-center gap-2">

@@ -2,7 +2,7 @@
 
 桌面客户端：随手记与博客写作、发布到 Web 博客端。UI 为 **Vue 3 + TypeScript**，壳与本地能力由 **Go + Wails v3** 提供。
 
-> **当前阶段：M0–M4 同步骨架 + 本地 Markdown（v1.2 多标签 / 文档工作台）+ 图片（v1，Windows 已实现）**。包含窗口、Vditor + Lute 编辑器（方言 v2）、Go 侧 HTTP 转发、SQLite、本地文件打开 / 保存 / 导出、默认本地模式与可选登录、多标签与快速打开、文件 / 本地 / 服务端三种插图；同步协议见 `docs/desktop-sync.md`，本地文件设计见 `docs/desktop-local-file.md`，布局见 `docs/desktop-layout.md`，图片见 `docs/desktop-media.md`。
+> **当前阶段：M0–M4 同步骨架 + 本地 Markdown（v1.2 多标签 / 文档工作台 + v1.4 本地文件夹）+ 图片（v1，Windows 已实现）**。包含窗口、Vditor + Lute 编辑器（方言 v2）、Go 侧 HTTP 转发、SQLite、本地文件打开 / 保存 / 导出、默认本地模式与可选登录、多标签与快速打开、文件 / 本地 / 服务端三种插图；同步协议见 `docs/desktop-sync.md`，本地文件设计见 `docs/desktop-local-file.md`，布局见 `docs/desktop-layout.md`，图片见 `docs/desktop-media.md`。
 
 ## 架构
 
@@ -97,12 +97,14 @@ pnpm build:desktop        # 只构建；之后在 desktop/ 执行 wails3 build
 - **临时编辑**：打开 `.md` / `.markdown`（≤ 5 MB、UTF-8）不写 SQLite、不进列表、不参与同步；`Ctrl+S` 显式写回源文件，保存前比对内容 hash，外部修改时提示覆盖 / 另存为 / 重新加载。
 - **多标签（v1.2）**：文件 / 本地笔记 / 服务端笔记统一标签栏，上限 12；切换标签不弹保存框，关闭 / 退出时汇总处理；标签恢复只存路径，文件激活时才读盘；单 Vditor 实例，切标签清空撤销栈。布局见 `docs/desktop-layout.md`。
 - **最近打开**：全局记录最多 20 条，只存路径 / 文件名 / 时间；可单条移除 / 清空。
-- **纳入管理**：临时编辑可保存为「仅本地」（`scope='local'`，归入内置「本地文件」分组）或「服务端」（复用离线新建 + outbox + 409 对齐）。
+- **纳入管理**：临时编辑可保存为「仅本地」（`scope='local'`，默认归入内置「本地文件」分组，也可选自建本地文件夹）或「服务端」（复用离线新建 + outbox + 409 对齐）。
+- **本地文件夹（v1.4）**：本地 tab 可新建 / 改名 / 删除 `folder_local(scope_id='local')` 行，不触网、不进 outbox；同 scope 名称唯一（≤64、大小写不敏感），跨 scope 允许同名；删除时笔记移回「未分类」；空文件夹常驻显示。
+- **同步新建文件夹（v1.5）**：同步到服务端时，服务端没有同名文件夹可在对话框选择「新建「X」」（需在线）；并发同名会刷新索引后复用服务端 id。
 - **本地模式（默认）**：启动不弹登录页，直接进入本地 Markdown 编辑器；新建 / 搜索 / 编辑 / 删除 / 纳入本地笔记均不调用服务端。
 - **登录（可选）**：顶栏「登录」打开模态框，登录后接入服务端同步；退出登录回到本地模式，本地数据始终保留。
 - **导出**：已管理笔记可导出单篇 `.md`（正文、UTF-8 无 BOM、LF），不改版本 / dirty，不建立文件关联；已管理笔记不支持回退为本地文件。
 - **关闭保护**：有未保存的临时文件时，窗口关闭由 Go `WindowClosing` 钩子拦截，前端确认保存 / 放弃后退出。
-- 本地库新增 `recent_file` / `ui_state` 表；`note_local` 结构未变，`local-files` 是保留 `folder_id`，不写 `folder_local`。
+- 本地库新增 `recent_file` / `ui_state` 表与 `0004` 文件夹唯一索引；`note_local` 结构未变，`local-files` 是保留 `folder_id`，不写 `folder_local`。
 
 ## 编辑器
 
@@ -173,6 +175,8 @@ Windows 11 / WebView2，空闲 20s 后按进程树统计：
 - [x] M4：发布状态展示 + 管理端深链 + 冲突静默对齐（发布 / 下架只在 admin）
 - [x] 本地文件 v1：临时编辑 / 最近打开 / 默认本地模式 / 纳入管理 / 导出（见 `docs/desktop-local-file.md`）
 - [x] 本地文件 v1.2：多标签 / 独立未保存 / 标签恢复 / 退出汇总 / 快速打开 / 文档工作台（Windows；见 `docs/desktop-layout.md`）
+- [x] 本地文件夹 v1.4：本地增删改 / 空文件夹常驻 / 同名规则 / 导入目标 / 同步同名预选（Windows；见 `docs/desktop-local-file.md` §2.5）
+- [x] 同步新建文件夹 v1.5：服务端无同名时可在同步对话框创建（在线），并发同名复用服务端 id
 - [ ] 三平台实机验收（Linux / macOS、输入法、HiDPI、本地文件对话框 / 拖拽）与启动 / 内存打磨
 - [x] 编辑器与方言（Vditor 4.0.1 + Lute，2026-10-31）
 - [ ] 内存 / 启动时间门槛与三平台实机验收

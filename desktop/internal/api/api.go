@@ -20,7 +20,7 @@ import (
 
 // ErrServerTooOld 表示服务端不认识 desktop 接口（通常是对端版本较旧）。
 // 见 docs/desktop-local-schema.md §8.5：未知端点不当作泛化错误。
-var ErrServerTooOld = errors.New("服务端版本较低，请升级服务端")
+var ErrServerTooOld = errors.New("云端版本较低，请升级云端服务")
 
 // Request 是一次转发请求。Body 为 JSON 字符串（为空表示无请求体）。
 type Request struct {

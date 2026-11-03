@@ -140,12 +140,12 @@ func (s *Service) HandleProxy(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	if s.api == nil {
-		http.Error(w, "服务端未配置", http.StatusServiceUnavailable)
+		http.Error(w, "云端未配置", http.StatusServiceUnavailable)
 		return true
 	}
 	base, err := url.Parse(s.api.BaseURL())
 	if err != nil || base.Scheme == "" || base.Host == "" {
-		http.Error(w, "服务端地址无效", http.StatusServiceUnavailable)
+		http.Error(w, "云端地址无效", http.StatusServiceUnavailable)
 		return true
 	}
 	target := *base
@@ -413,7 +413,7 @@ type serverAttachment struct {
 
 func (s *Service) uploadServerStream(reader io.Reader, name string, detected imageType) (serverAttachment, error) {
 	if s.api == nil {
-		return serverAttachment{}, errors.New("未配置服务端")
+		return serverAttachment{}, errors.New("未配置云端")
 	}
 	token, ok, err := s.db.Token()
 	if err != nil {
@@ -479,7 +479,7 @@ func (s *Service) uploadServerStream(reader io.Reader, name string, detected ima
 		return serverAttachment{}, fmt.Errorf("解析上传响应: %w", err)
 	}
 	if attachment.ID == "" {
-		return serverAttachment{}, errors.New("服务端未返回附件 id")
+		return serverAttachment{}, errors.New("云端未返回附件 id")
 	}
 	return attachment, nil
 }
@@ -507,7 +507,7 @@ func (s *Service) uploadServerPath(path, name string) (serverAttachment, error) 
 	return s.uploadServerStream(file, name, detected)
 }
 
-var errUnauthorized = errors.New("请先登录后再上传服务端图片")
+var errUnauthorized = errors.New("请先登录后再上传云端图片")
 
 func writeStream(target string, reader io.Reader) (int64, error) {
 	dir := filepath.Dir(target)

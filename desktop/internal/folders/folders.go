@@ -7,10 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"cc.naihao/simplenotes/desktop/internal/api"
 	"cc.naihao/simplenotes/desktop/internal/store"
 )
+
+// maxFolderNameLength 与服务端 NoteFolderRequest 的 @Size(max = 64) 对齐。
+const maxFolderNameLength = 64
 
 // Service 通过 Wails binding 暴露文件夹能力。
 type Service struct {
@@ -49,18 +53,26 @@ func (s *Service) List() ([]store.FolderRow, error) {
 	return s.db.ListFolders(scope.ScopeID)
 }
 
-// Create 在线新建文件夹（离线不支持：服务端 id 无法预生成）。
-func (s *Service) Create(name string) (*Result, error) {
+// Create 新建文件夹：target='local' 时只写本地库（离线可用、永不参与同步）；
+// 否则在线新建服务端文件夹（服务端生成 id，离线不支持）。
+func (s *Service) Create(name, target string) (*Result, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, errors.New("文件夹名称不能为空")
+	}
+	if utf8.RuneCountInString(name) > maxFolderNameLength {
+		return nil, fmt.Errorf("文件夹名称最长 %d 个字符", maxFolderNameLength)
+	}
+	if target == "local" {
+		return s.createLocal(name)
+	}
+
 	scope, ok, err := s.active()
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
 		return nil, errors.New("请先登录")
-	}
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, errors.New("文件夹名称不能为空")
 	}
 	body, _ := json.Marshal(map[string]any{"name": name, "sort": 0})
 	resp, err := s.api.Do(api.Request{Method: http.MethodPost, Path: "/desktop/note-folders", Body: string(body)})
@@ -82,18 +94,59 @@ func (s *Service) Create(name string) (*Result, error) {
 	return &Result{State: "ok", Folder: &store.FolderRow{ID: created.ID, Name: created.Name, Sort: created.Sort}}, nil
 }
 
-// Rename 本地改名后推送；失败进 outbox。
+// createLocal 新建本地文件夹：本地生成 id，不触网、不写 outbox。
+func (s *Service) createLocal(name string) (*Result, error) {
+	taken, err := s.db.LocalFolderNameTaken(name, "")
+	if err != nil {
+		return nil, err
+	}
+	if taken {
+		return &Result{State: "error", Message: "已存在同名文件夹"}, nil
+	}
+	id := store.NewUUID()
+	if err := s.db.SaveLocalFolder(id, name, 0); err != nil {
+		return nil, fmt.Errorf("保存本地文件夹: %w", err)
+	}
+	return &Result{
+		State: "ok", Message: "已创建本地文件夹",
+		Folder: &store.FolderRow{ID: id, Name: name, Local: true},
+	}, nil
+}
+
+// Rename 改名：本地文件夹只改本地库；服务端文件夹本地改名后推送，失败进 outbox。
 func (s *Service) Rename(id, name string) (*Result, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, errors.New("文件夹名称不能为空")
+	}
+	if utf8.RuneCountInString(name) > maxFolderNameLength {
+		return nil, fmt.Errorf("文件夹名称最长 %d 个字符", maxFolderNameLength)
+	}
+
+	localFolder, isLocal, err := s.db.GetFolder("local", id)
+	if err != nil {
+		return nil, err
+	}
+	if isLocal {
+		taken, err := s.db.LocalFolderNameTaken(name, id)
+		if err != nil {
+			return nil, err
+		}
+		if taken {
+			return &Result{State: "error", Message: "已存在同名文件夹"}, nil
+		}
+		if err := s.db.SaveLocalFolder(id, name, localFolder.Sort); err != nil {
+			return nil, fmt.Errorf("保存本地文件夹: %w", err)
+		}
+		return &Result{State: "ok", Message: "已保存"}, nil
+	}
+
 	scope, ok, err := s.active()
 	if err != nil || !ok {
 		if err == nil {
 			err = errors.New("请先登录")
 		}
 		return nil, err
-	}
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, errors.New("文件夹名称不能为空")
 	}
 	folders, err := s.db.ListFolders(scope.ScopeID)
 	if err != nil {
@@ -126,8 +179,17 @@ func (s *Service) Rename(id, name string) (*Result, error) {
 	return &Result{State: "error", Message: api.ErrorMessage(resp.Status, resp.Body)}, nil
 }
 
-// Delete 本地删除后推送；失败进 outbox。
+// Delete 删除：本地文件夹连同归类一起清理（笔记移回未分类）；服务端文件夹本地删除后推送。
 func (s *Service) Delete(id string) (*Result, error) {
+	if _, isLocal, err := s.db.GetFolder("local", id); err != nil {
+		return nil, err
+	} else if isLocal {
+		if err := s.db.DeleteLocalFolder(id); err != nil {
+			return nil, err
+		}
+		return &Result{State: "ok", Message: "已删除，笔记已移到未分类"}, nil
+	}
+
 	scope, ok, err := s.active()
 	if err != nil || !ok {
 		if err == nil {

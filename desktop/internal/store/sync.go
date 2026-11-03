@@ -64,8 +64,10 @@ type NoteRow struct {
 
 // 虚拟文件夹：只存在于桌面端，不写入 folder_local、不参与同步。
 const (
-	// LocalFilesFolderID 是内置「本地文件」分组（只挂在 scope='local' 的行上）。
+	// LocalFilesFolderID 是内置「本地文件」分组的保留 folder_id。
 	LocalFilesFolderID = "local-files"
+	// LocalFilesFolderName 是内置「本地文件」分组名（本地自建文件夹不可重名）。
+	LocalFilesFolderName = "本地文件"
 	// UncategorizedFolderID 是「未分类」筛选（folder_id 为空）。
 	UncategorizedFolderID = "uncategorized"
 )
@@ -78,6 +80,8 @@ type FolderRow struct {
 	NoteCount  int    `json:"noteCount"`
 	CreateTime int64  `json:"createTime"`
 	UpdatedAt  int64  `json:"updatedAt"`
+	// Local 表示本地 scope 的自建文件夹（含内置「本地文件」），前端据此区分来源。
+	Local bool `json:"local"`
 }
 
 // OutboxItem 是待重试的写操作。
@@ -462,6 +466,89 @@ func (s *Store) SaveFolderLocal(scopeID, id, name string, sort int) error {
 func (s *Store) DeleteFolderLocal(scopeID, id string) error {
 	_, err := s.db.Exec(`DELETE FROM folder_local WHERE scope_id = ? AND id = ?`, scopeID, id)
 	return err
+}
+
+// GetFolder 按 scope 读取单个文件夹（本地自建 / 服务端镜像通用）。
+func (s *Store) GetFolder(scopeID, id string) (FolderRow, bool, error) {
+	var folder FolderRow
+	err := s.db.QueryRow(`
+		SELECT id, name, sort, create_time, updated_at FROM folder_local
+		 WHERE scope_id = ? AND id = ?
+	`, scopeID, id).Scan(&folder.ID, &folder.Name, &folder.Sort, &folder.CreateTime, &folder.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return FolderRow{}, false, nil
+	}
+	if err != nil {
+		return FolderRow{}, false, err
+	}
+	return folder, true, nil
+}
+
+// SaveLocalFolder 写入本地自建文件夹：dirty 恒 0，永不进入 outbox / 同步。
+// 内置「本地文件」是保留虚拟分组，不落 folder_local。
+func (s *Store) SaveLocalFolder(id, name string, sort int) error {
+	now := time.Now().UnixMilli()
+	_, err := s.db.Exec(`
+		INSERT INTO folder_local (scope_id, id, name, sort, create_time, dirty, updated_at)
+		VALUES ('local', ?, ?, ?, ?, 0, ?)
+		ON CONFLICT(scope_id, id) DO UPDATE SET
+			name = excluded.name, sort = excluded.sort, dirty = 0, updated_at = excluded.updated_at
+	`, id, name, sort, now, now)
+	return err
+}
+
+// LocalFolderExists 判断 id 是否属于本地 scope：内置「本地文件」始终存在，
+// 其余查 folder_local（scope_id='local'）。空 id 与「未分类」返回 false。
+func (s *Store) LocalFolderExists(id string) (bool, error) {
+	if id == "" || id == UncategorizedFolderID {
+		return false, nil
+	}
+	if id == LocalFilesFolderID {
+		return true, nil
+	}
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM folder_local WHERE scope_id = 'local' AND id = ?
+	`, id).Scan(&count)
+	return count > 0, err
+}
+
+// LocalFolderNameTaken 判断本地 scope 是否已有同名文件夹（trim、大小写不敏感）；
+// excludeID 用于改名时排除自身。内置「本地文件」也占用该名称。
+func (s *Store) LocalFolderNameTaken(name, excludeID string) (bool, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false, nil
+	}
+	if strings.EqualFold(name, LocalFilesFolderName) {
+		return true, nil
+	}
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM folder_local
+		 WHERE scope_id = 'local' AND lower(name) = lower(?) AND id <> ?
+	`, name, excludeID).Scan(&count)
+	return count > 0, err
+}
+
+// DeleteLocalFolder 删除本地自建文件夹，并把其中的笔记移回「未分类」。
+func (s *Store) DeleteLocalFolder(id string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+		UPDATE note_local SET folder_id = ''
+		 WHERE scope_id = 'local' AND COALESCE(folder_id, '') = ?
+	`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM folder_local WHERE scope_id = 'local' AND id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // MarkFolderSynced 清除文件夹 dirty（重放成功后）。

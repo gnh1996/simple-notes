@@ -31,6 +31,7 @@ var migrations = []migration{
 	{version: 1, name: "init", file: "0001_init.sql"},
 	{version: 2, name: "align_legacy_columns", fn: alignLegacyColumns},
 	{version: 3, name: "local_media", file: "0003_local_media.sql"},
+	{version: 4, name: "local_folder_names", file: "0004_local_folder_names.sql"},
 }
 
 //go:embed migrations/*.sql

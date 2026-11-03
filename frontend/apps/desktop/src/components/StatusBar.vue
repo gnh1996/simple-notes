@@ -8,6 +8,7 @@ const props = defineProps<{
   session: Session | null
   online: boolean
   pending: number
+  folderLabel: string
   message: string
   error: string
   syncError: string
@@ -57,11 +58,10 @@ const details = computed(() => {
   if (tab.source === 'file') {
     return `${tab.file?.size ?? 0} B · ${tab.file?.lineEnding === 'crlf' ? 'CRLF' : 'LF'}`
   }
-  const folder = tab.note?.localOnly ? (tab.note.folderId === 'local-files' ? '本地文件' : '未分类') : '服务端'
   if (tab.note?.localOnly) {
-    return folder
+    return props.folderLabel || '未分类'
   }
-  return `v${tab.note?.remoteVersion ?? 0} · ${folder}`
+  return `v${tab.note?.remoteVersion ?? 0} · ${props.folderLabel || '云端'}`
 })
 </script>
 

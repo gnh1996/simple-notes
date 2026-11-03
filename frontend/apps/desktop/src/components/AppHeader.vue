@@ -91,7 +91,7 @@ function run(action: () => void): void {
           type="button"
           @click="run(() => emit('new-server'))"
         >
-          新建到服务端
+          新建到云端
         </button>
         <div class="my-1 border-t border-app-border" />
         <button class="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-app-bg" type="button" @click="run(() => emit('open-file'))">

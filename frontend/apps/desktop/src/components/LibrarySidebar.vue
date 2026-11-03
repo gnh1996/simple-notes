@@ -23,7 +23,7 @@ const emit = defineEmits<{
   contextmenu: [item: LibraryItem, event: MouseEvent]
 }>()
 
-defineProps<{
+const props = defineProps<{
   session: Session | null
   folders: FolderRow[]
   items: LibraryItem[]
@@ -41,8 +41,16 @@ const newFolderName = ref('')
 const renamingId = ref('__none__')
 const renameValue = ref('')
 
-function isServerFolder(id: string): boolean {
-  return id !== '' && id !== 'uncategorized' && id !== 'local-files'
+// 本地自建文件夹始终可管理（不需要登录）；服务端文件夹仅在登录后可管理。
+function canManageFolder(folder: FolderRow): boolean {
+  if (!folder.id || folder.id === 'local-files' || folder.id === 'uncategorized') {
+    return false
+  }
+  return folder.local || Boolean(props.session)
+}
+
+function canCreateFolder(): boolean {
+  return props.sourceFilter === 'local' || (Boolean(props.session) && props.sourceFilter === 'server')
 }
 
 function submitNewFolder(): void {
@@ -89,7 +97,7 @@ function sourceLabel(source: string): string {
   if (source === 'local') {
     return '本地'
   }
-  return '服务端'
+  return '云端'
 }
 
 function formatTime(value: number): string {
@@ -122,7 +130,7 @@ function formatTime(value: number): string {
         v-for="option in [
           { id: 'file', label: '最近文件' },
           { id: 'local', label: '本地' },
-          ...(session ? [{ id: 'server', label: '服务端' }] : []),
+          ...(session ? [{ id: 'server', label: '云端' }] : []),
         ]"
         :key="option.id"
         class="rounded px-1.5 py-1"
@@ -191,7 +199,7 @@ function formatTime(value: number): string {
             {{ folder.noteCount }}
           </span>
           <button
-            v-if="session && isServerFolder(folder.id) && renamingId !== folder.id"
+            v-if="canManageFolder(folder) && renamingId !== folder.id"
             class="hidden px-0.5 text-[10px] text-app-muted group-hover:block hover:text-brand-400"
             type="button"
             title="重命名"
@@ -200,7 +208,7 @@ function formatTime(value: number): string {
             改
           </button>
           <button
-            v-if="session && isServerFolder(folder.id)"
+            v-if="canManageFolder(folder)"
             class="hidden px-0.5 text-[10px] text-red-400 group-hover:block"
             type="button"
             title="删除"
@@ -211,10 +219,16 @@ function formatTime(value: number): string {
         </div>
 
         <button
-          v-if="session && sourceFilter === 'server'"
+          v-if="canCreateFolder()"
           class="mt-1 rounded px-1.5 py-1 text-left text-[11px] text-app-muted hover:bg-app-bg hover:text-brand-400 disabled:opacity-40"
-          :disabled="!online"
-          :title="online ? '新建文件夹' : '离线时不能新建文件夹'"
+          :disabled="sourceFilter === 'server' && !online"
+          :title="
+            sourceFilter === 'server' && !online
+              ? '离线时不能新建云端文件夹'
+              : sourceFilter === 'local'
+                ? '新建本地文件夹（仅本机，不同步）'
+                : '新建云端文件夹'
+          "
           type="button"
           @click="creatingFolder = true"
         >
@@ -300,7 +314,7 @@ function formatTime(value: number): string {
                   ? '暂无本地笔记；新建或打开本地文件。'
                   : kind === 'POST'
                     ? '暂无文章；同步索引或新建一篇。'
-                    : '暂无服务端笔记；同步索引或新建一篇。' }}
+                    : '暂无云端笔记；同步索引或新建一篇。' }}
             </p>
             <button
               v-if="sourceFilter === 'file'"

@@ -11,6 +11,11 @@ export interface FolderRow {
     "noteCount": number;
     "createTime": number;
     "updatedAt": number;
+
+    /**
+     * Local 表示本地 scope 的自建文件夹（含内置「本地文件」），前端据此区分来源。
+     */
+    "local": boolean;
 }
 
 /**

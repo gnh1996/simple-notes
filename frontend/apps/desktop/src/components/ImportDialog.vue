@@ -7,6 +7,7 @@ const props = defineProps<{
   defaultTitle: string
   canServer: boolean
   folders: FolderRow[]
+  localFolders: FolderRow[]
 }>()
 
 const emit = defineEmits<{
@@ -19,6 +20,10 @@ const target = ref<'local' | 'server'>('local')
 const folderId = ref('')
 const error = ref('')
 
+function defaultLocalFolder(): string {
+  return props.localFolders.find((folder) => folder.id === 'local-files')?.id ?? props.localFolders[0]?.id ?? ''
+}
+
 watch(
   () => props.open,
   (open) => {
@@ -27,10 +32,17 @@ watch(
     }
     title.value = props.defaultTitle
     target.value = 'local'
-    folderId.value = ''
+    folderId.value = defaultLocalFolder()
     error.value = ''
   },
 )
+
+watch(target, (value) => {
+  if (!props.open) {
+    return
+  }
+  folderId.value = value === 'local' ? defaultLocalFolder() : ''
+})
 
 watch(
   () => props.canServer,
@@ -54,7 +66,7 @@ function submit(): void {
   emit('confirm', {
     title: value,
     target: target.value,
-    folderId: target.value === 'server' ? folderId.value : '',
+    folderId: folderId.value,
   })
 }
 
@@ -89,7 +101,7 @@ function cancel(): void {
           <input v-model="target" class="mt-0.5" type="radio" value="local" />
           <span>
             <span class="block text-app-fg">仅本地</span>
-            <span class="mt-0.5 block text-[11px] text-app-muted">归入「本地文件」，不连接服务器</span>
+            <span class="mt-0.5 block text-[11px] text-app-muted">归入本地文件夹，不连接服务器</span>
           </span>
         </label>
         <label
@@ -101,13 +113,23 @@ function cancel(): void {
         >
           <input v-model="target" class="mt-0.5" type="radio" value="server" :disabled="!canServer" />
           <span>
-            <span class="block text-app-fg">服务端（当前账号）</span>
+            <span class="block text-app-fg">云端（当前账号）</span>
             <span class="mt-0.5 block text-[11px] text-app-muted">
               {{ canServer ? '创建后进入现有同步流程' : '登录后可用' }}
             </span>
           </span>
         </label>
       </div>
+
+      <label v-if="target === 'local'" class="mt-3 block text-xs text-app-muted">
+        文件夹
+        <select
+          v-model="folderId"
+          class="mt-1 w-full rounded border border-app-border bg-app-bg px-3 py-2 text-sm text-app-fg outline-none focus:border-brand-400"
+        >
+          <option v-for="folder in localFolders" :key="folder.id" :value="folder.id">{{ folder.name }}</option>
+        </select>
+      </label>
 
       <label v-if="target === 'server'" class="mt-3 block text-xs text-app-muted">
         文件夹
@@ -121,7 +143,7 @@ function cancel(): void {
       </label>
 
       <p v-if="!canServer" class="mt-3 text-[11px] text-amber-400">
-        当前未登录，只能保存为「仅本地」；登录后可同步到服务端。
+        当前未登录，只能保存为「仅本地」；登录后可同步到云端。
       </p>
       <p v-if="error" class="mt-3 text-[11px] text-red-400">{{ error }}</p>
 

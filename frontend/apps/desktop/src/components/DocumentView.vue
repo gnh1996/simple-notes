@@ -58,7 +58,7 @@ const linkBase = computed(() => {
   }
   return ''
 })
-const sourceLabel = computed(() => (props.tab.source === 'file' ? '文件' : props.tab.source === 'local' ? '本地' : '服务端'))
+const sourceLabel = computed(() => (props.tab.source === 'file' ? '文件' : props.tab.source === 'local' ? '本地' : '云端'))
 const sourceClass = computed(() =>
   props.tab.source === 'file'
     ? 'bg-amber-500/10 text-amber-400'
@@ -181,7 +181,7 @@ function publishLabel(value: string): string {
                   type="button"
                   @click="run('promote')"
                 >
-                  同步到服务端
+                  同步到云端
                 </button>
                 <button class="w-full rounded px-2 py-1.5 text-left hover:bg-app-bg" type="button" @click="run('export')">
                   导出为 Markdown…
@@ -217,7 +217,7 @@ function publishLabel(value: string): string {
       v-if="tab.note?.remoteDeleted && tab.dirty"
       class="shrink-0 border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-300"
     >
-      <p>服务端已删除这篇内容，本地有未推送修改。</p>
+      <p>云端已删除这篇内容，本地有未推送修改。</p>
       <div class="mt-2 flex gap-2">
         <button class="rounded border border-red-500/40 px-2.5 py-1 text-[11px] hover:bg-red-500/10" type="button" @click="emit('action', 'resolve-delete-local')">
           保留为本地副本
@@ -232,13 +232,13 @@ function publishLabel(value: string): string {
       v-if="tab.saveState === 'conflict'"
       class="shrink-0 border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-300"
     >
-      <p>服务端已有新版本（{{ tab.remoteTitle || '未命名' }} · v{{ tab.remoteVersion }}），本地修改尚未覆盖。</p>
+      <p>云端已有新版本（{{ tab.remoteTitle || '未命名' }} · v{{ tab.remoteVersion }}），本地修改尚未覆盖。</p>
       <div class="mt-2 flex gap-2">
         <button class="rounded border border-red-500/40 px-2.5 py-1 text-[11px] hover:bg-red-500/10" type="button" @click="emit('action', 'resolve-local')">
           以本地为准
         </button>
         <button class="rounded border border-app-border px-2.5 py-1 text-[11px] text-app-fg hover:bg-app-bg" type="button" @click="emit('action', 'resolve-remote')">
-          以服务端为准
+          以云端为准
         </button>
         <button class="rounded border border-app-border px-2.5 py-1 text-[11px] text-app-muted hover:bg-app-bg" type="button" @click="emit('action', 'diff')">
           查看差异

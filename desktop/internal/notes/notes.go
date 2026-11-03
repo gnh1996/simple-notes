@@ -159,8 +159,12 @@ func (s *Service) List(kind, folderID, keyword string) ([]store.NoteRow, error) 
 	}
 
 	rows := make([]store.NoteRow, 0, 32)
-	// 服务端 scope：folderID 指向内置「本地文件」时跳过；其余文件夹只查服务端。
-	if hasScope && folderID != LocalFilesFolderID {
+	localFolder, err := s.db.LocalFolderExists(folderID)
+	if err != nil {
+		return nil, err
+	}
+	// 服务端 scope：筛选本地文件夹时跳过；其余文件夹只查服务端。
+	if hasScope && !localFolder {
 		active, err := s.listScope(scope.ScopeID, kind, folderID, keyword)
 		if err != nil {
 			return nil, err
@@ -168,8 +172,8 @@ func (s *Service) List(kind, folderID, keyword string) ([]store.NoteRow, error) 
 		rows = append(rows, active...)
 	}
 
-	// 本地 scope：全部 / 未分类 / 本地文件时参与；筛选服务端文件夹时不混入本地笔记。
-	if folderID == "" || folderID == LocalFilesFolderID || folderID == UncategorizedFolderID {
+	// 本地 scope：全部 / 未分类 / 本地文件夹时参与；筛选服务端文件夹时不混入本地笔记。
+	if folderID == "" || folderID == UncategorizedFolderID || localFolder {
 		local, err := s.listScope("local", kind, folderID, keyword)
 		if err != nil {
 			return nil, err
@@ -203,7 +207,7 @@ func (s *Service) listScope(scopeID, kind, folderID, keyword string) ([]store.No
 	return append(notes, posts...), errors.Join(errNotes, errPosts)
 }
 
-// Folders 返回文件夹列表：虚拟「全部 / 未分类 / 本地文件」+ 服务端镜像，并带上各自数量。
+// Folders 返回文件夹列表：内置「全部 / 未分类 / 本地文件」+ 本地自建 + 服务端镜像，并带上各自数量。
 func (s *Service) Folders() ([]store.FolderRow, error) {
 	scope, hasScope, err := s.db.ActiveScope()
 	if err != nil {
@@ -229,19 +233,28 @@ func (s *Service) Folders() ([]store.FolderRow, error) {
 		total += count
 	}
 
-	out := make([]store.FolderRow, 0, 4+len(activeCounts))
+	localFolders, err := s.db.ListFolders("local")
+	if err != nil {
+		return nil, err
+	}
+	for i := range localFolders {
+		localFolders[i].Local = true
+		localFolders[i].NoteCount = localCounts[localFolders[i].ID]
+	}
+
+	out := make([]store.FolderRow, 0, 4+len(localFolders)+len(activeCounts))
 	out = append(out,
 		store.FolderRow{ID: "", Name: "全部笔记", Sort: -102, NoteCount: total},
 		store.FolderRow{
 			ID: UncategorizedFolderID, Name: "未分类", Sort: -101,
 			NoteCount: localCounts[""] + activeCounts[""],
 		},
+		store.FolderRow{
+			ID: LocalFilesFolderID, Name: store.LocalFilesFolderName, Sort: -100,
+			NoteCount: localCounts[LocalFilesFolderID], Local: true,
+		},
 	)
-	if count := localCounts[LocalFilesFolderID]; count > 0 {
-		out = append(out, store.FolderRow{
-			ID: LocalFilesFolderID, Name: "本地文件", Sort: -100, NoteCount: count,
-		})
-	}
+	out = append(out, localFolders...)
 	if hasScope {
 		folders, err := s.db.ListFolders(scope.ScopeID)
 		if err != nil {
@@ -330,7 +343,7 @@ func (s *Service) Save(input SaveInput) (*SaveResult, error) {
 		row.Content = content
 	}
 	row.ContentLoaded = true
-	row.FolderID = normalizeFolderID(scopeID, input.FolderID)
+	row.FolderID = s.normalizeFolderID(scopeID, input.FolderID)
 	tagsJSON, _ := json.Marshal(row.Tags)
 	hash := ContentHash(row)
 	if err := s.db.SaveNoteLocal(scopeID, row, string(tagsJSON), hash); err != nil {
@@ -362,7 +375,7 @@ func (s *Service) Resolve(id, side string) (*SaveResult, error) {
 		return nil, errors.New("本地索引中没有这篇内容")
 	}
 	if scopeID == "local" {
-		return nil, errors.New("纯本地笔记没有服务端冲突")
+		return nil, errors.New("纯本地笔记没有云端冲突")
 	}
 	detail, err := s.fetchDetail(row.Kind, id)
 	if err != nil {
@@ -379,7 +392,7 @@ func (s *Service) Resolve(id, side string) (*SaveResult, error) {
 		}
 		row.BaseVersion = detail.Version
 		row.Conflict = false
-		return &SaveResult{State: "synced", Note: &row, Message: "已采用服务端版本，本地修改保留为副本"}, nil
+		return &SaveResult{State: "synced", Note: &row, Message: "已采用云端版本，本地修改保留为副本"}, nil
 	}
 
 	_ = s.copyRemoteSide(scopeID, row.Kind, detail)
@@ -427,7 +440,9 @@ func (s *Service) Create(input CreateInput) (*SaveResult, error) {
 	forceLocal := input.Target == "local"
 	if hasScope && !forceLocal {
 		scopeID = scope.ScopeID
-		folderID = normalizeFolderID(scopeID, input.FolderID)
+		folderID = s.normalizeFolderID(scopeID, input.FolderID)
+	} else {
+		folderID = s.normalizeFolderID("local", input.FolderID)
 	}
 	row := store.NoteRow{
 		ID:            store.NewUUID(),
@@ -532,6 +547,9 @@ func (s *Service) ImportFile(input ImportInput) (*SaveResult, error) {
 
 	if input.Target != "server" {
 		row.FolderID = LocalFilesFolderID
+		if input.FolderID != "" && input.FolderID != LocalFilesFolderID {
+			row.FolderID = s.normalizeFolderID("local", input.FolderID)
+		}
 		tagsJSON, _ := json.Marshal(row.Tags)
 		hash := ContentHash(row)
 		if err := s.db.InsertNoteLocal("local", row, string(tagsJSON), hash); err != nil {
@@ -548,9 +566,9 @@ func (s *Service) ImportFile(input ImportInput) (*SaveResult, error) {
 		return nil, err
 	}
 	if !ok {
-		return nil, errors.New("请先登录后再同步到服务端")
+		return nil, errors.New("请先登录后再同步到云端")
 	}
-	folderID := normalizeFolderID(scope.ScopeID, input.FolderID)
+	folderID := s.normalizeFolderID(scope.ScopeID, input.FolderID)
 	row.FolderID = folderID
 	tagsJSON, _ := json.Marshal(row.Tags)
 	hash := ContentHash(row)
@@ -576,7 +594,7 @@ func (s *Service) fallbackToLocal(scopeID string, result *SaveResult) *SaveResul
 	result.Note.LocalOnly = true
 	result.Note.FolderID = LocalFilesFolderID
 	result.Note.Dirty = false
-	result.Message = "服务端创建失败，已保留为本地笔记：" + result.Message
+	result.Message = "云端创建失败，已保留为本地笔记：" + result.Message
 	return result
 }
 
@@ -587,7 +605,7 @@ func (s *Service) PromoteLocal(id, folderID string) (*SaveResult, error) {
 		return nil, err
 	}
 	if !ok {
-		return nil, errors.New("请先登录后再同步到服务端")
+		return nil, errors.New("请先登录后再同步到云端")
 	}
 	scopeID, row, found, err := s.db.GetNoteAny(id)
 	if err != nil {
@@ -597,7 +615,7 @@ func (s *Service) PromoteLocal(id, folderID string) (*SaveResult, error) {
 		return nil, errors.New("本地索引中没有这篇内容")
 	}
 	if scopeID != "local" {
-		return nil, errors.New("只有纯本地笔记可以同步到服务端")
+		return nil, errors.New("只有纯本地笔记可以同步到云端")
 	}
 	if !row.ContentLoaded {
 		return nil, errors.New("笔记正文尚未加载")
@@ -609,7 +627,7 @@ func (s *Service) PromoteLocal(id, folderID string) (*SaveResult, error) {
 			return nil, fmt.Errorf("上传本地图片: %w", err)
 		}
 	}
-	folderID = normalizeFolderID(scope.ScopeID, folderID)
+	folderID = s.normalizeFolderID(scope.ScopeID, folderID)
 	if err := s.db.MoveNoteScope("local", scope.ScopeID, id, folderID); err != nil {
 		return nil, fmt.Errorf("迁移本地笔记: %w", err)
 	}
@@ -741,7 +759,7 @@ func (s *Service) pushAndApply(scopeID string, row store.NoteRow, version int64,
 		result := &SaveResult{
 			State:   "conflict",
 			Note:    &row,
-			Message: "服务端已有新版本",
+			Message: "云端已有新版本",
 		}
 		if fetchErr == nil {
 			result.RemoteTitle = remote.Title
@@ -907,15 +925,20 @@ func nullableString(value string) *string {
 }
 
 // normalizeFolderID 把前端传来的归类收敛到当前 scope 的合法值：
-// 纯本地笔记只接受「本地文件」或未分类；服务端笔记的虚拟分组一律落未分类。
-func normalizeFolderID(scopeID, folderID string) string {
+// 本地 scope 只接受内置「本地文件」或已存在的本地文件夹；服务端 scope
+// 一律清掉本地专用 id（未分类 / 本地文件 / 本地自建文件夹）。
+func (s *Service) normalizeFolderID(scopeID, folderID string) string {
+	isLocal, err := s.db.LocalFolderExists(folderID)
+	if err != nil {
+		isLocal = false
+	}
 	if scopeID == "local" {
-		if folderID == LocalFilesFolderID {
-			return LocalFilesFolderID
+		if isLocal {
+			return folderID
 		}
 		return ""
 	}
-	if folderID == "" || folderID == UncategorizedFolderID || folderID == LocalFilesFolderID {
+	if folderID == "" || folderID == UncategorizedFolderID || isLocal {
 		return ""
 	}
 	return folderID
