@@ -1,6 +1,6 @@
 # 桌面端本地库结构演进（SQLite Schema 迁移）设计
 
-> **状态：v1.3 · 2026-11-03（S1 + S2 已实现：执行器 / 0001+0002 / 备份 / 降级检测 / 启动阻塞；追加 0003 本地图片附件表、0004 文件夹唯一索引；S3 协议握手待触发）**
+> **状态：v1.4 · 2026-11-03（S1 + S2 已实现：执行器 / 0001+0002 / 备份 / 降级检测 / 启动阻塞；追加 0003 本地图片附件表、0004 文件夹唯一索引、0005 文件夹树；S3 协议握手待触发）**
 > 范围：桌面端 SQLite 表结构的版本化与迁移机制、失败与降级处理、与后端 API 契约版本的关系
 > 关联：`docs/desktop-sync.md`（本地数据模型 / 同步协议）、`docs/desktop-local-file.md`（本地文件表）、`docs/tech-stack.md`（选型）、`desktop/AGENTS.md`
 > 非目标：down 迁移、多实例并发迁移、数据库加密、跨设备同步 schema、服务端 Flyway 变更
@@ -398,15 +398,17 @@ func alignLegacyColumns(tx *sql.Tx) error {
 
 **`0004_local_folder_names.sql`**：为 `folder_local` 增加 `uk_folder_local_scope_name` **部分**唯一索引（`scope_id, lower(name)`，`WHERE scope_id='local'`），保证本地自建文件夹不重名；服务端镜像仍由后端 `uk_note_folder_owner_name` 保证，避免离线改名与远端新增同名时拖垮同步（`docs/desktop-local-file.md` §2.5）。
 
+**`0005_folder_tree.sql`**：`folder_local` 增加 `parent_id`；本地唯一索引改为 `(scope_id, coalesce(parent_id, ''), lower(name)) WHERE scope_id='local'`；把 `note_local(scope='local')` 的 `folder_id='local-files'` 改写为未分类（移除内置「本地文件」）。
+
 ### 7.2 路径推演
 
 | 起始状态 | `user_version` | 执行 | 结果 |
 | --- | --- | --- | --- |
-| 全新安装 | 0 | `0001` 建表 → `0002` 补列（空操作）→ `0003` 建本地附件表 → `0004` 建文件夹唯一索引 | 4 |
-| 现有老库（代码建的表，缺 3 列） | 0 | `0001` 全部跳过 → `0002` 补 3 列 → `0003` 建表 → `0004` 索引 | 4 |
-| 已有老库但 `recent_file` 缺失 | 0 | `0001` 补建缺失表 → `0002` 补列 → `0003` 建表 → `0004` 索引 | 4 |
-| 已迁移到最新 | 4 | 无 | 4 |
-| 降级后的库 | 5 | 拒绝启动 | 错误 |
+| 全新安装 | 0 | `0001` 建表 → `0002` 补列（空操作）→ `0003` 建本地附件表 → `0004` 建文件夹唯一索引 → `0005` 建文件夹树 | 5 |
+| 现有老库（代码建的表，缺 3 列） | 0 | `0001` 全部跳过 → `0002` 补 3 列 → `0003` 建表 → `0004` 索引 → `0005` 树 | 5 |
+| 已有老库但 `recent_file` 缺失 | 0 | `0001` 补建缺失表 → `0002` 补列 → `0003` 建表 → `0004` 索引 → `0005` 树 | 5 |
+| 已迁移到最新 | 5 | 无 | 5 |
+| 降级后的库 | 6 | 拒绝启动 | 错误 |
 
 老库不需要「baseline 特判」：`IF NOT EXISTS` 让 `0001` 对新旧库都成立，`0002` 的幂等补列把差异抹平。**这是本设计能平滑接管现有库的关键**，也是为什么 `0002` 必须是 Go 函数而不是纯 SQL。
 
@@ -561,3 +563,4 @@ S1 完成后，`ensureColumn` 的隐式行为被收进 `0002`，后续所有变�
 | 2026-11-01 | v1.1 | 落地 S1 + S2：`store/migrate.go` + `migrations/0001_init.sql` + `0002` 补列；`OpenAt` 启动迁移；备份（全新安装跳过）、降级 fail-fast、启动错误弹窗 + `desktop-error.log`；`api.GetEndpoint` 把 manifest 的 404/405 映射为 `ErrServerTooOld`；`desktop-sync.md` §4 与代码对齐 |
 | 2026-11-02 | v1.2 | 追加 `0003_local_media.sql`：`local_attachment` 本地图片元数据表；二进制在 `media/local/`，不参与同步（`docs/desktop-media.md`） |
 | 2026-11-03 | v1.3 | 追加 `0004_local_folder_names.sql`：`folder_local(scope_id, lower(name)) WHERE scope_id='local'` 部分唯一索引，支撑本地自建文件夹并保证不重名（`docs/desktop-local-file.md` §2.5） |
+| 2026-11-03 | v1.4 | 追加 `0005_folder_tree.sql`：`folder_local.parent_id` + 按父级唯一索引；`local-files` 笔记改写为未分类（v2.0 文件夹树） |

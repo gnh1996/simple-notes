@@ -18,47 +18,55 @@ func openTestFolders(t *testing.T) (*Service, *store.Store) {
 	return New(db, api.New(db, "http://127.0.0.1:1/api")), db
 }
 
-func TestLocalFolderCreateRenameDeleteOffline(t *testing.T) {
+func TestLocalFolderTreeCreateRenameDelete(t *testing.T) {
 	svc, db := openTestFolders(t)
 
-	created, err := svc.Create("工作", "local")
+	created, err := svc.Create("工作", "local", "")
 	if err != nil || created == nil || created.State != "ok" || created.Folder == nil {
 		t.Fatalf("create = %+v, err=%v", created, err)
 	}
-	if !created.Folder.Local || created.Folder.Name != "工作" {
-		t.Fatalf("本地文件夹标记错误: %+v", created.Folder)
+	if !created.Folder.Local || created.Folder.ParentID != "" || created.Folder.Name != "工作" {
+		t.Fatalf("根文件夹状态错误: %+v", created.Folder)
 	}
-	id := created.Folder.ID
+	rootID := created.Folder.ID
 
-	dup, err := svc.Create("工作", "local")
+	child, err := svc.Create("项目A", "local", rootID)
+	if err != nil || child == nil || child.State != "ok" || child.Folder == nil {
+		t.Fatalf("create child = %+v, err=%v", child, err)
+	}
+	if child.Folder.ParentID != rootID {
+		t.Fatalf("子文件夹父级错误: %+v", child.Folder)
+	}
+
+	// 同一父级下重名拒绝。
+	dup, err := svc.Create("项目A", "local", rootID)
 	if err != nil || dup == nil || dup.State != "error" {
-		t.Fatalf("同名应被拒绝: %+v, err=%v", dup, err)
+		t.Fatalf("同父级重名应拒绝: %+v, err=%v", dup, err)
 	}
-	reserved, err := svc.Create("本地文件", "local")
-	if err != nil || reserved == nil || reserved.State != "error" {
-		t.Fatalf("内置名称应被拒绝: %+v, err=%v", reserved, err)
+	// 不同父级允许同名。
+	if other, err := svc.Create("项目A", "local", ""); err != nil || other == nil || other.State != "ok" {
+		t.Fatalf("跨层级同名应允许: %+v, err=%v", other, err)
 	}
 
-	renamed, err := svc.Rename(id, "生活")
+	renamed, err := svc.Rename(child.Folder.ID, "项目B")
 	if err != nil || renamed == nil || renamed.State != "ok" {
 		t.Fatalf("rename = %+v, err=%v", renamed, err)
 	}
-	conflict, err := svc.Rename(id, "本地文件")
-	if err != nil || conflict == nil || conflict.State != "error" {
-		t.Fatalf("改名到内置名称应被拒绝: %+v, err=%v", conflict, err)
+
+	// 有子文件夹时禁止删除。
+	if deleted, err := svc.Delete(rootID); err != nil || deleted == nil || deleted.State != "error" {
+		t.Fatalf("父文件夹应拒绝删除: %+v, err=%v", deleted, err)
 	}
 
 	row := store.NoteRow{
 		ID: "n1", Kind: "NOTE", Title: "笔记", Content: "正文",
-		FolderID: id, ContentLoaded: true, UpdatedAt: 1, Tags: []string{},
+		FolderID: child.Folder.ID, ContentLoaded: true, UpdatedAt: 1, Tags: []string{},
 	}
 	if err := db.InsertNoteLocal("local", row, `[]`, "hash"); err != nil {
 		t.Fatalf("写入本地笔记: %v", err)
 	}
-
-	deleted, err := svc.Delete(id)
-	if err != nil || deleted == nil || deleted.State != "ok" {
-		t.Fatalf("delete = %+v, err=%v", deleted, err)
+	if deleted, err := svc.Delete(child.Folder.ID); err != nil || deleted == nil || deleted.State != "ok" {
+		t.Fatalf("删除叶子文件夹: %+v, err=%v", deleted, err)
 	}
 	got, ok, err := db.GetNote("local", "n1")
 	if err != nil || !ok || got.FolderID != "" {
@@ -66,16 +74,32 @@ func TestLocalFolderCreateRenameDeleteOffline(t *testing.T) {
 	}
 }
 
-func TestFolderWritesRequireLoginForServerTarget(t *testing.T) {
+func TestLocalFolderDepthLimit(t *testing.T) {
+	svc, _ := openTestFolders(t)
+	parent := ""
+	for level := 1; level <= 5; level++ {
+		created, err := svc.Create("L"+string(rune('0'+level)), "local", parent)
+		if err != nil || created == nil || created.State != "ok" || created.Folder == nil {
+			t.Fatalf("第 %d 级创建失败: %+v, err=%v", level, created, err)
+		}
+		parent = created.Folder.ID
+	}
+	tooDeep, err := svc.Create("L6", "local", parent)
+	if err == nil {
+		t.Fatalf("第 6 级应被拒绝: %+v", tooDeep)
+	}
+}
+
+func TestFolderWritesRequireLoginForCloudTarget(t *testing.T) {
 	svc, _ := openTestFolders(t)
 
-	if _, err := svc.Create("工作", "server"); err == nil {
-		t.Fatal("未登录不能新建服务端文件夹")
+	if _, err := svc.Create("工作", "server", ""); err == nil {
+		t.Fatal("未登录不能新建云端文件夹")
 	}
 	if _, err := svc.Rename("remote-id", "工作"); err == nil {
-		t.Fatal("未登录不能改名服务端文件夹")
+		t.Fatal("未登录不能改名云端文件夹")
 	}
 	if _, err := svc.Delete("remote-id"); err == nil {
-		t.Fatal("未登录不能删除服务端文件夹")
+		t.Fatal("未登录不能删除云端文件夹")
 	}
 }

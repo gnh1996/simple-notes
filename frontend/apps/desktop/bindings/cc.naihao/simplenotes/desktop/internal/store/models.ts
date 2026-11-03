@@ -6,6 +6,7 @@
  */
 export interface FolderRow {
     "id": string;
+    "parentId": string;
     "name": string;
     "sort": number;
     "noteCount": number;
@@ -13,7 +14,7 @@ export interface FolderRow {
     "updatedAt": number;
 
     /**
-     * Local 表示本地 scope 的自建文件夹（含内置「本地文件」），前端据此区分来源。
+     * Local 表示本地 scope 的文件夹，前端据此区分来源。
      */
     "local": boolean;
 }

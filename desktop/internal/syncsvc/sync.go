@@ -60,6 +60,7 @@ type syncPage struct {
 
 type folderItem struct {
 	ID         string `json:"id"`
+	ParentID   string `json:"parentId"`
 	Name       string `json:"name"`
 	Sort       int    `json:"sort"`
 	CreateTime string `json:"createTime"`
@@ -96,6 +97,7 @@ func (s *Service) Refresh() (*Result, error) {
 	for _, folder := range folders {
 		rows = append(rows, store.FolderRow{
 			ID:         folder.ID,
+			ParentID:   folder.ParentID,
 			Name:       folder.Name,
 			Sort:       folder.Sort,
 			CreateTime: parseTime(folder.CreateTime),

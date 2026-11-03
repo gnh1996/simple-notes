@@ -302,6 +302,49 @@ class ContentApiIntegrationTest extends IntegrationTestBase {
         assertThat(renamed.path("noteCount").asLong()).isEqualTo(1);
     }
 
+    @Test
+    @DisplayName("文件夹树：嵌套 / 同父级唯一 / 跨层级同名 / 删除非空 / 子树筛选与计数")
+    void folderTree() throws Exception {
+        String token = rootToken();
+        String suffix = uniqueSuffix();
+        String childName = "子文件夹-" + suffix;
+
+        String rootId = body(authedPost("/api/admin/note-folders", token,
+                Map.of("name", "根文件夹-" + suffix)).andExpect(status().isOk()))
+                .path("id").asString();
+        String childId = body(authedPost("/api/admin/note-folders", token,
+                Map.of("name", childName, "parentId", rootId)).andExpect(status().isOk()))
+                .path("id").asString();
+
+        // 同父级下重名 → 409；跨层级同名 → 允许。
+        authedPost("/api/admin/note-folders", token, Map.of("name", childName, "parentId", rootId))
+                .andExpect(status().isConflict());
+        String otherRootId = body(authedPost("/api/admin/note-folders", token,
+                Map.of("name", childName)).andExpect(status().isOk()))
+                .path("id").asString();
+
+        String noteId = body(authedPost("/api/admin/notes", token, Map.of(
+                "title", "树笔记-" + suffix, "content", "x", "folderId", childId))
+                .andExpect(status().isOk())).path("id").asString();
+
+        // 选中父文件夹 → 包含子孙笔记；计数按子树聚合。
+        var listed = body(authedGet("/api/admin/notes?folderId=" + rootId, token)
+                .andExpect(status().isOk()));
+        assertThat(listed.path("total").asInt()).isEqualTo(1);
+        assertThat(folderCount(token, rootId)).isEqualTo(1);
+        assertThat(folderCount(token, childId)).isEqualTo(1);
+        assertThat(folderCount(token, otherRootId)).isZero();
+
+        // 有子文件夹时禁止删除。
+        authedDelete("/api/admin/note-folders/" + rootId, token).andExpect(status().isConflict());
+
+        // 清理：先删子文件夹（笔记落未分类），再删根与另一个同名根，最后删笔记。
+        authedDelete("/api/admin/note-folders/" + childId, token).andExpect(status().isNoContent());
+        authedDelete("/api/admin/note-folders/" + rootId, token).andExpect(status().isNoContent());
+        authedDelete("/api/admin/note-folders/" + otherRootId, token).andExpect(status().isNoContent());
+        authedDelete("/api/admin/notes/" + noteId, token).andExpect(status().isNoContent());
+    }
+
     private long folderCount(String token, String folderId) throws Exception {
         var folders = body(authedGet("/api/admin/note-folders", token).andExpect(status().isOk()));
         for (var item : folders) {

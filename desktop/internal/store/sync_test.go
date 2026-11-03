@@ -165,7 +165,7 @@ func TestUpsertRemoteFoldersPreservesDirty(t *testing.T) {
 	if err := db.SaveScope(scope); err != nil {
 		t.Fatal(err)
 	}
-	_ = db.SaveFolderLocal(scope.ScopeID, "f1", "本地改名", 0)
+	_ = db.SaveFolderLocal(scope.ScopeID, "f1", "本地改名", 0, "")
 	if err := db.UpsertRemoteFolders(scope.ScopeID, []FolderRow{{ID: "f1", Name: "服务端名"}}); err != nil {
 		t.Fatal(err)
 	}

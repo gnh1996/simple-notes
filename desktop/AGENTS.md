@@ -27,7 +27,7 @@ Go 1.26+ + Wails v3（WebView）桌面端；前端是 `frontend/apps/desktop`（
 - 本地数据库只存桌面端私有数据；认证数据不参与内容同步 / 导出 / 备份
 - **桌面端接口只走 `/api/desktop/**`**（会话端 `DESKTOP`，权限码 `desktop:note` / `desktop:post`）；`DESKTOP` 会话不能调用 `/api/admin/**`（`SessionJwtFilter` 校验）
 - **同步按 `docs/desktop-sync.md`**：manifest 只写索引，不拉正文；打开时按 `base_version` 拉详情并算 hash；推送用 `version` CAS，409 转冲突
-- **本地文件按 `docs/desktop-local-file.md`**：临时编辑不写 `note_local`；纳入管理走 `notes.ImportFile`；`folder_id='local-files'` 是保留虚拟分组，不写 `folder_local`、同步前必须清空；本地自建文件夹写 `folder_local(scope_id='local')`，不入 outbox、不参与同步，同步到服务端时 id 必须丢弃
+- **本地文件按 `docs/desktop-local-file.md`**：临时编辑不写 `note_local`；纳入管理走 `notes.ImportFile`；本地 / 云端文件夹是两棵**独立树**（`parent_id`，最深 5 级，同父级唯一、跨层级可同名），不做名称 / 路径映射；本地文件夹写 `folder_local(scope_id='local')`，不入 outbox、不参与同步；纳入云端时只写用户选中的云端文件夹 id；有子文件夹时禁止删除
 - **多标签按 `docs/desktop-layout.md` §3（v1.2 已实现，Windows）**：文件 / 本地 / 服务端笔记统一标签栏；单 Vditor 实例，切标签清空撤销栈；标签上限 12；文件标签只存路径、激活时读盘，不存正文；`ui_state` 只存标签顺序 / 侧栏宽度
 - **图片按 `docs/desktop-media.md`（v1 已实现）**：文件写 `<stem>.assets` 相对路径；本地笔记写 `local-media/<id>` + `media/local/`；服务端笔记上传 `/api/desktop/media` 后写 `/api/media/<id>`；二进制只走 Wails 同源 `/__media/import`，禁止 base64 / JSON IPC；`/api/media/**`、`/oss/**` 由 Go 只读代理
 - **发布 / 下架只在 admin**：桌面端只展示 `publishStatus` / `hasUnpublishedChanges` 并提供 `System.OpenAdmin` 深链，不新增桌面发布接口

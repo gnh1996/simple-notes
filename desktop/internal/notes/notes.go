@@ -18,10 +18,8 @@ import (
 	"cc.naihao/simplenotes/desktop/internal/store"
 )
 
-// 虚拟文件夹：由桌面端本地维护，不写入 folder_local、不参与同步。
+// 虚拟分组：未分类是保留筛选值，不是真实文件夹。
 const (
-	// LocalFilesFolderID 是内置「本地文件」分组的保留 folder_id。
-	LocalFilesFolderID = store.LocalFilesFolderID
 	// UncategorizedFolderID 是「未分类」筛选：folder_id 为空。
 	UncategorizedFolderID = store.UncategorizedFolderID
 )
@@ -152,6 +150,7 @@ func (d remoteDetail) applyTo(row *store.NoteRow) {
 
 // List 返回本地索引；kind 为空时返回全部（NOTE / POST）。
 // 无 active scope 时只返回纯本地笔记（免登录模式）。
+// folderID 支持：”=全部、uncategorized=未分类、本地文件夹（含子孙）、云端文件夹（含子孙）。
 func (s *Service) List(kind, folderID, keyword string) ([]store.NoteRow, error) {
 	scope, hasScope, err := s.db.ActiveScope()
 	if err != nil {
@@ -159,30 +158,36 @@ func (s *Service) List(kind, folderID, keyword string) ([]store.NoteRow, error) 
 	}
 
 	rows := make([]store.NoteRow, 0, 32)
-	localFolder, err := s.db.LocalFolderExists(folderID)
+	localQuery, err := s.folderQuery("local", folderID)
 	if err != nil {
 		return nil, err
 	}
-	// 服务端 scope：筛选本地文件夹时跳过；其余文件夹只查服务端。
-	if hasScope && !localFolder {
-		active, err := s.listScope(scope.ScopeID, kind, folderID, keyword)
+	cloudQuery := folderQuery{mode: "none"}
+	if hasScope {
+		cloudQuery, err = s.folderQuery(scope.ScopeID, folderID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 云端 scope：命中云端文件夹 / 未分类 / 全部时才查询。
+	if hasScope {
+		active, err := s.listByQuery(scope.ScopeID, kind, cloudQuery, keyword)
 		if err != nil {
 			return nil, err
 		}
 		rows = append(rows, active...)
 	}
 
-	// 本地 scope：全部 / 未分类 / 本地文件夹时参与；筛选服务端文件夹时不混入本地笔记。
-	if folderID == "" || folderID == UncategorizedFolderID || localFolder {
-		local, err := s.listScope("local", kind, folderID, keyword)
-		if err != nil {
-			return nil, err
-		}
-		for i := range local {
-			local[i].LocalOnly = true
-		}
-		rows = append(rows, local...)
+	// 本地 scope：命中本地文件夹 / 未分类 / 全部时才查询。
+	local, err := s.listByQuery("local", kind, localQuery, keyword)
+	if err != nil {
+		return nil, err
 	}
+	for i := range local {
+		local[i].LocalOnly = true
+	}
+	rows = append(rows, local...)
 
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].Pinned != rows[j].Pinned {
@@ -198,6 +203,58 @@ func (s *Service) List(kind, folderID, keyword string) ([]store.NoteRow, error) 
 	return rows, nil
 }
 
+type folderQuery struct {
+	mode string // all | uncategorized | ids | none
+	ids  []string
+}
+
+// folderQuery 把筛选值解析成「该 scope 下要查的文件夹集合」；不属于该 scope 时为 none。
+func (s *Service) folderQuery(scopeID, folderID string) (folderQuery, error) {
+	if folderID == "" {
+		return folderQuery{mode: "all"}, nil
+	}
+	if folderID == UncategorizedFolderID {
+		return folderQuery{mode: "uncategorized"}, nil
+	}
+	folders, err := s.db.ListFolders(scopeID)
+	if err != nil {
+		return folderQuery{}, err
+	}
+	children := make(map[string][]string, len(folders))
+	found := false
+	for _, folder := range folders {
+		if folder.ID == folderID {
+			found = true
+		}
+		children[folder.ParentID] = append(children[folder.ParentID], folder.ID)
+	}
+	if !found {
+		return folderQuery{mode: "none"}, nil
+	}
+	ids := make([]string, 0, 8)
+	queue := []string{folderID}
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		ids = append(ids, id)
+		queue = append(queue, children[id]...)
+	}
+	return folderQuery{mode: "ids", ids: ids}, nil
+}
+
+func (s *Service) listByQuery(scopeID, kind string, query folderQuery, keyword string) ([]store.NoteRow, error) {
+	switch query.mode {
+	case "none":
+		return nil, nil
+	case "ids":
+		return s.listScopeInFolders(scopeID, kind, query.ids, keyword)
+	case "uncategorized":
+		return s.listScope(scopeID, kind, UncategorizedFolderID, keyword)
+	default:
+		return s.listScope(scopeID, kind, "", keyword)
+	}
+}
+
 func (s *Service) listScope(scopeID, kind, folderID, keyword string) ([]store.NoteRow, error) {
 	if kind != "" {
 		return s.db.ListNotes(scopeID, kind, folderID, keyword)
@@ -207,7 +264,16 @@ func (s *Service) listScope(scopeID, kind, folderID, keyword string) ([]store.No
 	return append(notes, posts...), errors.Join(errNotes, errPosts)
 }
 
-// Folders 返回文件夹列表：内置「全部 / 未分类 / 本地文件」+ 本地自建 + 服务端镜像，并带上各自数量。
+func (s *Service) listScopeInFolders(scopeID, kind string, ids []string, keyword string) ([]store.NoteRow, error) {
+	if kind != "" {
+		return s.db.ListNotesInFolders(scopeID, kind, ids, keyword)
+	}
+	notes, errNotes := s.db.ListNotesInFolders(scopeID, "NOTE", ids, keyword)
+	posts, errPosts := s.db.ListNotesInFolders(scopeID, "POST", ids, keyword)
+	return append(notes, posts...), errors.Join(errNotes, errPosts)
+}
+
+// Folders 返回扁平文件夹列表：内置「全部 / 未分类」+ 本地文件夹 + 云端镜像，并带上子树数量。
 func (s *Service) Folders() ([]store.FolderRow, error) {
 	scope, hasScope, err := s.db.ActiveScope()
 	if err != nil {
@@ -239,8 +305,8 @@ func (s *Service) Folders() ([]store.FolderRow, error) {
 	}
 	for i := range localFolders {
 		localFolders[i].Local = true
-		localFolders[i].NoteCount = localCounts[localFolders[i].ID]
 	}
+	applySubtreeCounts(localFolders, localCounts)
 
 	out := make([]store.FolderRow, 0, 4+len(localFolders)+len(activeCounts))
 	out = append(out,
@@ -249,10 +315,6 @@ func (s *Service) Folders() ([]store.FolderRow, error) {
 			ID: UncategorizedFolderID, Name: "未分类", Sort: -101,
 			NoteCount: localCounts[""] + activeCounts[""],
 		},
-		store.FolderRow{
-			ID: LocalFilesFolderID, Name: store.LocalFilesFolderName, Sort: -100,
-			NoteCount: localCounts[LocalFilesFolderID], Local: true,
-		},
 	)
 	out = append(out, localFolders...)
 	if hasScope {
@@ -260,12 +322,36 @@ func (s *Service) Folders() ([]store.FolderRow, error) {
 		if err != nil {
 			return nil, err
 		}
-		for i := range folders {
-			folders[i].NoteCount = activeCounts[folders[i].ID]
-		}
+		applySubtreeCounts(folders, activeCounts)
 		out = append(out, folders...)
 	}
 	return out, nil
+}
+
+// applySubtreeCounts 把直接计数按子级累加到子树（含自身）；最多向下 5 级。
+func applySubtreeCounts(folders []store.FolderRow, direct map[string]int) {
+	children := make(map[string][]string, len(folders))
+	for _, folder := range folders {
+		children[folder.ParentID] = append(children[folder.ParentID], folder.ID)
+	}
+	memo := make(map[string]int, len(folders))
+	var sum func(id string, depth int) int
+	sum = func(id string, depth int) int {
+		if value, ok := memo[id]; ok {
+			return value
+		}
+		total := direct[id]
+		if depth <= 5 {
+			for _, child := range children[id] {
+				total += sum(child, depth+1)
+			}
+		}
+		memo[id] = total
+		return total
+	}
+	for i := range folders {
+		folders[i].NoteCount = sum(folders[i].ID, 1)
+	}
 }
 
 // Open 返回笔记内容：已缓存且版本未变（或本地有未推送修改）时直接读本地，否则拉详情。
@@ -512,7 +598,7 @@ func (s *Service) pushCreate(scopeID string, row store.NoteRow, hash string) (*S
 	return &SaveResult{State: "error", Note: &row, Message: api.ErrorMessage(resp.Status, resp.Body)}, nil
 }
 
-// ImportFile 把临时编辑内容纳入管理：仅本地（内置「本地文件」）或服务端。
+// ImportFile 把临时编辑内容纳入管理：仅本地或云端。
 func (s *Service) ImportFile(input ImportInput) (*SaveResult, error) {
 	title := strings.TrimSpace(input.Title)
 	if title == "" {
@@ -546,10 +632,7 @@ func (s *Service) ImportFile(input ImportInput) (*SaveResult, error) {
 	}
 
 	if input.Target != "server" {
-		row.FolderID = LocalFilesFolderID
-		if input.FolderID != "" && input.FolderID != LocalFilesFolderID {
-			row.FolderID = s.normalizeFolderID("local", input.FolderID)
-		}
+		row.FolderID = s.normalizeFolderID("local", input.FolderID)
 		tagsJSON, _ := json.Marshal(row.Tags)
 		hash := ContentHash(row)
 		if err := s.db.InsertNoteLocal("local", row, string(tagsJSON), hash); err != nil {
@@ -582,17 +665,17 @@ func (s *Service) ImportFile(input ImportInput) (*SaveResult, error) {
 	return s.fallbackToLocal(scope.ScopeID, res), nil
 }
 
-// fallbackToLocal 在服务端明确拒绝创建时把笔记退回「本地文件」，避免留下无法保存的脏行。
+// fallbackToLocal 在云端明确拒绝创建时把笔记退回本地「未分类」，避免留下无法保存的脏行。
 func (s *Service) fallbackToLocal(scopeID string, result *SaveResult) *SaveResult {
 	if result == nil || result.State != "error" || result.Note == nil {
 		return result
 	}
-	if err := s.db.MoveNoteScope(scopeID, "local", result.Note.ID, LocalFilesFolderID); err != nil {
+	if err := s.db.MoveNoteScope(scopeID, "local", result.Note.ID, ""); err != nil {
 		return result
 	}
 	_ = s.db.MarkLocalOnlySaved("local", result.Note.ID)
 	result.Note.LocalOnly = true
-	result.Note.FolderID = LocalFilesFolderID
+	result.Note.FolderID = ""
 	result.Note.Dirty = false
 	result.Message = "云端创建失败，已保留为本地笔记：" + result.Message
 	return result
@@ -925,20 +1008,13 @@ func nullableString(value string) *string {
 }
 
 // normalizeFolderID 把前端传来的归类收敛到当前 scope 的合法值：
-// 本地 scope 只接受内置「本地文件」或已存在的本地文件夹；服务端 scope
-// 一律清掉本地专用 id（未分类 / 本地文件 / 本地自建文件夹）。
+// 只接受该 scope 已存在的文件夹；空 / 未分类 / 跨 scope 一律落「未分类」。
 func (s *Service) normalizeFolderID(scopeID, folderID string) string {
-	isLocal, err := s.db.LocalFolderExists(folderID)
-	if err != nil {
-		isLocal = false
-	}
-	if scopeID == "local" {
-		if isLocal {
-			return folderID
-		}
+	if folderID == "" || folderID == UncategorizedFolderID {
 		return ""
 	}
-	if folderID == "" || folderID == UncategorizedFolderID || isLocal {
+	exists, err := s.db.FolderExists(scopeID, folderID)
+	if err != nil || !exists {
 		return ""
 	}
 	return folderID

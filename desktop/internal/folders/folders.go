@@ -1,4 +1,4 @@
-// Package folders 负责桌面端文件夹的本地镜像与写操作（M2）。
+// Package folders 负责桌面端文件夹的本地管理与云端镜像写操作（v2.0 树形）。
 package folders
 
 import (
@@ -13,8 +13,14 @@ import (
 	"cc.naihao/simplenotes/desktop/internal/store"
 )
 
-// maxFolderNameLength 与服务端 NoteFolderRequest 的 @Size(max = 64) 对齐。
-const maxFolderNameLength = 64
+const (
+	// maxFolderNameLength 与云端 NoteFolderRequest 的 @Size(max = 64) 对齐。
+	maxFolderNameLength = 64
+	// maxFolderDepth 与云端一致：根为第 1 级，最多 5 级。
+	maxFolderDepth = 5
+	// localScopeID 是桌面端纯本地数据的 scope。
+	localScopeID = "local"
+)
 
 // Service 通过 Wails binding 暴露文件夹能力。
 type Service struct {
@@ -35,13 +41,13 @@ type Result struct {
 }
 
 type folderPayload struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Sort       int    `json:"sort"`
-	UpdateTime string `json:"updateTime"`
+	ID       string `json:"id"`
+	ParentID string `json:"parentId"`
+	Name     string `json:"name"`
+	Sort     int    `json:"sort"`
 }
 
-// List 返回本地文件夹镜像；未登录 / 免登录模式返回空列表。
+// List 返回当前账号的文件夹镜像；未登录 / 免登录模式返回空列表。
 func (s *Service) List() ([]store.FolderRow, error) {
 	scope, ok, err := s.active()
 	if err != nil {
@@ -54,8 +60,8 @@ func (s *Service) List() ([]store.FolderRow, error) {
 }
 
 // Create 新建文件夹：target='local' 时只写本地库（离线可用、永不参与同步）；
-// 否则在线新建服务端文件夹（服务端生成 id，离线不支持）。
-func (s *Service) Create(name, target string) (*Result, error) {
+// 否则在线新建云端文件夹（云端生成 id，离线不支持）。
+func (s *Service) Create(name, target, parentID string) (*Result, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, errors.New("文件夹名称不能为空")
@@ -64,7 +70,7 @@ func (s *Service) Create(name, target string) (*Result, error) {
 		return nil, fmt.Errorf("文件夹名称最长 %d 个字符", maxFolderNameLength)
 	}
 	if target == "local" {
-		return s.createLocal(name)
+		return s.createLocal(name, parentID)
 	}
 
 	scope, ok, err := s.active()
@@ -74,7 +80,13 @@ func (s *Service) Create(name, target string) (*Result, error) {
 	if !ok {
 		return nil, errors.New("请先登录")
 	}
-	body, _ := json.Marshal(map[string]any{"name": name, "sort": 0})
+	parent, err := s.requireDepth(scope.ScopeID, parentID)
+	if err != nil {
+		return nil, err
+	}
+	body, _ := json.Marshal(map[string]any{
+		"name": name, "sort": 0, "parentId": nullableID(parent),
+	})
 	resp, err := s.api.Do(api.Request{Method: http.MethodPost, Path: "/desktop/note-folders", Body: string(body)})
 	if err != nil {
 		return &Result{State: "offline", Message: "离线时不能新建文件夹，请恢复网络后重试"}, nil
@@ -86,17 +98,24 @@ func (s *Service) Create(name, target string) (*Result, error) {
 	if err := json.Unmarshal([]byte(resp.Body), &created); err != nil {
 		return nil, fmt.Errorf("解析响应: %w", err)
 	}
+	created.ParentID = parent
 	if err := s.db.UpsertRemoteFolders(scope.ScopeID, []store.FolderRow{{
-		ID: created.ID, Name: created.Name, Sort: created.Sort,
+		ID: created.ID, ParentID: created.ParentID, Name: created.Name, Sort: created.Sort,
 	}}); err != nil {
 		return nil, err
 	}
-	return &Result{State: "ok", Folder: &store.FolderRow{ID: created.ID, Name: created.Name, Sort: created.Sort}}, nil
+	return &Result{State: "ok", Folder: &store.FolderRow{
+		ID: created.ID, ParentID: created.ParentID, Name: created.Name, Sort: created.Sort,
+	}}, nil
 }
 
 // createLocal 新建本地文件夹：本地生成 id，不触网、不写 outbox。
-func (s *Service) createLocal(name string) (*Result, error) {
-	taken, err := s.db.LocalFolderNameTaken(name, "")
+func (s *Service) createLocal(name, parentID string) (*Result, error) {
+	parent, err := s.requireDepth(localScopeID, parentID)
+	if err != nil {
+		return nil, err
+	}
+	taken, err := s.db.LocalFolderNameTaken(name, parentID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -104,16 +123,16 @@ func (s *Service) createLocal(name string) (*Result, error) {
 		return &Result{State: "error", Message: "已存在同名文件夹"}, nil
 	}
 	id := store.NewUUID()
-	if err := s.db.SaveLocalFolder(id, name, 0); err != nil {
+	if err := s.db.SaveLocalFolder(id, name, 0, parent); err != nil {
 		return nil, fmt.Errorf("保存本地文件夹: %w", err)
 	}
 	return &Result{
 		State: "ok", Message: "已创建本地文件夹",
-		Folder: &store.FolderRow{ID: id, Name: name, Local: true},
+		Folder: &store.FolderRow{ID: id, ParentID: parent, Name: name, Local: true},
 	}, nil
 }
 
-// Rename 改名：本地文件夹只改本地库；服务端文件夹本地改名后推送，失败进 outbox。
+// Rename 改名：本地文件夹只改本地库；云端文件夹本地改名后推送，失败进 outbox。
 func (s *Service) Rename(id, name string) (*Result, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -123,19 +142,19 @@ func (s *Service) Rename(id, name string) (*Result, error) {
 		return nil, fmt.Errorf("文件夹名称最长 %d 个字符", maxFolderNameLength)
 	}
 
-	localFolder, isLocal, err := s.db.GetFolder("local", id)
+	localFolder, isLocal, err := s.db.GetFolder(localScopeID, id)
 	if err != nil {
 		return nil, err
 	}
 	if isLocal {
-		taken, err := s.db.LocalFolderNameTaken(name, id)
+		taken, err := s.db.LocalFolderNameTaken(name, localFolder.ParentID, id)
 		if err != nil {
 			return nil, err
 		}
 		if taken {
 			return &Result{State: "error", Message: "已存在同名文件夹"}, nil
 		}
-		if err := s.db.SaveLocalFolder(id, name, localFolder.Sort); err != nil {
+		if err := s.db.SaveLocalFolder(id, name, localFolder.Sort, localFolder.ParentID); err != nil {
 			return nil, fmt.Errorf("保存本地文件夹: %w", err)
 		}
 		return &Result{State: "ok", Message: "已保存"}, nil
@@ -152,14 +171,14 @@ func (s *Service) Rename(id, name string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	sort := 0
+	sort, parentID := 0, ""
 	for _, folder := range folders {
 		if folder.ID == id {
-			sort = folder.Sort
+			sort, parentID = folder.Sort, folder.ParentID
 			break
 		}
 	}
-	if err := s.db.SaveFolderLocal(scope.ScopeID, id, name, sort); err != nil {
+	if err := s.db.SaveFolderLocal(scope.ScopeID, id, name, sort, parentID); err != nil {
 		return nil, err
 	}
 	payload, _ := json.Marshal(map[string]any{"name": name, "sort": sort})
@@ -179,11 +198,18 @@ func (s *Service) Rename(id, name string) (*Result, error) {
 	return &Result{State: "error", Message: api.ErrorMessage(resp.Status, resp.Body)}, nil
 }
 
-// Delete 删除：本地文件夹连同归类一起清理（笔记移回未分类）；服务端文件夹本地删除后推送。
+// Delete 删除：有子文件夹时拒绝；本地文件夹删除叶子时笔记落未分类，云端文件夹本地删除后推送。
 func (s *Service) Delete(id string) (*Result, error) {
-	if _, isLocal, err := s.db.GetFolder("local", id); err != nil {
+	if _, isLocal, err := s.db.GetFolder(localScopeID, id); err != nil {
 		return nil, err
 	} else if isLocal {
+		hasChildren, err := s.db.FolderHasChildren(localScopeID, id)
+		if err != nil {
+			return nil, err
+		}
+		if hasChildren {
+			return &Result{State: "error", Message: "请先删除子文件夹"}, nil
+		}
 		if err := s.db.DeleteLocalFolder(id); err != nil {
 			return nil, err
 		}
@@ -196,6 +222,13 @@ func (s *Service) Delete(id string) (*Result, error) {
 			err = errors.New("请先登录")
 		}
 		return nil, err
+	}
+	hasChildren, err := s.db.FolderHasChildren(scope.ScopeID, id)
+	if err != nil {
+		return nil, err
+	}
+	if hasChildren {
+		return &Result{State: "error", Message: "请先删除子文件夹"}, nil
 	}
 	if err := s.db.DeleteFolderLocal(scope.ScopeID, id); err != nil {
 		return nil, err
@@ -215,7 +248,51 @@ func (s *Service) Delete(id string) (*Result, error) {
 	return &Result{State: "error", Message: api.ErrorMessage(resp.Status, resp.Body)}, nil
 }
 
+// requireDepth 校验父文件夹存在且新文件夹不超过最大深度，返回规范化的 parentId。
+func (s *Service) requireDepth(scopeID, parentID string) (string, error) {
+	if parentID == "" {
+		return "", nil
+	}
+	if _, ok, err := s.db.GetFolder(scopeID, parentID); err != nil {
+		return "", err
+	} else if !ok {
+		return "", errors.New("父文件夹不存在")
+	}
+	depth, err := s.folderDepth(scopeID, parentID)
+	if err != nil {
+		return "", err
+	}
+	if depth+1 > maxFolderDepth {
+		return "", fmt.Errorf("文件夹最多支持 %d 级", maxFolderDepth)
+	}
+	return parentID, nil
+}
+
+func (s *Service) folderDepth(scopeID, id string) (int, error) {
+	depth := 0
+	cursor := id
+	for guard := 0; cursor != "" && guard < maxFolderDepth; guard++ {
+		folder, ok, err := s.db.GetFolder(scopeID, cursor)
+		if err != nil {
+			return 0, err
+		}
+		if !ok {
+			break
+		}
+		depth++
+		cursor = folder.ParentID
+	}
+	return depth, nil
+}
+
 func (s *Service) active() (store.Scope, bool, error) {
 	scope, ok, err := s.db.ActiveScope()
 	return scope, ok, err
+}
+
+func nullableID(id string) *string {
+	if id == "" {
+		return nil
+	}
+	return &id
 }

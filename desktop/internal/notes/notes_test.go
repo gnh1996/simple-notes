@@ -73,7 +73,7 @@ func TestImportFileLocalWorksWithoutLogin(t *testing.T) {
 		t.Fatalf("result = %+v", result)
 	}
 	note := result.Note
-	if !note.LocalOnly || note.FolderID != LocalFilesFolderID || note.Dirty {
+	if !note.LocalOnly || note.FolderID != "" || note.Dirty {
 		t.Fatalf("本地导入状态错误: %+v", note)
 	}
 
@@ -84,12 +84,12 @@ func TestImportFileLocalWorksWithoutLogin(t *testing.T) {
 	if len(rows) != 1 || rows[0].ID != note.ID || !rows[0].LocalOnly {
 		t.Fatalf("列表 = %+v", rows)
 	}
-	filtered, err := svc.List("NOTE", LocalFilesFolderID, "")
+	filtered, err := svc.List("NOTE", UncategorizedFolderID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(filtered) != 1 {
-		t.Fatalf("本地文件分组 = %+v", filtered)
+		t.Fatalf("未分类 = %+v", filtered)
 	}
 
 	folders, err := svc.Folders()
@@ -102,8 +102,7 @@ func TestImportFileLocalWorksWithoutLogin(t *testing.T) {
 		count int
 	}{
 		{"", "全部笔记", 1},
-		{UncategorizedFolderID, "未分类", 0},
-		{LocalFilesFolderID, "本地文件", 1},
+		{UncategorizedFolderID, "未分类", 1},
 	}
 	if len(folders) != len(wantFolders) {
 		t.Fatalf("folders = %+v", folders)
@@ -115,7 +114,7 @@ func TestImportFileLocalWorksWithoutLogin(t *testing.T) {
 	}
 
 	saved, err := svc.Save(SaveInput{
-		ID: note.ID, Title: "改名", Content: "新正文", FolderID: LocalFilesFolderID,
+		ID: note.ID, Title: "改名", Content: "新正文", FolderID: "",
 	})
 	if err != nil || saved == nil || saved.State != "synced" {
 		t.Fatalf("save = %+v, err=%v", saved, err)
@@ -130,46 +129,46 @@ func TestImportFileLocalWorksWithoutLogin(t *testing.T) {
 	}
 }
 
-func TestSaveLocalNoteMovesBetweenUncategorizedAndLocalFiles(t *testing.T) {
+func TestSaveLocalNoteMovesBetweenUncategorizedAndFolder(t *testing.T) {
 	svc := openTestNotes(t)
+	if err := svc.db.SaveLocalFolder("lf1", "工作", 0, ""); err != nil {
+		t.Fatalf("创建本地文件夹: %v", err)
+	}
 	imported, err := svc.ImportFile(ImportInput{Title: "归类测试", Content: "正文", Target: "local"})
 	if err != nil || imported == nil || imported.Note == nil {
 		t.Fatalf("import: %+v, err=%v", imported, err)
 	}
 
-	// 移到未分类
+	// 移到本地文件夹
 	saved, err := svc.Save(SaveInput{
-		ID: imported.Note.ID, Title: "归类测试", Content: "正文", FolderID: UncategorizedFolderID,
+		ID: imported.Note.ID, Title: "归类测试", Content: "正文", FolderID: "lf1",
 	})
-	if err != nil || saved == nil || saved.Note == nil {
-		t.Fatalf("save uncategorized: %+v, err=%v", saved, err)
-	}
-	if saved.Note.FolderID != "" {
-		t.Fatalf("应落到未分类，got %q", saved.Note.FolderID)
-	}
-	rows, err := svc.List("NOTE", UncategorizedFolderID, "")
-	if err != nil || len(rows) != 1 {
-		t.Fatalf("未分类列表 = %+v, err=%v", rows, err)
-	}
-
-	// 再移回「本地文件」
-	saved, err = svc.Save(SaveInput{
-		ID: imported.Note.ID, Title: "归类测试", Content: "正文", FolderID: LocalFilesFolderID,
-	})
-	if err != nil || saved == nil || saved.Note == nil || saved.Note.FolderID != LocalFilesFolderID {
-		t.Fatalf("save local-files: %+v, err=%v", saved, err)
+	if err != nil || saved == nil || saved.Note == nil || saved.Note.FolderID != "lf1" {
+		t.Fatalf("save folder: %+v, err=%v", saved, err)
 	}
 	folders, err := svc.Folders()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, folder := range folders {
-		if folder.ID == LocalFilesFolderID && folder.NoteCount != 1 {
-			t.Fatalf("本地文件数量 = %d", folder.NoteCount)
+		if folder.ID == "lf1" && folder.NoteCount != 1 {
+			t.Fatalf("文件夹数量 = %d", folder.NoteCount)
 		}
 		if folder.ID == UncategorizedFolderID && folder.NoteCount != 0 {
 			t.Fatalf("未分类数量 = %d", folder.NoteCount)
 		}
+	}
+
+	// 再移回未分类
+	saved, err = svc.Save(SaveInput{
+		ID: imported.Note.ID, Title: "归类测试", Content: "正文", FolderID: UncategorizedFolderID,
+	})
+	if err != nil || saved == nil || saved.Note == nil || saved.Note.FolderID != "" {
+		t.Fatalf("save uncategorized: %+v, err=%v", saved, err)
+	}
+	rows, err := svc.List("NOTE", UncategorizedFolderID, "")
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("未分类列表 = %+v, err=%v", rows, err)
 	}
 }
 
@@ -265,7 +264,7 @@ func TestPromoteLocalMovesScopeAndCreates(t *testing.T) {
 		t.Fatalf("POST id = %v, want %s", body["id"], imported.Note.ID)
 	}
 	if body["folderId"] != nil {
-		t.Fatalf("local-files 不应发送到服务端: %v", body["folderId"])
+		t.Fatalf("未分类不应发送 folderId: %v", body["folderId"])
 	}
 	if _, found, _ := db.GetNote("local", imported.Note.ID); found {
 		t.Fatal("迁移后不应仍在 local")
@@ -312,8 +311,8 @@ func TestPromoteLocalFallsBackOnServerRejection(t *testing.T) {
 	if result == nil || result.State != "error" || result.Note == nil {
 		t.Fatalf("result = %+v", result)
 	}
-	if !result.Note.LocalOnly || result.Note.FolderID != LocalFilesFolderID {
-		t.Fatalf("应回退为本地文件: %+v", result.Note)
+	if !result.Note.LocalOnly || result.Note.FolderID != "" {
+		t.Fatalf("应回退为本地未分类: %+v", result.Note)
 	}
 	if _, found, _ := db.GetNote("srv:s", imported.Note.ID); found {
 		t.Fatal("回退后不应留在服务端 scope")

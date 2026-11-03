@@ -172,16 +172,18 @@ POST / UNPUBLISHED（后台保留，公开不可见）
 | --- | --- |
 | `id` | `varchar(36)` PK |
 | `owner_id` | FK `sys_user` |
+| `parent_id` | `varchar(36)` NULL；父文件夹，根为 NULL（v2.0） |
 | `name` | `varchar(64)` NOT NULL |
 | `sort` | `int` NOT NULL DEFAULT 0 |
 | 审计七件套 | 标准软删除 |
 
-- v1 单层文件夹，不做嵌套。
-- 同一所有者下 `lower(name)` 唯一（`delete_flag = 0`）。
-- 删除文件夹不删除笔记，笔记回到「未分类」。
+- v2.0 起为**树形**：根为第 1 级，最多 5 级；不支持移动文件夹（改父级），只支持新建子文件夹。
+- 同一所有者、**同一父级**下 `lower(name)` 唯一（`delete_flag = 0`，`coalesce(parent_id, '')`）；**不同层级允许同名**。
+- 删除文件夹不删除笔记，笔记回到「未分类」；**存在子文件夹时禁止删除**（先处理子级）。
 - `folder_id` 只对 `NOTE` 有意义；`promote` 时清空。
-- 文件夹接口返回 `noteCount`（该文件夹下未删除的随手记数量，按 `folder_id` 聚合），仅用于列表统计，不参与新建 / 编辑请求。
-- 列表筛选参数 `folderId=uncategorized` 表示「未分类」（`folder_id IS NULL`），是查询保留值，不对应任何 `note_folder` 行。
+- 文件夹接口返回 `noteCount`（该文件夹**子树**含自身的未删除随手记数量），仅用于列表统计，不参与新建 / 编辑请求。
+- 列表筛选参数 `folderId` 表示「该文件夹及所有子孙」；`folderId=uncategorized` 表示「未分类」（`folder_id IS NULL`），是查询保留值，不对应任何 `note_folder` 行。
+- 迁移：`V18__folder_tree.sql` 新增 `parent_id`，唯一索引改为 `(owner_id, coalesce(parent_id, ''), lower(name))`；历史文件夹全部作为根。
 
 ### 3.5 附件 `attachment`
 
@@ -839,7 +841,7 @@ note.delete_flag = 0
 
 ### 12.1 Flyway
 
-- **实现状态**：V2–V12 已落地；后续结构变更走新迁移。
+- **实现状态**：V2–V18 已落地；后续结构变更走新迁移。
 - `V1__init_auth_rbac.sql` 已冻结，不改。
 - `V2__init_content.sql`：`note_folder`、`tag`、`attachment`、`note`、`note_revision`、`note_tag`、`note_revision_tag`、索引、约束、`published_revision_id` 外键。
 - `V3__add_content_permissions.sql`：内容域 `sys_menu` 节点；id 用 `gen_random_uuid()`，父节点按 code 子查询，不手填 UUID。
@@ -848,6 +850,7 @@ note.delete_flag = 0
 - `V10__add_note_authored_at.sql`（v1.4，已执行）：新增 `note.authored_at`、`kind=NOTE` 时为空约束、公开 `displayAt` 表达式索引（`coalesce(authored_at, first_published_at)`）；`last_published_at` 排序索引按需追加。
 - `V11__attachment_storage_modes.sql`（v1.4.2，已执行）：`attachment.storage_mode` 回填 + `attachment_blob`。
 - `V12__add_storage_permission.sql`（v1.4.2，已执行）：`admin:media:storage` ACTION。
+- `V18__folder_tree.sql`（v2.0，已执行）：`note_folder.parent_id` + `(owner_id, coalesce(parent_id, ''), lower(name))` 唯一索引，支持文件夹树（`docs/desktop-local-file.md` §2.5）。
 - 建表顺序：`note_folder` / `tag` / `attachment` → `note` → `note_revision` → 关联表 → `alter table note add constraint fk_note_published_revision`。
 
 ### 12.2 后端

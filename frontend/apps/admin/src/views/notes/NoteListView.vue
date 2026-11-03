@@ -6,6 +6,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { noteApi, noteFolderApi } from '@/api'
+import { buildFolderPaths } from '@/utils/folders'
 import { formatDateTime, notifyError } from '@/utils/feedback'
 
 const router = useRouter()
@@ -30,7 +31,7 @@ const query = reactive({
   pinnedOnly: false,
 })
 
-const folderMap = computed(() => new Map(folders.value.map((folder) => [folder.id, folder.name])))
+const folderPaths = computed(() => buildFolderPaths(folders.value))
 
 async function load(): Promise<void> {
   loading.value = true
@@ -150,14 +151,15 @@ async function promote(row: NoteSummary): Promise<void> {
   }
 }
 
-async function createFolder(): Promise<void> {
+async function createFolder(parentId = ''): Promise<void> {
   try {
-    const { value } = await ElMessageBox.prompt('文件夹名称', '新建文件夹', {
+    const parentPath = parentId ? folderPaths.value.get(parentId) : ''
+    const { value } = await ElMessageBox.prompt('文件夹名称', parentPath ? `在「${parentPath}」下新建文件夹` : '新建文件夹', {
       inputPattern: /\S+/,
       inputErrorMessage: '名称不能为空',
       confirmButtonText: '创建',
     })
-    await noteFolderApi.create({ name: value.trim() })
+    await noteFolderApi.create({ name: value.trim(), parentId: parentId || undefined })
     ElMessage.success('文件夹已创建')
     await loadFolders()
   } catch (error) {
@@ -184,11 +186,15 @@ async function renameFolder(folder: NoteFolderResponse): Promise<void> {
 
 async function removeFolder(folder: NoteFolderResponse): Promise<void> {
   try {
-    await ElMessageBox.confirm(`删除文件夹「${folder.name}」？其中的笔记会移到未分类。`, '删除文件夹', {
-      type: 'warning',
-      confirmButtonText: '删除',
-      confirmButtonClass: 'el-button--danger',
-    })
+    await ElMessageBox.confirm(
+      `删除文件夹「${folderPaths.value.get(folder.id) || folder.name}」？其中的笔记会移到未分类；有子文件夹时需先删除子文件夹。`,
+      '删除文件夹',
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        confirmButtonClass: 'el-button--danger',
+      },
+    )
     await noteFolderApi.remove(folder.id)
     ElMessage.success('文件夹已删除')
     if (query.folderId === folder.id) query.folderId = ''
@@ -199,7 +205,7 @@ async function removeFolder(folder: NoteFolderResponse): Promise<void> {
 }
 
 function folderName(row: NoteSummary): string {
-  return row.folderName || (row.folderId ? folderMap.value.get(row.folderId) : '') || '未分类'
+  return row.folderId ? folderPaths.value.get(row.folderId) || row.folderName || '未分类' : '未分类'
 }
 
 function handlePageChange(page: number): void {
@@ -226,7 +232,7 @@ function handlePageChange(page: number): void {
           <el-option
             v-for="folder in folders"
             :key="folder.id"
-            :label="`${folder.name}（${folder.noteCount}）`"
+            :label="`${folderPaths.get(folder.id) || folder.name}（${folder.noteCount}）`"
             :value="folder.id"
           />
         </el-select>
@@ -252,7 +258,7 @@ function handlePageChange(page: number): void {
               link
               type="primary"
               :icon="FolderAdd"
-              @click="createFolder"
+              @click="createFolder()"
             />
           </div>
         </template>
@@ -279,13 +285,14 @@ function handlePageChange(page: number): void {
           :class="query.folderId === folder.id ? 'bg-[var(--el-color-primary-light-9)]' : 'hover:bg-[var(--el-fill-color-light)]'"
         >
           <button class="min-w-0 flex-1 truncate px-2 py-2 text-left text-sm" @click="selectFolder(folder.id)">
-            {{ folder.name }}
+            {{ folderPaths.get(folder.id) || folder.name }}
           </button>
           <span class="shrink-0 text-xs text-[var(--el-text-color-secondary)]">{{ folder.noteCount }}</span>
           <el-dropdown trigger="click">
             <el-button link :icon="MoreFilled" size="small" />
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item v-perm="'admin:note:create'" @click="createFolder(folder.id)">新建子文件夹</el-dropdown-item>
                 <el-dropdown-item v-perm="'admin:note:update'" @click="renameFolder(folder)">重命名</el-dropdown-item>
                 <el-dropdown-item v-perm="'admin:note:delete'" @click="removeFolder(folder)">删除</el-dropdown-item>
               </el-dropdown-menu>

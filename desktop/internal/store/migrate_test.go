@@ -240,6 +240,50 @@ func TestMigrateIdempotent(t *testing.T) {
 	}
 }
 
+func TestMigrateFolderTree(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "desktop.db")
+	createLegacyDB(t, path)
+
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("打开老库: %v", err)
+	}
+	if _, err := raw.Exec(`
+		UPDATE note_local SET folder_id = 'local-files'
+		 WHERE scope_id = 'local' AND id = 'n1';
+		INSERT INTO folder_local (scope_id, id, name)
+		VALUES ('local', 'lf1', '工作');
+	`); err != nil {
+		_ = raw.Close()
+		t.Fatalf("写入老数据: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	db, err := OpenAt(path)
+	if err != nil {
+		t.Fatalf("迁移失败: %v", err)
+	}
+	defer db.Close()
+
+	version, err := db.userVersion()
+	if err != nil || version != 5 {
+		t.Fatalf("user_version = %d, err=%v", version, err)
+	}
+	note, found, err := db.GetNote("local", "n1")
+	if err != nil || !found {
+		t.Fatalf("读取笔记: found=%v err=%v", found, err)
+	}
+	if note.FolderID != "" {
+		t.Fatalf("local-files 应改写为未分类，got %q", note.FolderID)
+	}
+	folders, err := db.ListFolders("local")
+	if err != nil || len(folders) != 1 || folders[0].ParentID != "" {
+		t.Fatalf("老文件夹应作为根: %+v, err=%v", folders, err)
+	}
+}
+
 func TestMigrateRejectsNewerSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "desktop.db")
 	db, err := OpenAt(path)

@@ -62,12 +62,8 @@ type NoteRow struct {
 	UpdatedAt             int64    `json:"updatedAt"`
 }
 
-// 虚拟文件夹：只存在于桌面端，不写入 folder_local、不参与同步。
+// 虚拟分组：只存在于桌面端，不写入 folder_local、不参与同步。
 const (
-	// LocalFilesFolderID 是内置「本地文件」分组的保留 folder_id。
-	LocalFilesFolderID = "local-files"
-	// LocalFilesFolderName 是内置「本地文件」分组名（本地自建文件夹不可重名）。
-	LocalFilesFolderName = "本地文件"
 	// UncategorizedFolderID 是「未分类」筛选（folder_id 为空）。
 	UncategorizedFolderID = "uncategorized"
 )
@@ -75,12 +71,13 @@ const (
 // FolderRow 是本地镜像的文件夹；虚拟分组也复用该结构。
 type FolderRow struct {
 	ID         string `json:"id"`
+	ParentID   string `json:"parentId"`
 	Name       string `json:"name"`
 	Sort       int    `json:"sort"`
 	NoteCount  int    `json:"noteCount"`
 	CreateTime int64  `json:"createTime"`
 	UpdatedAt  int64  `json:"updatedAt"`
-	// Local 表示本地 scope 的自建文件夹（含内置「本地文件」），前端据此区分来源。
+	// Local 表示本地 scope 的文件夹，前端据此区分来源。
 	Local bool `json:"local"`
 }
 
@@ -233,7 +230,36 @@ func (s *Store) ListNotes(scopeID, kind, folderID, keyword string) ([]NoteRow, e
 		args = append(args, keyword)
 	}
 	sqlText += ` ORDER BY pinned DESC, updated_at DESC`
+	return s.queryNoteRows(sqlText, args...)
+}
 
+// ListNotesInFolders 返回指定文件夹集合（含子树）中的笔记；ids 为空时返回空列表。
+func (s *Store) ListNotesInFolders(scopeID, kind string, folderIDs []string, keyword string) ([]NoteRow, error) {
+	if len(folderIDs) == 0 {
+		return []NoteRow{}, nil
+	}
+	placeholders := make([]string, 0, len(folderIDs))
+	args := []any{scopeID, kind}
+	for _, id := range folderIDs {
+		placeholders = append(placeholders, "?")
+		args = append(args, id)
+	}
+	sqlText := `
+		SELECT id, kind, title, folder_id, pinned, publish_status, tags_json,
+		       content, content_loaded, has_unpublished_changes, remote_version, base_version,
+		       dirty, deleted, remote_deleted, updated_at
+		  FROM note_local
+		 WHERE scope_id = ? AND kind = ? AND deleted = 0
+		   AND folder_id IN (` + strings.Join(placeholders, ",") + `)`
+	if keyword != "" {
+		sqlText += ` AND title LIKE '%' || ? || '%'`
+		args = append(args, keyword)
+	}
+	sqlText += ` ORDER BY pinned DESC, updated_at DESC`
+	return s.queryNoteRows(sqlText, args...)
+}
+
+func (s *Store) queryNoteRows(sqlText string, args ...any) ([]NoteRow, error) {
 	rows, err := s.db.Query(sqlText, args...)
 	if err != nil {
 		return nil, err
@@ -434,100 +460,110 @@ func (s *Store) UpsertRemoteFolders(scopeID string, folders []FolderRow) error {
 
 	for _, folder := range folders {
 		if _, err := tx.Exec(`
-			INSERT INTO folder_local (scope_id, id, name, sort, create_time, dirty, updated_at)
-			VALUES (?, ?, ?, ?, ?, 0, ?)
+			INSERT INTO folder_local (scope_id, id, parent_id, name, sort, create_time, dirty, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, 0, ?)
 			ON CONFLICT(scope_id, id) DO UPDATE SET
+				parent_id  = excluded.parent_id,
 				name       = excluded.name,
 				sort       = excluded.sort,
 				create_time = CASE WHEN folder_local.create_time = 0 THEN excluded.create_time
 				                   ELSE folder_local.create_time END,
 				updated_at = excluded.updated_at
 			WHERE folder_local.dirty = 0
-		`, scopeID, folder.ID, folder.Name, folder.Sort, folder.CreateTime, folder.UpdatedAt); err != nil {
+		`, scopeID, folder.ID, folder.ParentID, folder.Name, folder.Sort, folder.CreateTime, folder.UpdatedAt); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 
-// SaveFolderLocal 写入本地新建 / 改名（dirty=1）；create_time 只在首次写入时设置。
-func (s *Store) SaveFolderLocal(scopeID, id, name string, sort int) error {
+// SaveFolderLocal 写入云端文件夹的本地镜像改名（dirty=1）；create_time 只在首次写入时设置。
+func (s *Store) SaveFolderLocal(scopeID, id, name string, sort int, parentID string) error {
 	now := time.Now().UnixMilli()
 	_, err := s.db.Exec(`
-		INSERT INTO folder_local (scope_id, id, name, sort, create_time, dirty, updated_at)
-		VALUES (?, ?, ?, ?, ?, 1, ?)
+		INSERT INTO folder_local (scope_id, id, parent_id, name, sort, create_time, dirty, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, 1, ?)
 		ON CONFLICT(scope_id, id) DO UPDATE SET
 			name = excluded.name, sort = excluded.sort, dirty = 1, updated_at = excluded.updated_at
-	`, scopeID, id, name, sort, now, now)
+	`, scopeID, id, parentID, name, sort, now, now)
 	return err
 }
 
-// DeleteFolderLocal 删除本地镜像（推送失败时由 outbox 重试服务端删除）。
+// DeleteFolderLocal 删除云端文件夹的本地镜像（推送失败时由 outbox 重试服务端删除）。
 func (s *Store) DeleteFolderLocal(scopeID, id string) error {
 	_, err := s.db.Exec(`DELETE FROM folder_local WHERE scope_id = ? AND id = ?`, scopeID, id)
 	return err
 }
 
-// GetFolder 按 scope 读取单个文件夹（本地自建 / 服务端镜像通用）。
+// GetFolder 按 scope 读取单个文件夹（本地 / 云端镜像通用）。
 func (s *Store) GetFolder(scopeID, id string) (FolderRow, bool, error) {
 	var folder FolderRow
+	var parentID sql.NullString
 	err := s.db.QueryRow(`
-		SELECT id, name, sort, create_time, updated_at FROM folder_local
+		SELECT id, parent_id, name, sort, create_time, updated_at FROM folder_local
 		 WHERE scope_id = ? AND id = ?
-	`, scopeID, id).Scan(&folder.ID, &folder.Name, &folder.Sort, &folder.CreateTime, &folder.UpdatedAt)
+	`, scopeID, id).Scan(&folder.ID, &parentID, &folder.Name, &folder.Sort,
+		&folder.CreateTime, &folder.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return FolderRow{}, false, nil
 	}
 	if err != nil {
 		return FolderRow{}, false, err
 	}
+	folder.ParentID = parentID.String
 	return folder, true, nil
 }
 
-// SaveLocalFolder 写入本地自建文件夹：dirty 恒 0，永不进入 outbox / 同步。
-// 内置「本地文件」是保留虚拟分组，不落 folder_local。
-func (s *Store) SaveLocalFolder(id, name string, sort int) error {
+// SaveLocalFolder 写入本地文件夹：dirty 恒 0，永不进入 outbox / 同步。
+func (s *Store) SaveLocalFolder(id, name string, sort int, parentID string) error {
 	now := time.Now().UnixMilli()
 	_, err := s.db.Exec(`
-		INSERT INTO folder_local (scope_id, id, name, sort, create_time, dirty, updated_at)
-		VALUES ('local', ?, ?, ?, ?, 0, ?)
+		INSERT INTO folder_local (scope_id, id, parent_id, name, sort, create_time, dirty, updated_at)
+		VALUES ('local', ?, ?, ?, ?, ?, 0, ?)
 		ON CONFLICT(scope_id, id) DO UPDATE SET
-			name = excluded.name, sort = excluded.sort, dirty = 0, updated_at = excluded.updated_at
-	`, id, name, sort, now, now)
+			parent_id = excluded.parent_id, name = excluded.name, sort = excluded.sort,
+			dirty = 0, updated_at = excluded.updated_at
+	`, id, parentID, name, sort, now, now)
 	return err
 }
 
-// LocalFolderExists 判断 id 是否属于本地 scope：内置「本地文件」始终存在，
-// 其余查 folder_local（scope_id='local'）。空 id 与「未分类」返回 false。
-func (s *Store) LocalFolderExists(id string) (bool, error) {
+// FolderExists 判断 id 是否为指定 scope 中已存在的文件夹；空 id 与「未分类」返回 false。
+func (s *Store) FolderExists(scopeID, id string) (bool, error) {
 	if id == "" || id == UncategorizedFolderID {
 		return false, nil
 	}
-	if id == LocalFilesFolderID {
-		return true, nil
-	}
 	var count int
 	err := s.db.QueryRow(`
-		SELECT COUNT(*) FROM folder_local WHERE scope_id = 'local' AND id = ?
-	`, id).Scan(&count)
+		SELECT COUNT(*) FROM folder_local WHERE scope_id = ? AND id = ?
+	`, scopeID, id).Scan(&count)
 	return count > 0, err
 }
 
-// LocalFolderNameTaken 判断本地 scope 是否已有同名文件夹（trim、大小写不敏感）；
-// excludeID 用于改名时排除自身。内置「本地文件」也占用该名称。
-func (s *Store) LocalFolderNameTaken(name, excludeID string) (bool, error) {
+// LocalFolderNameTaken 判断本地 scope 的同一父级下是否已有同名文件夹（trim、大小写不敏感）；
+// excludeID 用于改名时排除自身。
+func (s *Store) LocalFolderNameTaken(name, parentID, excludeID string) (bool, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return false, nil
 	}
-	if strings.EqualFold(name, LocalFilesFolderName) {
-		return true, nil
-	}
 	var count int
 	err := s.db.QueryRow(`
 		SELECT COUNT(*) FROM folder_local
-		 WHERE scope_id = 'local' AND lower(name) = lower(?) AND id <> ?
-	`, name, excludeID).Scan(&count)
+		 WHERE scope_id = 'local'
+		   AND COALESCE(parent_id, '') = ?
+		   AND lower(name) = lower(?)
+		   AND id <> ?
+	`, parentID, name, excludeID).Scan(&count)
+	return count > 0, err
+}
+
+// FolderHasChildren 判断指定 scope 的文件夹是否有子文件夹。
+func (s *Store) FolderHasChildren(scopeID, id string) (bool, error) {
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM folder_local
+		 WHERE scope_id = ? AND COALESCE(parent_id, '') = ?
+	`, scopeID, id).Scan(&count)
 	return count > 0, err
 }
 
@@ -741,7 +777,7 @@ func NewUUID() string {
 // ListFolders 返回本地文件夹镜像；排序与服务端一致（sort ASC, create_time DESC）。
 func (s *Store) ListFolders(scopeID string) ([]FolderRow, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, sort, create_time, updated_at FROM folder_local
+		SELECT id, parent_id, name, sort, create_time, updated_at FROM folder_local
 		 WHERE scope_id = ? ORDER BY sort ASC, create_time DESC, name ASC
 	`, scopeID)
 	if err != nil {
@@ -751,10 +787,12 @@ func (s *Store) ListFolders(scopeID string) ([]FolderRow, error) {
 	out := make([]FolderRow, 0, 16)
 	for rows.Next() {
 		var folder FolderRow
-		if err := rows.Scan(&folder.ID, &folder.Name, &folder.Sort, &folder.CreateTime,
+		var parentID sql.NullString
+		if err := rows.Scan(&folder.ID, &parentID, &folder.Name, &folder.Sort, &folder.CreateTime,
 			&folder.UpdatedAt); err != nil {
 			return nil, err
 		}
+		folder.ParentID = parentID.String
 		out = append(out, folder)
 	}
 	return out, rows.Err()

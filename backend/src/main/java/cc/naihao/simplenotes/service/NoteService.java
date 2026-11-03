@@ -65,9 +65,15 @@ public class NoteService {
                     .or(note.content.containsIgnoreCase(kw)));
         }
         if (folderId != null && !folderId.isBlank()) {
-            predicate = UNCATEGORIZED_FOLDER_ID.equals(folderId)
-                    ? predicate.and(note.folderId.isNull())
-                    : predicate.and(note.folderId.eq(folderId));
+            if (UNCATEGORIZED_FOLDER_ID.equals(folderId)) {
+                predicate = predicate.and(note.folderId.isNull());
+            } else {
+                List<String> folderIds = folderService.subtreeIds(folderId, principal.userId());
+                if (folderIds.isEmpty()) {
+                    return new PageResponse<>(List.of(), 0, safePage, safeSize);
+                }
+                predicate = predicate.and(note.folderId.in(folderIds));
+            }
         }
         if (tagId != null && !tagId.isBlank()) {
             predicate = predicate.and(JPAExpressions.selectOne()

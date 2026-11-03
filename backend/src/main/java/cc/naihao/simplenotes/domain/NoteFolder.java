@@ -8,7 +8,7 @@ import lombok.Setter;
 import org.hibernate.annotations.SQLRestriction;
 
 /**
- * 记事本文件夹（docs/content-model.md §3.4）：v1 单层，按所有者隔离。
+ * 记事本文件夹（docs/content-model.md §3.4）：v2.0 树形，按所有者隔离，最多 5 级。
  */
 @Entity
 @Table(name = "note_folder")
@@ -19,6 +19,9 @@ public class NoteFolder extends BaseEntity {
 
     @Column(name = "owner_id", length = 36, nullable = false)
     private String ownerId;
+
+    @Column(name = "parent_id", length = 36)
+    private String parentId;
 
     @Column(name = "name", length = 64, nullable = false)
     private String name;

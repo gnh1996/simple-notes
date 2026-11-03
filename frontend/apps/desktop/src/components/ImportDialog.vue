@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import type { FolderRow } from '../../bindings/cc.naihao/simplenotes/desktop/internal/store/models'
+import type { FolderOption } from '../types/folders'
 import { ref, watch } from 'vue'
 
 const props = defineProps<{
   open: boolean
   defaultTitle: string
   canServer: boolean
-  folders: FolderRow[]
-  localFolders: FolderRow[]
+  folders: FolderOption[]
+  localFolders: FolderOption[]
 }>()
 
 const emit = defineEmits<{
@@ -20,10 +20,6 @@ const target = ref<'local' | 'server'>('local')
 const folderId = ref('')
 const error = ref('')
 
-function defaultLocalFolder(): string {
-  return props.localFolders.find((folder) => folder.id === 'local-files')?.id ?? props.localFolders[0]?.id ?? ''
-}
-
 watch(
   () => props.open,
   (open) => {
@@ -32,16 +28,16 @@ watch(
     }
     title.value = props.defaultTitle
     target.value = 'local'
-    folderId.value = defaultLocalFolder()
+    folderId.value = ''
     error.value = ''
   },
 )
 
-watch(target, (value) => {
+watch(target, () => {
   if (!props.open) {
     return
   }
-  folderId.value = value === 'local' ? defaultLocalFolder() : ''
+  folderId.value = ''
 })
 
 watch(
@@ -127,7 +123,8 @@ function cancel(): void {
           v-model="folderId"
           class="mt-1 w-full rounded border border-app-border bg-app-bg px-3 py-2 text-sm text-app-fg outline-none focus:border-brand-400"
         >
-          <option v-for="folder in localFolders" :key="folder.id" :value="folder.id">{{ folder.name }}</option>
+          <option value="">未分类</option>
+          <option v-for="folder in localFolders" :key="folder.id" :value="folder.id">{{ folder.label }}</option>
         </select>
       </label>
 
@@ -138,7 +135,7 @@ function cancel(): void {
           class="mt-1 w-full rounded border border-app-border bg-app-bg px-3 py-2 text-sm text-app-fg outline-none focus:border-brand-400"
         >
           <option value="">未分类</option>
-          <option v-for="folder in folders" :key="folder.id" :value="folder.id">{{ folder.name }}</option>
+          <option v-for="folder in folders" :key="folder.id" :value="folder.id">{{ folder.label }}</option>
         </select>
       </label>
 

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { Session } from '../../bindings/cc.naihao/simplenotes/desktop/internal/auth/models'
-import type { FolderRow } from '../../bindings/cc.naihao/simplenotes/desktop/internal/store/models'
+import type { FolderNode } from '../types/folders'
 import type { LibraryFilter, LibraryItem } from '../types/library'
-import { ref } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
+import { nextTick, ref } from 'vue'
 
 const emit = defineEmits<{
   'update:sourceFilter': [value: LibraryFilter]
@@ -12,9 +13,10 @@ const emit = defineEmits<{
   select: [item: LibraryItem]
   'new-note': []
   'open-file': []
-  'new-folder': [name: string]
-  'rename-folder': [folder: FolderRow, name: string]
-  'delete-folder': [folder: FolderRow]
+  'new-folder': [name: string, parentId: string]
+  'toggle-folder': [id: string]
+  'rename-folder': [folder: FolderNode, name: string]
+  'delete-folder': [folder: FolderNode]
   'remove-recent': [path: string]
   'clear-recent': []
   retry: []
@@ -25,7 +27,8 @@ const emit = defineEmits<{
 
 const props = defineProps<{
   session: Session | null
-  folders: FolderRow[]
+  folders: FolderNode[]
+  collapsedIds: string[]
   items: LibraryItem[]
   activeKey: string
   sourceFilter: LibraryFilter
@@ -37,13 +40,15 @@ const props = defineProps<{
 }>()
 
 const creatingFolder = ref(false)
+const creatingParentId = ref('')
 const newFolderName = ref('')
+const newFolderInput = ref<HTMLInputElement | null>(null)
 const renamingId = ref('__none__')
 const renameValue = ref('')
 
-// 本地自建文件夹始终可管理（不需要登录）；服务端文件夹仅在登录后可管理。
-function canManageFolder(folder: FolderRow): boolean {
-  if (!folder.id || folder.id === 'local-files' || folder.id === 'uncategorized') {
+// 本地文件夹始终可管理（不需要登录）；云端文件夹仅在登录后可管理。
+function canManageFolder(folder: FolderNode): boolean {
+  if (!folder.id || folder.id === 'uncategorized') {
     return false
   }
   return folder.local || Boolean(props.session)
@@ -53,23 +58,46 @@ function canCreateFolder(): boolean {
   return props.sourceFilter === 'local' || (Boolean(props.session) && props.sourceFilter === 'server')
 }
 
+function isCollapsed(id: string): boolean {
+  return props.collapsedIds.includes(id)
+}
+
+function startCreateFolder(parentId = ''): void {
+  creatingParentId.value = parentId
+  creatingFolder.value = true
+  newFolderName.value = ''
+  void nextTick(() => newFolderInput.value?.focus())
+}
+
+function cancelCreateFolder(): void {
+  creatingFolder.value = false
+  creatingParentId.value = ''
+  newFolderName.value = ''
+}
+
+function setNewFolderInput(el: Element | ComponentPublicInstance | null): void {
+  newFolderInput.value = el instanceof HTMLInputElement ? el : null
+}
+
 function submitNewFolder(): void {
   const name = newFolderName.value.trim()
   if (!name) {
     creatingFolder.value = false
+    creatingParentId.value = ''
     return
   }
-  emit('new-folder', name)
+  emit('new-folder', name, creatingParentId.value)
   creatingFolder.value = false
+  creatingParentId.value = ''
   newFolderName.value = ''
 }
 
-function startRename(folder: FolderRow): void {
+function startRename(folder: FolderNode): void {
   renamingId.value = folder.id
   renameValue.value = folder.name
 }
 
-function submitRename(folder: FolderRow): void {
+function submitRename(folder: FolderNode): void {
   if (renamingId.value !== folder.id) {
     return
   }
@@ -172,51 +200,89 @@ function formatTime(value: number): string {
         v-if="sourceFilter !== 'file' && kind !== 'POST'"
         class="flex w-[160px] shrink-0 flex-col overflow-y-auto border-r border-app-border px-1.5 py-2"
       >
-        <div
-          v-for="folder in folders"
-          :key="folder.id || 'all'"
-          class="group flex items-center gap-1 rounded"
-          :class="folderId === folder.id ? 'bg-brand-500/10 text-brand-400' : 'hover:bg-app-bg'"
-        >
-          <button
-            v-if="renamingId !== folder.id"
-            class="min-w-0 flex-1 truncate rounded px-1.5 py-1.5 text-left text-xs"
-            :title="folder.name"
-            type="button"
-            @click="emit('update:folderId', folder.id)"
+        <template v-for="folder in folders" :key="folder.id || 'all'">
+          <div
+            class="group flex items-center gap-1 rounded"
+            :class="folderId === folder.id ? 'bg-brand-500/10 text-brand-400' : 'hover:bg-app-bg'"
+            :style="folder.id ? { paddingLeft: `${(folder.depth - 1) * 10}px` } : undefined"
           >
-            {{ folder.name }}
-          </button>
-          <input
-            v-else
-            v-model="renameValue"
-            class="min-w-0 flex-1 rounded border border-brand-400/60 bg-app-bg px-1 py-1 text-[11px] outline-none"
-            @keydown.enter="submitRename(folder)"
-            @keydown.esc="renamingId = '__none__'"
-            @blur="submitRename(folder)"
-          />
-          <span v-if="renamingId !== folder.id && folder.noteCount >= 0" class="shrink-0 text-[10px] text-app-muted">
-            {{ folder.noteCount }}
-          </span>
-          <button
-            v-if="canManageFolder(folder) && renamingId !== folder.id"
-            class="hidden px-0.5 text-[10px] text-app-muted group-hover:block hover:text-brand-400"
-            type="button"
-            title="重命名"
-            @click="startRename(folder)"
+            <button
+              v-if="folder.hasChildren"
+              class="shrink-0 rounded px-0.5 text-[10px] text-app-muted hover:text-brand-400"
+              type="button"
+              :title="isCollapsed(folder.id) ? '展开' : '收起'"
+              @click.stop="emit('toggle-folder', folder.id)"
+            >
+              {{ isCollapsed(folder.id) ? '▸' : '▾' }}
+            </button>
+            <span v-else class="w-[11px] shrink-0" />
+            <button
+              v-if="renamingId !== folder.id"
+              class="min-w-0 flex-1 truncate rounded px-1.5 py-1.5 text-left text-xs"
+              :title="folder.path"
+              type="button"
+              @click="emit('update:folderId', folder.id)"
+            >
+              {{ folder.name }}
+            </button>
+            <input
+              v-else
+              v-model="renameValue"
+              class="min-w-0 flex-1 rounded border border-brand-400/60 bg-app-bg px-1 py-1 text-[11px] outline-none"
+              @keydown.enter="submitRename(folder)"
+              @keydown.esc="renamingId = '__none__'"
+              @blur="submitRename(folder)"
+            />
+            <span v-if="renamingId !== folder.id && folder.noteCount >= 0" class="shrink-0 text-[10px] text-app-muted">
+              {{ folder.noteCount }}
+            </span>
+            <button
+              v-if="canManageFolder(folder) && renamingId !== folder.id"
+              class="shrink-0 rounded px-0.5 text-[11px] leading-none text-app-muted hover:text-brand-400"
+              type="button"
+              title="在此文件夹下新建子文件夹"
+              @click="startCreateFolder(folder.id)"
+            >
+              +
+            </button>
+            <button
+              v-if="canManageFolder(folder) && renamingId !== folder.id"
+              class="hidden px-0.5 text-[10px] text-app-muted group-hover:block hover:text-brand-400"
+              type="button"
+              title="重命名"
+              @click="startRename(folder)"
+            >
+              改
+            </button>
+            <button
+              v-if="canManageFolder(folder)"
+              class="hidden px-0.5 text-[10px] text-red-400 group-hover:block disabled:cursor-not-allowed disabled:opacity-40"
+              type="button"
+              :disabled="folder.hasChildren"
+              :title="folder.hasChildren ? '请先删除子文件夹' : '删除'"
+              @click="emit('delete-folder', folder)"
+            >
+              删
+            </button>
+          </div>
+
+          <div
+            v-if="creatingFolder && !!folder.id && creatingParentId === folder.id"
+            class="mb-1 rounded bg-app-bg/60 px-1.5 py-1"
+            :style="{ paddingLeft: `${(folder.depth - 1) * 10 + 18}px` }"
           >
-            改
-          </button>
-          <button
-            v-if="canManageFolder(folder)"
-            class="hidden px-0.5 text-[10px] text-red-400 group-hover:block"
-            type="button"
-            title="删除"
-            @click="emit('delete-folder', folder)"
-          >
-            删
-          </button>
-        </div>
+            <div class="text-[10px] text-app-muted">在「{{ folder.path }}」下新建</div>
+            <input
+              :ref="setNewFolderInput"
+              v-model="newFolderName"
+              class="mt-1 w-full rounded border border-brand-400/60 bg-app-bg px-1.5 py-1 text-[11px] outline-none"
+              placeholder="名称，回车确认"
+              @keydown.enter="submitNewFolder"
+              @keydown.esc="cancelCreateFolder"
+              @blur="cancelCreateFolder"
+            />
+          </div>
+        </template>
 
         <button
           v-if="canCreateFolder()"
@@ -230,17 +296,20 @@ function formatTime(value: number): string {
                 : '新建云端文件夹'
           "
           type="button"
-          @click="creatingFolder = true"
+          @click="startCreateFolder('')"
         >
           + 新建文件夹
         </button>
+        <div v-if="creatingFolder && !creatingParentId" class="mt-1 text-[10px] text-app-muted">新建根文件夹</div>
         <input
-          v-if="creatingFolder"
+          v-if="creatingFolder && !creatingParentId"
+          :ref="setNewFolderInput"
           v-model="newFolderName"
           class="mt-1 w-full rounded border border-brand-400/60 bg-app-bg px-1.5 py-1 text-[11px] outline-none"
           placeholder="名称，回车确认"
           @keydown.enter="submitNewFolder"
-          @keydown.esc="creatingFolder = false"
+          @keydown.esc="cancelCreateFolder"
+          @blur="cancelCreateFolder"
         />
       </div>
 

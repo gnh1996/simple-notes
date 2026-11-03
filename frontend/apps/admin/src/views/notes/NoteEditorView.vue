@@ -9,6 +9,7 @@ import { mediaApi, noteApi, noteFolderApi, tagApi } from '@/api'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
 import { useTheme } from '@/composables/useTheme'
 import { tagNames } from '@/utils/content'
+import { buildFolderPaths } from '@/utils/folders'
 import { formatDateTime, notifyError } from '@/utils/feedback'
 
 const route = useRoute()
@@ -41,6 +42,8 @@ const form = reactive({
 const tagOptionNames = computed(() =>
   Array.from(new Set([...tagOptions.value, ...form.tags])),
 )
+
+const folderPaths = computed(() => buildFolderPaths(folders.value))
 
 const statusText = computed(() => {
   if (saving.value) return '保存中…'
@@ -261,7 +264,12 @@ onBeforeUnmount(() => {
         <el-form label-position="top">
           <el-form-item label="文件夹">
             <el-select v-model="form.folderId" placeholder="未分类" clearable class="w-full">
-              <el-option v-for="folder in folders" :key="folder.id" :label="folder.name" :value="folder.id" />
+              <el-option
+                v-for="folder in folders"
+                :key="folder.id"
+                :label="folderPaths.get(folder.id) || folder.name"
+                :value="folder.id"
+              />
             </el-select>
           </el-form-item>
           <el-form-item label="标签">

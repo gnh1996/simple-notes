@@ -136,13 +136,14 @@ GET /api/desktop/posts/sync?cursor=<opaque>&limit=500
 ### 3.7 文件夹
 
 - 全量拉取 `GET /api/desktop/note-folders`（量小，无需游标），本地保留 dirty 行不被覆盖；
-- 本地镜像保存 `createTime`，排序与 admin 一致：`sort ASC, create_time DESC`；
-- 在线新建（服务端生成 id）；改名 / 删除先落本地，再推送，失败进 outbox；
+- 本地镜像保存 `parentId` / `createTime`，排序与 admin 一致：`sort ASC, create_time DESC`；父子写入顺序不敏感（SQLite 无自引用外键）；
+- 在线新建（服务端生成 id）+ 可选 `parentId`；改名 / 删除先落本地，再推送，失败进 outbox；
+- **树形**：根为第 1 级、最多 5 级；同父级唯一、跨层级可同名；有子文件夹时禁止删除；
 - 删除后该文件夹下笔记由服务端置为「未分类」，下次 manifest 同步跟进；
 - 冲突策略：v1 以服务端为准（文件夹是低频、低风险数据）；桌面端 dirty 行在同步时保留本地名称；
 - 桌面端可修改笔记的 `folderId`（编辑器内切换），本地先置 dirty；manifest 同步遇到 dirty 行时保留本地 `folder_id`，避免离线归类被远端打回；
-- 侧栏列表 = 虚拟分组「全部笔记 / 未分类 / 本地文件」+ 本地自建文件夹 + 服务端文件夹；`noteCount` 在本地按 `note_local` 聚合（`kind=NOTE` 且未删除），不额外请求服务端；
-- 虚拟分组（`''` / `uncategorized` / `local-files`）不写入 `folder_local`、不参与同步；**本地自建文件夹**写 `folder_local(scope_id='local')`，仅在本地可见、永不入 outbox。
+- 侧栏列表 = 虚拟分组「全部笔记 / 未分类」+ 本地文件夹树 + 云端文件夹树；`noteCount` 按**子树**（含自身）聚合，不额外请求服务端；
+- 虚拟分组（`''` / `uncategorized`）不写入 `folder_local`、不参与同步；**本地文件夹**写 `folder_local(scope_id='local')`，仅在本地可见、永不入 outbox；本地 / 云端两棵树**完全独立**，不做名称 / 路径映射。
 
 ### 3.8 文章发布（桌面端不执行）
 
@@ -210,6 +211,7 @@ create index idx_note_local_list
 create table folder_local (
     scope_id    text not null,
     id          text not null,
+    parent_id   text,                     -- 根为 NULL / 空串（v2.0）
     name        text not null,
     sort        integer not null default 0,
     create_time integer not null default 0,

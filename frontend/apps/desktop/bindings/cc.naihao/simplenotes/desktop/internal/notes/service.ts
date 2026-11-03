@@ -33,14 +33,14 @@ export function Delete(id: string): $CancellablePromise<$models.DeleteResult | n
 }
 
 /**
- * Folders 返回文件夹列表：内置「全部 / 未分类 / 本地文件」+ 本地自建 + 服务端镜像，并带上各自数量。
+ * Folders 返回扁平文件夹列表：内置「全部 / 未分类」+ 本地文件夹 + 云端镜像，并带上子树数量。
  */
 export function Folders(): $CancellablePromise<store$0.FolderRow[] | null> {
     return $Call.ByID(2467069980);
 }
 
 /**
- * ImportFile 把临时编辑内容纳入管理：仅本地（内置「本地文件」）或服务端。
+ * ImportFile 把临时编辑内容纳入管理：仅本地或云端。
  */
 export function ImportFile(input: $models.ImportInput): $CancellablePromise<$models.SaveResult | null> {
     return $Call.ByID(2516404828, input);
@@ -49,6 +49,7 @@ export function ImportFile(input: $models.ImportInput): $CancellablePromise<$mod
 /**
  * List 返回本地索引；kind 为空时返回全部（NOTE / POST）。
  * 无 active scope 时只返回纯本地笔记（免登录模式）。
+ * folderID 支持：”=全部、uncategorized=未分类、本地文件夹（含子孙）、云端文件夹（含子孙）。
  */
 export function List(kind: string, folderID: string, keyword: string): $CancellablePromise<store$0.NoteRow[] | null> {
     return $Call.ByID(2217652139, kind, folderID, keyword);
