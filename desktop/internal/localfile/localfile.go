@@ -36,6 +36,8 @@ type LocalFile struct {
 	Size       int64  `json:"size"`
 	LineEnding string `json:"lineEnding"` // crlf | lf
 	BOM        bool   `json:"bom"`
+	// MediaToken 是临时文件图片目录在 Wails 资产服务中的不透明 token。
+	MediaToken string `json:"mediaToken"`
 }
 
 // RecentFile 是前端展示的最近打开项；Exists 用于提示文件已被移动 / 删除。
@@ -70,6 +72,8 @@ type SaveFileResult struct {
 type SaveAsInput struct {
 	DefaultName string `json:"defaultName"`
 	Content     string `json:"content"`
+	// SourcePath 用于把旧文件 assets 目录里的图片复制到新位置。
+	SourcePath string `json:"sourcePath"`
 }
 
 // ExportInput 是「导出为 Markdown」请求。
@@ -84,16 +88,29 @@ type ExportResult struct {
 	Name string `json:"name"`
 }
 
+// MediaHooks 是本地文件与图片服务之间的最小接口，避免 localfile 依赖具体实现。
+type MediaHooks interface {
+	RegisterFileTab(path string) (string, error)
+	ReleaseFileTab(token string)
+	RewriteFileRefsForSaveAs(content, sourcePath, targetPath string) (string, error)
+	RewriteLocalRefsToExport(content, targetPath string) (string, error)
+}
+
 // Service 通过 Wails binding 暴露本地文件能力。
 type Service struct {
 	db      *store.Store
+	media   MediaHooks
 	unsaved atomic.Bool
 	closing atomic.Bool
 }
 
 // New 创建本地文件服务。
-func New(db *store.Store) *Service {
-	return &Service{db: db}
+func New(db *store.Store, hooks ...MediaHooks) *Service {
+	service := &Service{db: db}
+	if len(hooks) > 0 {
+		service.media = hooks[0]
+	}
+	return service
 }
 
 // SetUnsaved 由前端同步「是否有未保存内容」，供窗口关闭钩子判断。
@@ -135,8 +152,23 @@ func (s *Service) OpenPath(path string) (*LocalFile, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := s.attachMediaToken(file); err != nil {
+		return nil, err
+	}
 	s.touchRecent(file)
 	return file, nil
+}
+
+func (s *Service) attachMediaToken(file *LocalFile) error {
+	if s.media == nil {
+		return nil
+	}
+	token, err := s.media.RegisterFileTab(file.Path)
+	if err != nil {
+		return fmt.Errorf("登记图片目录: %w", err)
+	}
+	file.MediaToken = token
+	return nil
 }
 
 // Read 重新读取当前文件（不改变最近记录之外的任何状态）。
@@ -192,11 +224,21 @@ func (s *Service) SaveAs(input SaveAsInput) (*LocalFile, error) {
 	if err != nil || path == "" {
 		return nil, err
 	}
-	if err := writeAtomic(path, encodeContent(input.Content, "lf", false), 0o644); err != nil {
+	content := input.Content
+	if s.media != nil && input.SourcePath != "" {
+		content, err = s.media.RewriteFileRefsForSaveAs(content, input.SourcePath, path)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := writeAtomic(path, encodeContent(content, "lf", false), 0o644); err != nil {
 		return nil, err
 	}
 	file, err := readLocalFile(path)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.attachMediaToken(file); err != nil {
 		return nil, err
 	}
 	s.touchRecent(file)
@@ -209,7 +251,14 @@ func (s *Service) ExportMarkdown(input ExportInput) (*ExportResult, error) {
 	if err != nil || path == "" {
 		return nil, err
 	}
-	if err := writeAtomic(path, encodeContent(input.Content, "lf", false), 0o644); err != nil {
+	content := input.Content
+	if s.media != nil {
+		content, err = s.media.RewriteLocalRefsToExport(content, path)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := writeAtomic(path, encodeContent(content, "lf", false), 0o644); err != nil {
 		return nil, err
 	}
 	return &ExportResult{Path: path, Name: filepath.Base(path)}, nil

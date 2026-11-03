@@ -107,6 +107,7 @@ public final class Perms {
     public static final String DESKTOP_FOLDER_WRITE = "desktop:folder:write";
     public static final String DESKTOP_NOTE_CREATE = "desktop:note:create";
     public static final String DESKTOP_POST_CREATE = "desktop:post:create";
+    public static final String DESKTOP_MEDIA_UPLOAD = "desktop:media:upload";
 
     private static final Set<String> ALL = collectAll();
 

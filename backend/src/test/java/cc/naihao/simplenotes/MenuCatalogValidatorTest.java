@@ -139,8 +139,13 @@ class MenuCatalogValidatorTest {
             String[] parts = code.split(":");
             boolean action = parts.length == 3;
             String parentCode = action ? parts[0] + ":" + parts[1] : "entry:" + clientName;
-            SysMenu node = node(id(sequence++),
-                    action ? idByCode.get(parentCode) : entryIdByClient.get(client),
+            // 桌面端目前把 ACTION 直接挂在 ENTRY 下（V13–V17），没有 desktop:xxx 中间 MENU；
+            // admin / blog 仍按 MENU → ACTION 组织。
+            String parentId = action ? idByCode.get(parentCode) : entryIdByClient.get(client);
+            if (parentId == null) {
+                parentId = entryIdByClient.get(client);
+            }
+            SysMenu node = node(id(sequence++), parentId,
                     client, action ? MenuType.ACTION : MenuType.MENU, code);
             nodes.add(node);
             idByCode.put(code, node.getId());

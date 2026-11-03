@@ -30,6 +30,7 @@ type migration struct {
 var migrations = []migration{
 	{version: 1, name: "init", file: "0001_init.sql"},
 	{version: 2, name: "align_legacy_columns", fn: alignLegacyColumns},
+	{version: 3, name: "local_media", file: "0003_local_media.sql"},
 }
 
 //go:embed migrations/*.sql

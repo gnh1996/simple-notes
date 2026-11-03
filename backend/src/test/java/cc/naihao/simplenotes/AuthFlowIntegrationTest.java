@@ -68,8 +68,8 @@ class AuthFlowIntegrationTest extends IntegrationTestBase {
                 // 超管能力不落在权限码集合里：codes / entries 均为空
                 .andExpect(jsonPath("$.codes").isEmpty())
                 .andExpect(jsonPath("$.entries").isEmpty())
-                // 全量菜单（不做过滤）：系统域 + 内容域 + 标签管理共七个 admin 菜单节点
-                .andExpect(jsonPath("$.menus.length()").value(7))
+                // 全量菜单（不做过滤）：系统域 3 + 内容域 3 + 标签 1 + 站点 / 主题 2
+                .andExpect(jsonPath("$.menus.length()").value(9))
                 .andExpect(jsonPath("$.menus[0].code").value("admin:user"))
                 .andExpect(jsonPath("$.menus[0].children.length()").value(0));
     }

@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"cc.naihao/simplenotes/desktop/internal/auth"
 	"cc.naihao/simplenotes/desktop/internal/folders"
 	"cc.naihao/simplenotes/desktop/internal/localfile"
+	"cc.naihao/simplenotes/desktop/internal/media"
 	"cc.naihao/simplenotes/desktop/internal/notes"
 	"cc.naihao/simplenotes/desktop/internal/store"
 	"cc.naihao/simplenotes/desktop/internal/syncsvc"
@@ -59,7 +61,8 @@ func main() {
 	}
 
 	apiService := api.New(db, baseURL)
-	fileService := localfile.New(db)
+	mediaService := media.New(db, apiService)
+	fileService := localfile.New(db, mediaService)
 
 	app := application.New(application.Options{
 		Name:        "Simple Notes",
@@ -70,12 +73,21 @@ func main() {
 			application.NewService(auth.New(db)),
 			application.NewService(syncsvc.New(db, apiService)),
 			application.NewService(folders.New(db, apiService)),
-			application.NewService(notes.New(db, apiService)),
+			application.NewService(notes.New(db, apiService, mediaService)),
 			application.NewService(fileService),
 			application.NewService(system.New(db, baseURL)),
+			application.NewServiceWithOptions(mediaService, application.ServiceOptions{Route: "/__media"}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
+			Middleware: func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if mediaService.HandleProxy(w, r) {
+						return
+					}
+					next.ServeHTTP(w, r)
+				})
+			},
 		},
 		Windows: windowsOptions,
 		Mac: application.MacOptions{

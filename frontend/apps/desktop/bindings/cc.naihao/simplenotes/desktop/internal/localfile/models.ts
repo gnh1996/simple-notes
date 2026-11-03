@@ -33,6 +33,11 @@ export interface LocalFile {
      */
     "lineEnding": string;
     "bom": boolean;
+
+    /**
+     * MediaToken 是临时文件图片目录在 Wails 资产服务中的不透明 token。
+     */
+    "mediaToken": string;
 }
 
 /**
@@ -51,6 +56,11 @@ export interface RecentFile {
 export interface SaveAsInput {
     "defaultName": string;
     "content": string;
+
+    /**
+     * SourcePath 用于把旧文件 assets 目录里的图片复制到新位置。
+     */
+    "sourcePath": string;
 }
 
 /**

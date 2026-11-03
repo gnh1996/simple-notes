@@ -36,6 +36,7 @@
 - **R2 私有 bucket + 方案 B**：Nginx `auth_request` 调 `/api/internal/media/presign` 取短期预签名 URL，再代理 R2；内部接口必须校验 `X-Internal-Token`，禁止外部直达
 - **任意文件策略**：魔数检测；禁止 SVG；只有图片 inline，其他强制 `Content-Disposition: attachment`；`cover_attachment_id` 只接受图片；文件名不参与存储路径
 - **流式 I/O**：上传 / 读取不得 `MultipartFile.getBytes()` 或 JPA 大字段整块物化；DATABASE 单文件上限 20 MB，本地 / R2 走流
+- **桌面端上传**（`docs/desktop-media.md`）：`POST /api/desktop/media` 复用 `AttachmentService.upload`，权限 `desktop:media:upload`；`DESKTOP` 会话不得调用 `/api/admin/**`
 - **Nginx 示例**：`deploy/nginx/media.conf.example`；修改缓存 / 限流 / 媒体域策略时同步更新该示例与设计文档
 
 ## 博客前台（壳组装，设计见 docs/blog-runtime-theme.md）

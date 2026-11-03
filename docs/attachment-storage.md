@@ -559,6 +559,7 @@ location /oss/ {
 | `GET /api/media/{id}` | 匿名可读；LOCAL / DB 流式返回，OSS 302 到 `/oss/{key}`（稳定端点 / 兜底） |
 | `GET /oss/{key}` | OSS 直链；当前私有 bucket 由 Nginx `auth_request` 取预签名后代理（方案 B），A 回退可 302 |
 | `POST /api/admin/media` | 上传；`multipart/form-data`，字段 `file`；任意文件 |
+| `POST /api/desktop/media` | 桌面端上传；权限 `desktop:media:upload`；复用 `AttachmentService.upload`（`docs/desktop-media.md`） |
 | `GET /api/admin/media` | 媒体库分页列表：`page`（默认 1）/ `size`（默认 24，上限 100）/ `keyword`（按原始文件名模糊匹配）；返回 `PageResponse<AttachmentResponse>`，按 `create_time DESC` |
 | `DELETE /api/admin/media/{id}` | 删除（软删元数据 + 清理二进制） |
 | `GET /api/admin/media/storage` | 当前模式、可用模式、计数、健康状态 |

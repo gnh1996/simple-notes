@@ -39,6 +39,25 @@ const emit = defineEmits<{
 }>()
 
 const menuOpen = ref(false)
+const mediaContext = computed(() => {
+  if (props.tab.source === 'file') {
+    const token = props.tab.file?.mediaToken
+    return token ? { target: 'file' as const, token } : null
+  }
+  if (props.tab.source === 'local') {
+    return { target: 'local' as const }
+  }
+  return { target: 'server' as const }
+})
+const linkBase = computed(() => {
+  if (props.tab.source === 'file' && props.tab.file?.mediaToken) {
+    return `${window.location.origin}/__media/file/${props.tab.file.mediaToken}/`
+  }
+  if (props.tab.source === 'local') {
+    return `${window.location.origin}/__media/`
+  }
+  return ''
+})
 const sourceLabel = computed(() => (props.tab.source === 'file' ? '文件' : props.tab.source === 'local' ? '本地' : '服务端'))
 const sourceClass = computed(() =>
   props.tab.source === 'file'
@@ -282,6 +301,8 @@ function publishLabel(value: string): string {
           :theme="theme"
           :reset-key="tab.key"
           :scroll-top="tab.scrollTop"
+          :link-base="linkBase"
+          :media-context="mediaContext"
           placeholder="开始写作…"
           @update:model-value="emit('update:content', $event)"
           @scroll="emit('scroll', $event)"

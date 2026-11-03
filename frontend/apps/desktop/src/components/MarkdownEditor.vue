@@ -7,12 +7,19 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 // 桌面端编辑器 POC：与 admin / blog 同源的 Vditor + Lute（方言 v2）。
 // 资源由 `pnpm sync:vditor` 自托管到 public/vditor，禁止公共 CDN。
+interface MediaContext {
+  target: 'file' | 'local' | 'server'
+  token?: string
+}
+
 const props = defineProps<{
   modelValue: string
   theme: 'light' | 'dark'
   placeholder?: string
   resetKey?: string
   scrollTop?: number
+  linkBase?: string
+  mediaContext?: MediaContext | null
 }>()
 
 const emit = defineEmits<{
@@ -65,11 +72,18 @@ function applyScroll(): void {
   })
 }
 
+function applyLinkBase(): void {
+  const lute = (editor as unknown as { vditor?: { lute?: { SetLinkBase?: (value: string) => void } } } | undefined)?.vditor
+    ?.lute
+  lute?.SetLinkBase?.(props.linkBase ?? '')
+}
+
 function replaceContent(value: string): void {
   if (!editor) {
     pendingValue = value
     return
   }
+  applyLinkBase()
   syncing = true
   // 外部整体替换内容（换标签 / 冲突处理）= 换了一篇文档：清空撤销栈，列宽回到自动布局。
   editor.setValue(value, true)
@@ -80,6 +94,59 @@ function replaceContent(value: string): void {
     bindScroll()
   }
   applyScroll()
+}
+
+interface ImportedImage {
+  ref: string
+  url: string
+  alt?: string
+}
+
+async function uploadImage(file: File): Promise<ImportedImage> {
+  const context = props.mediaContext
+  if (!context) {
+    throw new Error('当前文档不支持插入图片')
+  }
+  const params = new URLSearchParams({ target: context.target, name: file.name || 'image' })
+  if (context.token) {
+    params.set('token', context.token)
+  }
+  const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`
+  const response = await fetch(`${base}__media/import?${params.toString()}`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: file,
+  })
+  const raw = await response.text()
+  let payload: (ImportedImage & { message?: string }) | null = null
+  try {
+    payload = raw ? JSON.parse(raw) : null
+  } catch {
+    payload = null
+  }
+  if (!response.ok) {
+    throw new Error(payload?.message || `图片导入失败（HTTP ${response.status}）`)
+  }
+  if (!payload?.ref) {
+    throw new Error('图片导入失败')
+  }
+  return payload
+}
+
+async function insertUploaded(files: File[]): Promise<string | null> {
+  const snippets: string[] = []
+  try {
+    for (const file of files) {
+      const item = await uploadImage(file)
+      snippets.push(`![${item.alt ?? ''}](${item.ref})`)
+    }
+  } catch (error) {
+    return String(error instanceof Error ? error.message : error)
+  }
+  if (snippets.length && editor) {
+    editor.insertValue(snippets.join('\n'), true)
+  }
+  return null
 }
 
 function create(): void {
@@ -94,6 +161,11 @@ function create(): void {
       cacheId: 'simple-notes-desktop',
       placeholder: props.placeholder,
       height: '100%',
+      linkBase: props.linkBase,
+      onUpload: insertUploaded,
+      uploadAccept: 'image/png,image/jpeg,image/gif,image/webp,image/avif',
+      uploadMax: 20 * 1024 * 1024,
+      uploadMultiple: true,
       onInput: (value) => {
         if (syncing) {
           return
@@ -104,8 +176,12 @@ function create(): void {
     after: () => {
       ready = true
       bindScroll()
+      applyLinkBase()
       if (pendingValue !== undefined && editor && pendingValue !== editor.getValue()) {
         replaceContent(pendingValue)
+      } else if (props.linkBase) {
+        // 初始化期间 mediaToken 可能才到位；用最终 linkBase 重渲染一次图片。
+        replaceContent(props.modelValue)
       }
       pendingValue = undefined
       applyScroll()
@@ -152,6 +228,16 @@ watch(
       return
     }
     // 即使两篇内容相同也要清空撤销栈，避免 A 标签的撤销影响 B。
+    replaceContent(props.modelValue)
+  },
+)
+
+watch(
+  () => props.linkBase,
+  () => {
+    if (!ready || !editor) {
+      return
+    }
     replaceContent(props.modelValue)
   },
 )

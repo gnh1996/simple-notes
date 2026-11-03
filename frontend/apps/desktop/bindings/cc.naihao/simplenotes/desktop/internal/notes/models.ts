@@ -43,6 +43,11 @@ export interface ImportInput {
      */
     "target": string;
     "folderId": string;
+
+    /**
+     * SourcePath 是临时编辑文件路径；用于把相对图片复制 / 上传到目标存储。
+     */
+    "sourcePath": string;
 }
 
 /**

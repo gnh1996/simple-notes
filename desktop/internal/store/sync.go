@@ -621,6 +621,24 @@ func (s *Store) BumpOutbox(scopeID, entity, id string) error {
 }
 
 // NewUUID 生成 v4 UUID（离线新建 / 冲突副本使用）。
+// ListLocalNoteContents 返回纯本地笔记正文，供本地图片引用清理使用。
+func (s *Store) ListLocalNoteContents() ([]string, error) {
+	rows, err := s.db.Query(`SELECT content FROM note_local WHERE scope_id = 'local' AND content IS NOT NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]string, 0, 16)
+	for rows.Next() {
+		var content string
+		if err := rows.Scan(&content); err != nil {
+			return nil, err
+		}
+		out = append(out, content)
+	}
+	return out, rows.Err()
+}
+
 func NewUUID() string {
 	var buf [16]byte
 	if _, err := rand.Read(buf[:]); err != nil {

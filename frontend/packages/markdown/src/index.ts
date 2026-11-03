@@ -64,6 +64,11 @@ export interface EditorSetup {
   onInput?: (value: string) => void
   /** 返回插入编辑器的 Markdown 片段（通常是图片语法）。 */
   onUpload?: (files: File[]) => Promise<string | null>
+  /** 相对链接 / 图片的解析基准（桌面端本地文件 / 本地笔记使用）。 */
+  linkBase?: string
+  uploadAccept?: string
+  uploadMax?: number
+  uploadMultiple?: boolean
 }
 
 export function createEditorOptions(setup: EditorSetup): VditorEditorOptions {
@@ -86,7 +91,7 @@ export function createEditorOptions(setup: EditorSetup): VditorEditorOptions {
         style: setup.theme === 'dark' ? 'github-dark' : 'github',
       },
       math: vditorMath,
-      markdown: vditorMarkdown,
+      markdown: setup.linkBase ? { ...vditorMarkdown, linkBase: setup.linkBase } : vditorMarkdown,
       theme: { current: setup.theme },
       transform: sanitizeHtml,
     },
@@ -100,7 +105,12 @@ export function createEditorOptions(setup: EditorSetup): VditorEditorOptions {
   if (setup.onUpload) {
     options.upload = {
       url: '',
-      handler: async (files: File[]): Promise<string> => (await setup.onUpload!(files)) ?? '',
+      // Vditor 的 handler 类型把 Promise<string> / Promise<null> 拆成联合，无法直接表达
+      // Promise<string | null>；运行时两种返回值都支持，这里只做类型收口。
+      handler: ((files: File[]) => setup.onUpload!(files)) as NonNullable<VditorEditorOptions['upload']>['handler'],
+      ...(setup.uploadAccept ? { accept: setup.uploadAccept } : {}),
+      ...(setup.uploadMax ? { max: setup.uploadMax } : {}),
+      ...(setup.uploadMultiple !== undefined ? { multiple: setup.uploadMultiple } : {}),
     }
   }
 

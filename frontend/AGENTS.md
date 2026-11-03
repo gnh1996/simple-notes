@@ -63,6 +63,7 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 - `bindings/` 由 `wails3 task bindings` 生成（改 Go service 签名后重跑），随仓库提交；禁止手写 IPC 类型
 - API 类型来自 `@simple-notes/api`（OpenAPI 生成），不另写接口类型；Go 侧只做通用转发
 - Markdown 与 admin / blog 同源：`@simple-notes/markdown` 的 `createEditorOptions` / `sanitizeHtml` / `vditorMarkdown`；资源由 `pnpm sync:vditor` 自托管；方言 v2 由三端 fixture 验收
+- 桌面端图片按 `docs/desktop-media.md`：`MarkdownEditor` 通过 `/__media/import` 上传，按 tab 设置 `linkBase`；文件 / 本地 / 服务端的存储与引用差异只在桌面端处理，不污染 admin / blog
 - 表格列宽 / 工具栏气泡 / 表格换行与 admin 共用 `@simple-notes/markdown` 的 `vditor.css` 与 `table-resize`，不要在本端另写一份
 - 构建产物先 `pnpm build:desktop`，再由 `desktop/` 的 `wails3 build` 执行 `pnpm sync:wails` 同步进 `desktop/web/dist`
 - 内存按 WebView 进程树评估：新增常驻面板 / 依赖前先实测（见 `desktop/README.md`）

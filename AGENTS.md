@@ -16,6 +16,7 @@
 | `docs/desktop-sync.md` | 桌面端同步设计（v1 草案）：本地优先 + 懒加载 manifest、`version` 修订号与本地 hash、整篇冲突 + diff、离线新建、账号隔离 |
 | `docs/desktop-local-schema.md` | 桌面端本地库结构演进（SQLite schema 迁移，v1.1 已实现）：`user_version` 版本轴、有序迁移与老库桥接、备份与降级检测、与后端 API 契约版本的关系 |
 | `docs/desktop-local-file.md` | 桌面端本地 Markdown（v1.1 已实现 / v1.2 多标签已实现，Windows）：打开文件=临时编辑、免登录本地笔记、最近打开、纳入管理（内置「本地文件」分组 / 服务端同步）、导出 Markdown；多标签 / 独立未保存 / 标签恢复 |
+| `docs/desktop-media.md` | 桌面端图片（v1 已实现，Windows）：文件 / 本地 / 服务端三种插图、`<stem>.assets`、本地媒体库、`/__media` 导入与预览、服务端 `/api/desktop/media`、导出 / 同步改写 |
 | `docs/desktop-layout.md` | 桌面端布局与文档工作台（v1.1 已实现，Windows）：默认全宽编辑 + 可收起推挤式资料库、统一文档多标签、`Ctrl+K` 快速打开、启动恢复与本地优先 |
 | `docs/tech-eval-vditor-wails.md` | 可行性评估与落地记录：Wails v3 已采纳；admin/blog/desktop 均已切换 Vditor + Lute（v2） |
 | 各端 `README.md` | 目录结构、命令与端内细节 |

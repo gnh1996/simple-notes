@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"cc.naihao/simplenotes/desktop/internal/api"
+	"cc.naihao/simplenotes/desktop/internal/media"
 	"cc.naihao/simplenotes/desktop/internal/store"
 )
 
@@ -27,13 +28,18 @@ const (
 
 // Service 通过 Wails binding 暴露列表 / 打开 / 保存能力。
 type Service struct {
-	db  *store.Store
-	api *api.Service
+	db    *store.Store
+	api   *api.Service
+	media *media.Service
 }
 
 // New 创建内容服务。
-func New(db *store.Store, apiService *api.Service) *Service {
-	return &Service{db: db, api: apiService}
+func New(db *store.Store, apiService *api.Service, mediaService ...*media.Service) *Service {
+	service := &Service{db: db, api: apiService}
+	if len(mediaService) > 0 {
+		service.media = mediaService[0]
+	}
+	return service
 }
 
 // CreateInput 是新建笔记 / 文章的本地请求。
@@ -52,6 +58,8 @@ type ImportInput struct {
 	Content  string `json:"content"`
 	Target   string `json:"target"` // local | server
 	FolderID string `json:"folderId"`
+	// SourcePath 是临时编辑文件路径；用于把相对图片复制 / 上传到目标存储。
+	SourcePath string `json:"sourcePath"`
 }
 
 // SaveInput 是编辑器提交的本地保存请求。
@@ -314,6 +322,13 @@ func (s *Service) Save(input SaveInput) (*SaveResult, error) {
 
 	row.Title = title
 	row.Content = input.Content
+	if scopeID != "local" && s.media != nil && media.HasLocalRefs(row.Content) {
+		content, rewriteErr := s.media.RewriteLocalRefsToServer(row.Content)
+		if rewriteErr != nil {
+			return nil, fmt.Errorf("上传本地图片: %w", rewriteErr)
+		}
+		row.Content = content
+	}
 	row.ContentLoaded = true
 	row.FolderID = normalizeFolderID(scopeID, input.FolderID)
 	tagsJSON, _ := json.Marshal(row.Tags)
@@ -325,9 +340,16 @@ func (s *Service) Save(input SaveInput) (*SaveResult, error) {
 		_ = s.db.MarkLocalOnlySaved(scopeID, row.ID)
 		row.Dirty = false
 		row.LocalOnly = true
+		if s.media != nil {
+			_ = s.media.Cleanup()
+		}
 		return &SaveResult{State: "synced", Note: &row, Message: "本地笔记已保存"}, nil
 	}
-	return s.pushAndApply(scopeID, row, row.BaseVersion, hash)
+	result, err := s.pushAndApply(scopeID, row, row.BaseVersion, hash)
+	if err == nil && result != nil && result.State == "synced" && s.media != nil {
+		_ = s.media.Cleanup()
+	}
+	return result, err
 }
 
 // Resolve 处理冲突：local = 以本地为准（强制覆盖），remote = 以服务端为准；被覆盖的一侧留副本。
@@ -485,11 +507,24 @@ func (s *Service) ImportFile(input ImportInput) (*SaveResult, error) {
 		return nil, errors.New("标题不能超过 200 个字符")
 	}
 
+	content := input.Content
+	if s.media != nil {
+		var err error
+		if input.Target == "server" {
+			content, err = s.media.RewriteFileRefsToServer(content, input.SourcePath)
+		} else {
+			content, err = s.media.RewriteFileRefsToLocal(content, input.SourcePath)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("处理图片: %w", err)
+		}
+	}
+
 	row := store.NoteRow{
 		ID:            store.NewUUID(),
 		Kind:          "NOTE",
 		Title:         title,
-		Content:       input.Content,
+		Content:       content,
 		Tags:          []string{},
 		ContentLoaded: true,
 		UpdatedAt:     time.Now().UnixMilli(),
@@ -567,10 +602,18 @@ func (s *Service) PromoteLocal(id, folderID string) (*SaveResult, error) {
 	if !row.ContentLoaded {
 		return nil, errors.New("笔记正文尚未加载")
 	}
+	content := row.Content
+	if s.media != nil {
+		content, err = s.media.RewriteLocalRefsToServer(content)
+		if err != nil {
+			return nil, fmt.Errorf("上传本地图片: %w", err)
+		}
+	}
 	folderID = normalizeFolderID(scope.ScopeID, folderID)
 	if err := s.db.MoveNoteScope("local", scope.ScopeID, id, folderID); err != nil {
 		return nil, fmt.Errorf("迁移本地笔记: %w", err)
 	}
+	row.Content = content
 	row.FolderID = folderID
 	row.Dirty = true
 	row.LocalOnly = false
@@ -579,7 +622,11 @@ func (s *Service) PromoteLocal(id, folderID string) (*SaveResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.fallbackToLocal(scope.ScopeID, res), nil
+	result := s.fallbackToLocal(scope.ScopeID, res)
+	if result != nil && result.State == "synced" && s.media != nil {
+		_ = s.media.Cleanup()
+	}
+	return result, nil
 }
 
 func (s *Service) enqueueCreate(scopeID, kind string, body map[string]any) {
@@ -610,6 +657,9 @@ func (s *Service) Delete(id string) (*DeleteResult, error) {
 	}
 	if scopeID == "local" {
 		_ = s.db.DeleteNoteLocal(scopeID, id)
+		if s.media != nil {
+			_ = s.media.Cleanup()
+		}
 		return &DeleteResult{State: "deleted", Message: "本地笔记已删除"}, nil
 	}
 	if err := s.db.MarkNoteDeletedLocal(scopeID, id); err != nil {

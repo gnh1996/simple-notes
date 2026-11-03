@@ -21,6 +21,7 @@ export interface FileMeta {
   size: number
   lineEnding: string
   bom: boolean
+  mediaToken?: string
 }
 
 export interface NoteMeta {

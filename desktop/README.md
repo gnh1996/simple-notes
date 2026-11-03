@@ -2,7 +2,7 @@
 
 桌面客户端：随手记与博客写作、发布到 Web 博客端。UI 为 **Vue 3 + TypeScript**，壳与本地能力由 **Go + Wails v3** 提供。
 
-> **当前阶段：M0–M4 同步骨架 + 本地 Markdown（v1.2 多标签 / 文档工作台，Windows 已实现）**。包含窗口、Vditor + Lute 编辑器（方言 v2）、Go 侧 HTTP 转发、SQLite、本地文件打开 / 保存 / 导出、默认本地模式与可选登录、多标签与快速打开；同步协议见 `docs/desktop-sync.md`，本地文件设计见 `docs/desktop-local-file.md`，布局见 `docs/desktop-layout.md`。
+> **当前阶段：M0–M4 同步骨架 + 本地 Markdown（v1.2 多标签 / 文档工作台）+ 图片（v1，Windows 已实现）**。包含窗口、Vditor + Lute 编辑器（方言 v2）、Go 侧 HTTP 转发、SQLite、本地文件打开 / 保存 / 导出、默认本地模式与可选登录、多标签与快速打开、文件 / 本地 / 服务端三种插图；同步协议见 `docs/desktop-sync.md`，本地文件设计见 `docs/desktop-local-file.md`，布局见 `docs/desktop-layout.md`，图片见 `docs/desktop-media.md`。
 
 ## 架构
 
@@ -14,6 +14,7 @@ desktop/（Go module：cc.naihao/simplenotes/desktop）
 │   ├── auth/               登录 / 登出 / scope（令牌只落 SQLite）
 │   ├── notes/              本地索引查询、打开即拉正文、导入 / 同步到服务端、内容 hash
 │   ├── localfile/          本地 Markdown 打开 / 保存 / 另存为 / 导出 / 最近记录
+│   ├── media/              图片：/__media 导入 / 本地媒体库 / 文件 assets / 服务端上传 / 只读代理
 │   ├── syncsvc/            manifest 索引同步（游标 + 墓碑）
 │   ├── store/              SQLite（认证 + scope / note_local / folder_local / outbox；migrations/ 为有序迁移）
 │   └── system/             运行状态（版本 / API 地址 / 本地库 / 会话）

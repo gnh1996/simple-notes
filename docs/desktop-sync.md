@@ -17,7 +17,7 @@
 | 文件夹 | 同步（单层、量小）；**标签不同步**，只作为笔记字段（名字数组）随笔记走 |
 | 离线新建 | 支持；笔记 id 由客户端生成 UUID，后端接受客户端 id |
 | 账号 | 单服务器单账号；切换后只显示当前 scope 与纯本地笔记；旧 scope 数据保留但隐藏 |
-| 附件 | v1 不缓存二进制；离线时显示占位，恢复网络后可看 |
+| 附件 | v1 不缓存二进制；离线时显示占位，恢复网络后可看；桌面端插图见 `docs/desktop-media.md` |
 | 传输 | 一律走 Go binding `api.Do`；令牌只在 SQLite；正文为 JSON 字符串 |
 
 ## 1. 目标与非目标
@@ -252,6 +252,7 @@ create table outbox (
 | `DELETE /api/desktop/notes/{id}`、`DELETE /api/desktop/posts/{id}` | 软删除；权限 `desktop:note:delete` / `desktop:post:delete` | ✅ M2 |
 | `POST/PUT/DELETE /api/desktop/note-folders` | 文件夹新建 / 改名 / 删除；权限 `desktop:folder:write` | ✅ M2 |
 | `POST /api/desktop/notes`、`POST /api/desktop/posts` | 新建（接受客户端 UUID，允许空白正文）；权限 `desktop:note:create` / `desktop:post:create` | ✅ M3 |
+| `POST /api/desktop/media` | 桌面端图片上传；权限 `desktop:media:upload`；见 `docs/desktop-media.md` | ✅ v1 |
 | `V13`–`V16` | desktop 读 / 写 / 删除 / 文件夹 / 新建权限节点（只追加） | ✅ |
 | `NoteFolderResponse` 增 `updateTime` | 文件夹 LWW 判定 | ✅ M0 |
 | `PUT /api/desktop/notes/{id}`、`POST`、`DELETE` | 编辑 / 新建 / 删除；`version` CAS | M1–M2 |
@@ -309,7 +310,7 @@ local_hash != remote_hash 且均 != base_hash  → 冲突
 ## 9. 安全与约束
 
 - WebView 不直连后端：所有请求经 Go `api.Do`，令牌不进 JS / localStorage；
-- 大载荷不走 IPC：v1 不同步附件二进制；未来附件走 Go 文件流 / 自定义协议；
+- 大载荷不走 IPC：v1 不同步附件二进制；服务端笔记插图走 `POST /api/desktop/media`，本地笔记图片留在本机，见 `docs/desktop-media.md`；
 - 服务端地址由用户输入 → 只允许 http(s)，Go 侧做超时与响应体上限（现有 8MB 限制保留）；
 - 纯本地笔记跨账号可见是**已确认的产品决定**，UI 必须有「本地」标识，避免误判为已同步。
 
@@ -363,3 +364,4 @@ local_hash != remote_hash 且均 != base_hash  → 冲突
 | 2026-10-31 | v1.4 | 落地 M3：`POST /api/desktop/notes|posts` 接受客户端 UUID、正文允许空白（V16）；离线新建 + create/update 链式重放；冲突 diff 弹窗（行级 LCS）；被覆盖一侧自动存为 `scope=local` 副本并进入列表；已验证「离线新建 → 重连创建 → 冲突 → diff → 以本地为准」 |
 | 2026-10-31 | v1.5 | 调整 M4：发布 / 下架只在 admin（摘要 / slug / 封面 / 预览 / 校验不复刻）；桌面端展示发布状态 + 「管理端发布」深链；409 先比内容 hash，一致则静默对齐，避免发布引起的假冲突 |
 | 2026-11-01 | v1.6 | §4 与实现对齐：补 `nickname` / `remote_deleted` / `base_hash` / `synced_at` / `create_time`，去掉不存在的 `folder_local.deleted`，索引统一为 `idx_note_local_list`；DDL 以 `migrations/0001_init.sql` 为准，版本与迁移规则见 `docs/desktop-local-schema.md` |
+| 2026-11-02 | v1.7 | 桌面端图片 v1：新增 `POST /api/desktop/media`（`desktop:media:upload`，V17）；服务端笔记插图统一写 `/api/media/<id>`；本地 / 文件图片不参与同步，详见 `docs/desktop-media.md` |

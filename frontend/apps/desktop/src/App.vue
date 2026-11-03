@@ -4,6 +4,7 @@ import { Service as AuthService } from '../bindings/cc.naihao/simplenotes/deskto
 import { Service as NotesService } from '../bindings/cc.naihao/simplenotes/desktop/internal/notes'
 import { Service as FoldersService } from '../bindings/cc.naihao/simplenotes/desktop/internal/folders'
 import { Service as LocalFileService } from '../bindings/cc.naihao/simplenotes/desktop/internal/localfile'
+import { Service as MediaService } from '../bindings/cc.naihao/simplenotes/desktop/internal/media'
 import type { LocalFile, RecentFile } from '../bindings/cc.naihao/simplenotes/desktop/internal/localfile/models'
 import type { FolderRow, NoteRow } from '../bindings/cc.naihao/simplenotes/desktop/internal/store/models'
 import { Service as SyncService } from '../bindings/cc.naihao/simplenotes/desktop/internal/syncsvc'
@@ -337,6 +338,10 @@ function clearSaveTimer(key: string): void {
 function removeTabs(remove: Set<string>, nextKey?: string): void {
   for (const key of remove) {
     clearSaveTimer(key)
+    const tab = tabs.value.find((item) => item.key === key)
+    if (tab?.source === 'file' && tab.file?.mediaToken) {
+      void MediaService.ReleaseFileTab(tab.file.mediaToken)
+    }
   }
   const activeRemoved = remove.has(activeKey.value)
   const index = tabs.value.findIndex((tab) => tab.key === activeKey.value)
@@ -408,10 +413,15 @@ function fileMeta(file: LocalFile): FileMeta {
     size: file.size,
     lineEnding: file.lineEnding,
     bom: file.bom,
+    mediaToken: file.mediaToken,
   }
 }
 
 function applyFile(tab: DocumentTab, file: LocalFile): void {
+  const previousToken = tab.file?.mediaToken
+  if (previousToken && previousToken !== file.mediaToken) {
+    void MediaService.ReleaseFileTab(previousToken)
+  }
   tab.file = fileMeta(file)
   tab.title = file.name
   tab.content = file.content
@@ -448,6 +458,12 @@ function applySavedNote(tab: DocumentTab, note: NoteRow, titleChanged: boolean, 
   const currentTitle = tab.title
   const currentFolder = tab.note?.folderId ?? ''
   const currentContent = tab.content
+  // 服务端保存时会把 local-media 引用改写成 /api/media；只有这种结构性改写才回填编辑器，
+  // 避免覆盖用户在保存请求期间继续输入的内容。
+  const nextContent =
+    note.content && note.content !== currentContent && currentContent.includes('local-media/') && note.content.includes('/api/media/')
+      ? note.content
+      : currentContent
   const meta = noteMetaFromRow(note, scopeId)
   if (folderChanged) {
     meta.folderId = currentFolder
@@ -458,10 +474,13 @@ function applySavedNote(tab: DocumentTab, note: NoteRow, titleChanged: boolean, 
   tab.title = titleChanged ? currentTitle : note.title || '未命名'
   tab.loaded = true
   tab.error = undefined
+  if (nextContent !== currentContent) {
+    tab.content = nextContent
+  }
   updateNoteRow({
     ...note,
     title: tab.title,
-    content: currentContent,
+    content: nextContent,
     folderId: folderChanged ? currentFolder : meta.folderId,
   })
 }
@@ -917,6 +936,7 @@ async function saveFileAs(tab: DocumentTab): Promise<void> {
     const file = await LocalFileService.SaveAs({
       defaultName: tab.file.name,
       content: tab.content,
+      sourcePath: tab.file.path,
     })
     if (!file) {
       return
@@ -1051,6 +1071,7 @@ async function confirmImport(payload: { title: string; target: 'local' | 'server
       content: source.content,
       target: payload.target,
       folderId: payload.folderId,
+      sourcePath: source.file?.path ?? '',
     })
     if (!result?.note) {
       error.value = result?.message ?? '纳入管理失败'
