@@ -27,7 +27,7 @@ const wordCount = computed(() => {
 const saveLabel = computed(() => {
   const tab = props.tab
   if (!tab) {
-    return props.session ? '已连接' : '本地模式'
+    return ''
   }
   if (tab.saveState === 'saving') {
     return '保存中…'
@@ -58,7 +58,7 @@ const saveLabel = computed(() => {
 const details = computed(() => {
   const tab = props.tab
   if (!tab) {
-    return props.session ? '索引已就绪' : '本地 SQLite · 不连接服务器'
+    return props.session ? '索引已就绪' : ''
   }
   if (tab.source === 'file') {
     return `${tab.file?.size ?? 0} B · ${tab.file?.lineEnding === 'crlf' ? 'CRLF' : 'LF'}`
@@ -72,7 +72,10 @@ const details = computed(() => {
 
 <template>
   <footer class="flex h-[26px] shrink-0 items-center gap-3 border-t border-app-border px-3 text-[10px] text-app-muted">
-    <span :class="tab?.saveState === 'conflict' || tab?.saveState === 'error' ? 'text-red-400' : tab?.dirty ? 'text-amber-400' : ''">
+    <span
+      v-if="saveLabel"
+      :class="tab?.saveState === 'conflict' || tab?.saveState === 'error' ? 'text-red-400' : tab?.dirty ? 'text-amber-400' : ''"
+    >
       {{ saveLabel }}
     </span>
     <span v-if="tab" class="hidden sm:inline">{{ wordCount }} 字</span>
@@ -90,9 +93,8 @@ const details = computed(() => {
       </button>
     </span>
     <span v-else-if="syncError" class="truncate text-app-muted" :title="syncError">{{ syncError }}</span>
-    <span class="ml-auto hidden shrink-0 md:inline">{{ details }}</span>
-    <span v-if="session" class="shrink-0" :class="online ? '' : 'text-amber-400'">{{ online ? '在线' : '离线' }}</span>
-    <span v-else class="shrink-0 text-app-muted">本地模式</span>
-    <span class="shrink-0">{{ session ? session.nickname || session.username : '本地' }}</span>
+    <span v-if="details" class="ml-auto hidden shrink-0 md:inline">{{ details }}</span>
+    <span v-if="session" class="ml-auto shrink-0" :class="online ? '' : 'text-amber-400'">{{ online ? '在线' : '离线' }}</span>
+    <span class="shrink-0" :class="session ? '' : 'ml-auto'">{{ session ? session.nickname || session.username : '本地模式' }}</span>
   </footer>
 </template>
