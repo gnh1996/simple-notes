@@ -42,3 +42,10 @@ export function Get(path: string, out: any): $CancellablePromise<void> {
 export function GetEndpoint(path: string, out: any): $CancellablePromise<void> {
     return $Call.ByID(3355609165, path, out);
 }
+
+/**
+ * Reachable 返回最近一次请求是否成功连上后端（任意 HTTP 状态都算连通）。
+ */
+export function Reachable(): $CancellablePromise<boolean> {
+    return $Call.ByID(1698789207);
+}

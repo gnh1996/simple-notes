@@ -18,6 +18,7 @@
 | `docs/desktop-local-file.md` | 桌面端本地 Markdown（v1.1 已实现 / v1.2 多标签已实现，Windows）：打开文件=临时编辑、免登录本地笔记、最近打开、纳入管理（内置「本地文件」分组 / 服务端同步）、导出 Markdown；多标签 / 独立未保存 / 标签恢复 |
 | `docs/desktop-media.md` | 桌面端图片（v1 已实现，Windows）：文件 / 本地 / 服务端三种插图、`<stem>.assets`、本地媒体库、`/__media` 导入与预览、服务端 `/api/desktop/media`、导出 / 同步改写 |
 | `docs/desktop-layout.md` | 桌面端布局与文档工作台（v1.1 已实现，Windows）：默认全宽编辑 + 可收起推挤式资料库、统一文档多标签、`Ctrl+K` 快速打开、启动恢复与本地优先 |
+| `docs/desktop-diagnostics.md` | 桌面端错误处理与运行日志（v1 已实现）：错误分层、网络失败降级、详情弹层、结构化日志 / 轮转 / 脱敏、诊断入口 |
 | `docs/tech-eval-vditor-wails.md` | 可行性评估与落地记录：Wails v3 已采纳；admin/blog/desktop 均已切换 Vditor + Lute（v2） |
 | 各端 `README.md` | 目录结构、命令与端内细节 |
 | 各端 `AGENTS.md` | 端内专属规则（探索到对应目录时自动加载） |

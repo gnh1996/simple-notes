@@ -13,8 +13,10 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"cc.naihao/simplenotes/desktop/internal/logging"
 	"cc.naihao/simplenotes/desktop/internal/store"
 )
 
@@ -37,18 +39,26 @@ type Response struct {
 
 // Service 通过 Wails binding 暴露给前端。
 type Service struct {
-	db      *store.Store
-	baseURL string
-	client  *http.Client
+	db        *store.Store
+	baseURL   string
+	client    *http.Client
+	reachable atomic.Bool
 }
 
 // New 创建转发服务。baseURL 形如 http://localhost:8080/api。
 func New(db *store.Store, baseURL string) *Service {
-	return &Service{
+	service := &Service{
 		db:      db,
 		baseURL: strings.TrimRight(baseURL, "/"),
 		client:  &http.Client{Timeout: 30 * time.Second},
 	}
+	service.reachable.Store(true)
+	return service
+}
+
+// Reachable 返回最近一次请求是否成功连上后端（任意 HTTP 状态都算连通）。
+func (s *Service) Reachable() bool {
+	return s.reachable.Load()
 }
 
 // BaseURL 返回当前后端地址：优先使用设置页保存的值，其次回落到环境变量 / 默认值。
@@ -116,18 +126,59 @@ func (s *Service) Do(req Request) (*Response, error) {
 		httpReq.Header.Set("Authorization", "Bearer "+token)
 	}
 
+	started := time.Now()
 	resp, err := s.client.Do(httpReq)
 	if err != nil {
+		s.reachable.Store(false)
+		errText := err.Error()
+		// 网络错误会带完整 URL；去掉查询串，避免把搜索关键词写进日志。
+		if httpReq.URL.RawQuery != "" {
+			errText = strings.ReplaceAll(errText, "?"+httpReq.URL.RawQuery, "?…")
+		}
+		logging.Warn("api.request", "请求后端失败", map[string]string{
+			"method":      method,
+			"path":        logPath(req.Path),
+			"duration_ms": fmt.Sprintf("%d", time.Since(started).Milliseconds()),
+			"err":         errText,
+		})
 		return nil, fmt.Errorf("请求后端失败: %w", err)
 	}
 	defer resp.Body.Close()
+	s.reachable.Store(true)
 
 	// 通用转发只承载 JSON；附件走独立的上传 / 下载通道。
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return nil, fmt.Errorf("读取响应: %w", err)
 	}
+	logResponse(method, req.Path, resp.StatusCode, started)
 	return &Response{Status: resp.StatusCode, Body: string(data)}, nil
+}
+
+// logResponse 只记录可排查的请求元数据；不落查询参数与响应体（可能含笔记内容）。
+func logResponse(method, path string, status int, started time.Time) {
+	fields := map[string]string{
+		"method":      method,
+		"path":        logPath(path),
+		"status":      fmt.Sprintf("%d", status),
+		"duration_ms": fmt.Sprintf("%d", time.Since(started).Milliseconds()),
+	}
+	switch {
+	case status >= 500:
+		logging.Error("api.request", "服务端返回错误", fields)
+	case status == 401 || status == 403 || status == 409:
+		logging.Warn("api.request", "请求被拒绝", fields)
+	default:
+		logging.Debug("api.request", "请求完成", fields)
+	}
+}
+
+// logPath 去掉查询串：搜索关键词等可能包含用户内容。
+func logPath(path string) string {
+	if index := strings.IndexByte(path, '?'); index >= 0 {
+		return path[:index]
+	}
+	return path
 }
 
 // ErrorMessage 把接口错误体转成可展示文案（供其它 service 复用）。

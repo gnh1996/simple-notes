@@ -17,6 +17,7 @@ import (
 	"cc.naihao/simplenotes/desktop/internal/auth"
 	"cc.naihao/simplenotes/desktop/internal/folders"
 	"cc.naihao/simplenotes/desktop/internal/localfile"
+	"cc.naihao/simplenotes/desktop/internal/logging"
 	"cc.naihao/simplenotes/desktop/internal/media"
 	"cc.naihao/simplenotes/desktop/internal/notes"
 	"cc.naihao/simplenotes/desktop/internal/store"
@@ -39,9 +40,17 @@ var assets embed.FS
 var appIcon []byte
 
 func main() {
+	logService, logErr := logging.Init(system.Version)
+	if logErr != nil {
+		log.Printf("初始化运行日志失败: %v", logErr)
+	}
+	defer logService.Close()
+	logging.Info("app.start", "应用启动", map[string]string{"version": system.Version})
+
 	db, err := store.Open()
 	if err != nil {
 		// 迁移失败 / 库版本过新都在这里阻塞启动：先落日志，再弹原生对话框。
+		logging.Error("db.migrate", "本地数据库初始化失败", map[string]string{"err": err.Error()})
 		writeStartupLog(err)
 		showStartupError("Simple Notes 无法启动", store.StartupMessage(err))
 		os.Exit(1)
@@ -77,6 +86,7 @@ func main() {
 			application.NewService(fileService),
 			application.NewService(system.New(db, baseURL)),
 			application.NewServiceWithOptions(mediaService, application.ServiceOptions{Route: "/__media"}),
+			application.NewService(logging.NewBinding(logService)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -126,8 +136,10 @@ func main() {
 	})
 
 	if err := app.Run(); err != nil {
+		logging.Error("app.run", "应用退出异常", map[string]string{"err": err.Error()})
 		log.Fatal(err)
 	}
+	logging.Info("app.stop", "应用退出", nil)
 }
 
 // writeStartupLog 把启动失败写入用户配置目录：GUI 进程通常没有可见的 stderr。

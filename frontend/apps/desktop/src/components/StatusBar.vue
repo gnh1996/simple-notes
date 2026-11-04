@@ -11,7 +11,12 @@ const props = defineProps<{
   folderLabel: string
   message: string
   error: string
+  hasErrorDetail: boolean
   syncError: string
+}>()
+
+const emit = defineEmits<{
+  'show-error': []
 }>()
 
 const wordCount = computed(() => {
@@ -72,11 +77,22 @@ const details = computed(() => {
     </span>
     <span v-if="tab" class="hidden sm:inline">{{ wordCount }} 字</span>
     <span v-if="pending" class="text-amber-400">待同步 {{ pending }}</span>
-    <span v-if="message" class="truncate text-emerald-400">{{ message }}</span>
-    <span v-if="error" class="truncate text-red-400">{{ error }}</span>
-    <span v-else-if="syncError" class="truncate text-app-muted">{{ syncError }}</span>
+    <span v-if="message" class="truncate text-emerald-400" :title="message">{{ message }}</span>
+    <span v-if="error" class="flex min-w-0 items-center gap-1 text-red-400">
+      <span class="truncate" :title="error">{{ error }}</span>
+      <button
+        v-if="hasErrorDetail"
+        class="shrink-0 rounded border border-red-400/40 px-1 text-[10px] leading-4 text-red-300 hover:bg-red-400/10"
+        type="button"
+        @click="emit('show-error')"
+      >
+        详情
+      </button>
+    </span>
+    <span v-else-if="syncError" class="truncate text-app-muted" :title="syncError">{{ syncError }}</span>
     <span class="ml-auto hidden shrink-0 md:inline">{{ details }}</span>
-    <span class="shrink-0" :class="online ? '' : 'text-amber-400'">{{ online ? '在线' : '离线' }}</span>
+    <span v-if="session" class="shrink-0" :class="online ? '' : 'text-amber-400'">{{ online ? '在线' : '离线' }}</span>
+    <span v-else class="shrink-0 text-app-muted">本地模式</span>
     <span class="shrink-0">{{ session ? session.nickname || session.username : '本地' }}</span>
   </footer>
 </template>

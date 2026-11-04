@@ -40,6 +40,7 @@ Go 的 `//go:embed` 不能引用 module 之外的路径，因此构建后把 `di
 | UI | Vue 3.5 + Vite 8 + TypeScript 6 + Tailwind v4 |
 | 本地存储 | SQLite（`modernc.org/sqlite`），库文件在 `os.UserConfigDir()/simple-notes/desktop.db`；表结构由 `internal/store/migrations` 的有序迁移维护（`PRAGMA user_version`，见 `docs/desktop-local-schema.md`） |
 | 网络 | Go `net/http`；前端通过 Wails binding `api.Do` 调用，**WebView 不直接 fetch 后端** |
+| 日志 | Go 标准库 JSON 行日志（`internal/logging`），5MB × 4 轮转；前端经 binding 写同一文件（见 `docs/desktop-diagnostics.md`） |
 | Markdown | **Vditor 4.0.1 + Lute**（方言 v2，与 admin / blog 同源）；配置取自 `@simple-notes/markdown`；资源由 `pnpm sync:vditor` 自托管到 `public/vditor` |
 | 平台 | Windows（WebView2）、macOS 11+（WKWebView）、Linux（GTK4 + WebKitGTK 6.0；Ubuntu 24.04 基线） |
 
@@ -105,6 +106,15 @@ pnpm build:desktop        # 只构建；之后在 desktop/ 执行 wails3 build
 - **导出**：已管理笔记可导出单篇 `.md`（正文、UTF-8 无 BOM、LF），不改版本 / dirty，不建立文件关联；已管理笔记不支持回退为本地文件。
 - **关闭保护**：有未保存的临时文件时，窗口关闭由 Go `WindowClosing` 钩子拦截，前端确认保存 / 放弃后退出。
 - 本地库新增 `recent_file` / `ui_state` 表与 `0005` 文件夹树迁移；`note_local` 结构未变，内置「本地文件」分组已移除。
+
+## 错误处理与日志（`docs/desktop-diagnostics.md`）
+
+- **用户提示**：状态栏只显示短句；网络失败不进入红色错误区，只把在线状态改为“离线”（符合 `desktop-layout.md` §7.2）。
+- **错误详情**：错误后的「详情」弹层展示完整错误链，可复制详情 / 诊断信息、打开日志目录。
+- **日志**：Go `internal/logging` 统一写 `<UserCacheDir>/simple-notes/logs/desktop.log`（Windows `%LocalAppData%\simple-notes\logs\desktop.log`），JSON 行、5MB × 4 轮转；前端经 `logging.Binding.Write` 写同一文件。
+- **级别**：默认 `info`；需要成功请求等细节时用 `SIMPLE_NOTES_LOG_LEVEL=debug`。
+- **脱敏**：令牌、密码、请求体、笔记正文与标题不落日志；API 日志只保留 method / 去查询串 path / status / duration。
+- **入口**：账户菜单 →「打开日志目录」「复制诊断信息」；启动失败仍保留 `desktop-error.log`。
 
 ## 编辑器
 

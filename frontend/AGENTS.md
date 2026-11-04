@@ -67,6 +67,7 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 - 桌面端图片按 `docs/desktop-media.md`：`MarkdownEditor` 通过 `/__media/import` 上传，按 tab 设置 `linkBase`；文件 / 本地 / 服务端的存储与引用差异只在桌面端处理，不污染 admin / blog
 - 表格列宽 / 工具栏气泡 / 表格换行与 admin 共用 `@simple-notes/markdown` 的 `vditor.css` 与 `table-resize`，不要在本端另写一份
 - 构建产物先 `pnpm build:desktop`，再由 `desktop/` 的 `wails3 build` 执行 `pnpm sync:wails` 同步进 `desktop/web/dist`
+- 错误与日志按 `docs/desktop-diagnostics.md`：业务 `catch` 用 `src/lib/errors.ts` 的 `describeError` + `setError` / `reportSyncError`，网络失败只更新离线状态；`src/lib/logger.ts` 负责全局兜底与写 Go 日志，禁止把绑定层原文直接塞进状态栏
 - 内存按 WebView 进程树评估：新增常驻面板 / 依赖前先实测（见 `desktop/README.md`）
 
 ## 命令

@@ -25,6 +25,8 @@ const emit = defineEmits<{
   sync: []
   retry: []
   'toggle-theme': []
+  'open-logs': []
+  'copy-diagnostics': []
 }>()
 
 const newMenu = ref(false)
@@ -186,6 +188,13 @@ function run(action: () => void): void {
           @click="closeMenus(); emit('sync')"
         >
           同步索引
+        </button>
+        <div class="my-1 border-t border-app-border" />
+        <button class="w-full rounded px-2 py-1.5 text-left hover:bg-app-bg" type="button" @click="run(() => emit('open-logs'))">
+          打开日志目录
+        </button>
+        <button class="w-full rounded px-2 py-1.5 text-left hover:bg-app-bg" type="button" @click="run(() => emit('copy-diagnostics'))">
+          复制诊断信息
         </button>
         <button
           v-if="session"

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Service as AuthService } from '../../bindings/cc.naihao/simplenotes/desktop/internal/auth'
 import type { Session } from '../../bindings/cc.naihao/simplenotes/desktop/internal/auth/models'
+import { describeError } from '../lib/errors'
+import { logError } from '../lib/logger'
 import { ref } from 'vue'
 
 const emit = defineEmits<{
@@ -32,7 +34,9 @@ async function submit(): Promise<void> {
     }
     emit('logged-in', session)
   } catch (err) {
-    error.value = String(err)
+    const info = describeError(err, '登录失败')
+    logError('auth.login', err, info.message)
+    error.value = info.message
   } finally {
     busy.value = false
   }

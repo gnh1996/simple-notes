@@ -41,6 +41,11 @@ Go 1.26+ + Wails v3（WebView）桌面端；前端是 `frontend/apps/desktop`（
 - 新增 SQL 迁移：文件放 `internal/store/migrations/`，并在 `migrate.go` 的 `migrations` 注册表登记；启动时校验编号连续、文件名与编号一致
 - 条件性 DDL / 数据回填用 Go 函数（`ensureColumnTx` 模式），必须幂等；常规 DDL 用 SQL
 - **迁移失败或库版本高于应用 → 阻塞启动**，不自动重建 / 清空；错误写入 `desktop-error.log` 并弹原生对话框
+- **错误与日志按 `docs/desktop-diagnostics.md`（v1 已实现）**：
+  - 用户可见只放短句；网络失败不进入红色错误区，只更新离线状态；原始异常进“详情”弹层与日志
+  - Go 侧统一写 `internal/logging`（`<UserCacheDir>/simple-notes/logs/desktop.log`，5MB × 4 轮转）；前端经 `logging.Binding.Write` 写同一文件
+  - 令牌 / 密码 / 请求体 / 笔记正文与标题不落日志；API 日志只记录 method、去查询串的 path、status、duration
+  - 新增业务 `catch` 用 `setError(err, event)` / `reportSyncError()`，禁止 `String(err)` 直接进状态栏
 - 迁移前备份为 `desktop.db.bak.v<N>`（只保留最近一份；全新安装跳过）；恢复由用户手动覆盖
 - **`user_version` 不上报服务端**；本地 schema 与 API 契约版本解耦，协议协商见设计 §8
 

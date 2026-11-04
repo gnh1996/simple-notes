@@ -9,6 +9,7 @@ import type { LocalFile, RecentFile } from '../bindings/cc.naihao/simplenotes/de
 import type { FolderRow, NoteRow } from '../bindings/cc.naihao/simplenotes/desktop/internal/store/models'
 import { Service as SyncService } from '../bindings/cc.naihao/simplenotes/desktop/internal/syncsvc'
 import { Service as SystemService } from '../bindings/cc.naihao/simplenotes/desktop/internal/system'
+import { Binding as LogService } from '../bindings/cc.naihao/simplenotes/desktop/internal/logging'
 import type { Status } from '../bindings/cc.naihao/simplenotes/desktop/internal/system/models'
 import { useBreakpoint } from '@simple-notes/shared'
 import { Clipboard, Events } from '@wailsio/runtime'
@@ -17,6 +18,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import DocumentView from './components/DocumentView.vue'
+import ErrorDetailsDialog from './components/ErrorDetailsDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import LibrarySidebar from './components/LibrarySidebar.vue'
 import LoginView from './components/LoginView.vue'
@@ -41,6 +43,8 @@ import type { LibraryFilter, LibraryItem } from './types/library'
 import type { ContextMenuItem } from './types/context-menu'
 import type { FolderNode, FolderOption } from './types/folders'
 import type { QuickAction, QuickItem } from './types/quick'
+import { describeError, type ErrorKind } from './lib/errors'
+import { log, logError } from './lib/logger'
 
 type Kind = 'NOTE' | 'POST'
 type DocumentAction =
@@ -96,6 +100,9 @@ const pendingOutbox = ref(0)
 const creatingNote = ref(false)
 const message = ref('')
 const error = ref('')
+const errorDetail = ref('')
+const errorKind = ref<ErrorKind | ''>('')
+const errorOpen = ref(false)
 const syncError = ref('')
 const online = ref(navigator.onLine)
 const isDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -133,6 +140,85 @@ const windowTitle = computed(() => {
   }
   return `${tab.title || '未命名'}${unsaved.value ? ' *' : ''} — Simple Notes`
 })
+
+/**
+ * 统一处理异常：网络失败只更新离线状态（不进入红色错误区），
+ * 其余错误显示短提示，完整错误链进入日志与详情弹层。
+ */
+function setError(err: unknown, event = 'app', fallback = '操作失败'): void {
+  const info = describeError(err, fallback)
+  logError(event, err, info.message, { kind: info.kind })
+  if (info.kind === 'offline') {
+    online.value = false
+    return
+  }
+  error.value = info.message
+  errorDetail.value = info.detail
+  errorKind.value = info.kind
+}
+
+/** 业务结果里的错误文案（没有异常对象可记录）。 */
+function showError(message: string, event = 'app'): void {
+  log('warn', event, message)
+  error.value = message
+  errorDetail.value = ''
+  errorKind.value = 'local'
+}
+
+/** 同步失败：网络问题只改变同步 / 在线状态，其它错误进入状态栏。 */
+function reportSyncError(err: unknown, event = 'sync.refresh'): void {
+  const info = describeError(err, '同步失败')
+  logError(event, err, info.message, { kind: info.kind })
+  if (info.kind === 'offline') {
+    online.value = false
+    syncError.value = ''
+    return
+  }
+  syncError.value = '同步失败'
+  error.value = info.message
+  errorDetail.value = info.detail
+  errorKind.value = info.kind
+}
+
+function showErrorDetails(): void {
+  if (error.value || errorDetail.value) {
+    errorOpen.value = true
+  }
+}
+
+/** 标签内的短错误：不把绑定层原文塞进文档区。 */
+function tabErrorText(err: unknown, event: string): string {
+  const info = describeError(err, '操作失败')
+  logError(event, err, info.message, { kind: info.kind })
+  if (info.kind === 'offline') {
+    online.value = false
+    return '离线，联网后重试'
+  }
+  return info.message
+}
+
+async function openLogs(): Promise<void> {
+  try {
+    await LogService.OpenLogDir()
+    message.value = '已打开日志目录'
+  } catch (err) {
+    setError(err, 'logs.open', '打开日志目录失败')
+  }
+}
+
+async function copyDiagnostics(): Promise<void> {
+  try {
+    const text = await LogService.Diagnostics()
+    if (!text) {
+      message.value = '暂无诊断信息'
+      return
+    }
+    await Clipboard.SetText(text)
+    message.value = '诊断信息已复制'
+  } catch (err) {
+    setError(err, 'logs.diagnostics', '复制诊断信息失败')
+  }
+}
 
 function isServerFolder(id: string): boolean {
   return serverFolders.value.some((folder) => folder.id === id)
@@ -654,7 +740,7 @@ async function openFileDialog(asImport = false): Promise<void> {
       openImportDialog(tab)
     }
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'file.open', '打开文件失败')
   }
 }
 
@@ -667,7 +753,7 @@ async function openPath(path: string): Promise<void> {
     }
     await openFileTab(file)
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'file.open', '打开文件失败')
   }
 }
 
@@ -715,7 +801,7 @@ async function loadFileTab(tab: DocumentTab): Promise<void> {
       await loadRecent()
     }
   } catch (err) {
-    tab.error = String(err)
+    tab.error = tabErrorText(err, 'file.read')
   } finally {
     tab.loading = false
   }
@@ -734,9 +820,9 @@ async function loadNoteTab(tab: DocumentTab): Promise<void> {
     }
   } catch (err) {
     if (tab.note?.contentLoaded) {
-      tab.saveMessage = String(err)
+      tab.saveMessage = tabErrorText(err, 'notes.open')
     } else {
-      tab.error = String(err)
+      tab.error = tabErrorText(err, 'notes.open')
     }
   } finally {
     tab.loading = false
@@ -785,13 +871,13 @@ async function openNote(note: NoteRow): Promise<void> {
       }
     } catch (err) {
       if (!tab.loaded) {
-        tab.error = String(err)
+        tab.error = tabErrorText(err, 'notes.open')
       } else {
-        tab.saveMessage = String(err)
+        tab.saveMessage = tabErrorText(err, 'notes.open')
       }
     }
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'notes.open', '打开笔记失败')
   } finally {
     opening.value = false
   }
@@ -856,7 +942,7 @@ async function newNote(target: 'local' | 'server' = 'local'): Promise<void> {
       target: serverTarget ? 'server' : 'local',
     })
     if (!result?.note) {
-      error.value = result?.message ?? '创建失败'
+      showError(result?.message ?? '创建失败', 'notes.create')
       return
     }
     const tab = addTab(tabFromNote(result.note, scopeIdForNote(result.note)))
@@ -869,7 +955,7 @@ async function newNote(target: 'local' | 'server' = 'local'): Promise<void> {
     await refreshAfterMutation()
     message.value = result.message
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'notes.create', '新建笔记失败')
   } finally {
     creatingNote.value = false
   }
@@ -956,7 +1042,7 @@ async function saveNote(tab: DocumentTab, options: { silent?: boolean } = {}): P
   } catch (err) {
     tab.saveState = 'error'
     tab.dirty = true
-    tab.saveMessage = String(err)
+    tab.saveMessage = tabErrorText(err, 'notes.save')
     return false
   }
 }
@@ -1011,7 +1097,7 @@ async function saveFile(tab: DocumentTab, force = false): Promise<boolean> {
     }
   } catch (err) {
     tab.saveState = 'error'
-    tab.saveMessage = String(err)
+    tab.saveMessage = tabErrorText(err, 'file.save')
     return false
   }
 }
@@ -1039,7 +1125,7 @@ async function saveFileAs(tab: DocumentTab): Promise<void> {
     message.value = `已另存为 ${file.path}`
   } catch (err) {
     tab.saveState = 'error'
-    tab.saveMessage = String(err)
+    tab.saveMessage = tabErrorText(err, 'file.save-as')
   }
 }
 
@@ -1114,7 +1200,7 @@ async function reloadTab(tab: DocumentTab): Promise<void> {
         applyFile(tab, file)
       }
     } catch (err) {
-      tab.error = String(err)
+      tab.error = tabErrorText(err, 'file.read')
     }
     return
   }
@@ -1128,7 +1214,7 @@ async function reloadTab(tab: DocumentTab): Promise<void> {
         applyOpenedNote(tab, note)
       }
     } catch (err) {
-      tab.saveMessage = String(err)
+      tab.saveMessage = tabErrorText(err, 'notes.open')
     }
     return
   }
@@ -1162,7 +1248,7 @@ async function confirmImport(payload: { title: string; target: 'local' | 'server
       sourcePath: source.file?.path ?? '',
     })
     if (!result?.note) {
-      error.value = result?.message ?? '纳入管理失败'
+      showError(result?.message ?? '纳入管理失败', 'notes.import')
       return
     }
     const index = tabs.value.findIndex((tab) => tab.key === source.key)
@@ -1186,7 +1272,7 @@ async function confirmImport(payload: { title: string; target: 'local' | 'server
     await refreshAfterMutation()
     message.value = result.message
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'notes.import', '纳入管理失败')
   } finally {
     importing.value = false
   }
@@ -1222,7 +1308,7 @@ async function confirmPromote(): Promise<void> {
   try {
     const result = await NotesService.PromoteLocal(id, promoteFolderId.value)
     if (!result?.note) {
-      error.value = result?.message ?? '同步到云端失败'
+      showError(result?.message ?? '同步到云端失败', 'notes.promote')
       return
     }
     const tab = promoteTab.value
@@ -1251,7 +1337,7 @@ async function confirmPromote(): Promise<void> {
     await refreshAfterMutation()
     message.value = result.message
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'notes.promote', '同步到云端失败')
   } finally {
     promoting.value = false
   }
@@ -1296,7 +1382,7 @@ async function exportNote(target: NoteRow | DocumentTab): Promise<void> {
       message.value = `已导出到 ${result.path}`
     }
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'notes.export', '导出失败')
   } finally {
     exporting.value = false
   }
@@ -1310,14 +1396,14 @@ async function deleteNoteTab(tab: DocumentTab): Promise<void> {
   try {
     const result = await NotesService.Delete(tab.note.id)
     if (result?.state === 'error') {
-      error.value = result.message
+      showError(result.message, 'notes.delete')
       return
     }
     removeTabs(new Set([tab.key]))
     await refreshAfterMutation()
     message.value = result?.message ?? '已删除'
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'notes.delete', '删除失败')
   }
 }
 
@@ -1332,7 +1418,7 @@ async function resolveDelete(side: 'local' | 'remote'): Promise<void> {
     await refreshAfterMutation()
     message.value = result?.message ?? ''
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'notes.resolve-delete', '处理删除冲突失败')
   }
 }
 
@@ -1354,7 +1440,7 @@ async function resolveConflict(side: 'local' | 'remote'): Promise<void> {
     await refreshAfterMutation()
   } catch (err) {
     tab.saveState = 'error'
-    tab.saveMessage = String(err)
+    tab.saveMessage = tabErrorText(err, 'notes.resolve')
   }
 }
 
@@ -1365,7 +1451,7 @@ async function openAdmin(tab: DocumentTab): Promise<void> {
   try {
     await SystemService.OpenAdmin(`/posts/${tab.note.id}`)
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'system.open-admin', '打开管理端失败')
   }
 }
 
@@ -1567,7 +1653,7 @@ async function loadRecent(): Promise<void> {
   try {
     recent.value = (await LocalFileService.Recent()) ?? []
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'files.recent', '读取最近文件失败')
   }
 }
 
@@ -1576,7 +1662,7 @@ async function removeRecent(path: string): Promise<void> {
     await LocalFileService.RemoveRecent(path)
     await loadRecent()
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'files.recent-remove', '移除最近文件失败')
   }
 }
 
@@ -1585,7 +1671,7 @@ async function clearRecent(): Promise<void> {
     await LocalFileService.ClearRecent()
     recent.value = []
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'files.recent-clear', '清空最近文件失败')
   }
 }
 
@@ -1597,7 +1683,7 @@ async function reloadFolders(): Promise<void> {
       folderId.value = ''
     }
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'folders.list', '读取文件夹失败')
   }
 }
 
@@ -1616,7 +1702,7 @@ async function loadList(): Promise<void> {
     }
     notes.value = rows
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'notes.list', '读取笔记列表失败')
   }
 }
 
@@ -1624,7 +1710,7 @@ async function loadQuickIndex(): Promise<void> {
   try {
     quickNotes.value = (await NotesService.List('', '', '')) ?? []
   } catch (err) {
-    syncError.value = String(err)
+    reportSyncError(err, 'notes.quick')
   }
 }
 
@@ -1651,8 +1737,12 @@ async function refreshIndex(manual: boolean): Promise<void> {
   }
   syncing.value = true
   syncError.value = ''
+  error.value = ''
+  errorDetail.value = ''
+  errorKind.value = ''
   try {
     const result = await SyncService.Refresh()
+    online.value = true
     if (result) {
       pendingOutbox.value = result.pending
       if (manual) {
@@ -1660,7 +1750,7 @@ async function refreshIndex(manual: boolean): Promise<void> {
       }
     }
   } catch (err) {
-    syncError.value = String(err)
+    reportSyncError(err)
   } finally {
     syncing.value = false
   }
@@ -1682,7 +1772,7 @@ async function retryOutbox(): Promise<void> {
     }
     await refreshPending()
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'sync.flush', '重试待同步项失败')
   }
 }
 
@@ -1691,7 +1781,7 @@ async function createFolder(name: string, parentId = ''): Promise<void> {
     const target = sourceFilter.value === 'local' ? 'local' : 'server'
     const result = await FoldersService.Create(name, target, parentId)
     if (result?.state !== 'ok') {
-      error.value = result?.message ?? '创建文件夹失败'
+      showError(result?.message ?? '创建文件夹失败', 'folders.create')
       return
     }
     if (parentId) {
@@ -1703,7 +1793,7 @@ async function createFolder(name: string, parentId = ''): Promise<void> {
     await reloadFolders()
     message.value = result.message || '文件夹已创建'
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'folders.create', '创建文件夹失败')
   }
 }
 
@@ -1711,7 +1801,7 @@ async function renameFolder(folder: FolderRow, name: string): Promise<void> {
   try {
     const result = await FoldersService.Rename(folder.id, name)
     if (result?.state === 'error') {
-      error.value = result.message
+      showError(result.message, 'folders.rename')
       return
     }
     if (result?.message) {
@@ -1721,7 +1811,7 @@ async function renameFolder(folder: FolderRow, name: string): Promise<void> {
     await reloadFolders()
     await loadList()
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'folders.rename', '重命名文件夹失败')
   }
 }
 
@@ -1729,7 +1819,7 @@ async function deleteFolder(folder: FolderRow): Promise<void> {
   try {
     const result = await FoldersService.Delete(folder.id)
     if (result?.state === 'error') {
-      error.value = result.message
+      showError(result.message, 'folders.delete')
       return
     }
     if (folderId.value === folder.id) {
@@ -1744,7 +1834,7 @@ async function deleteFolder(folder: FolderRow): Promise<void> {
     await refreshAfterMutation()
     message.value = result?.message ?? ''
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'folders.delete', '删除文件夹失败')
   }
 }
 
@@ -1819,7 +1909,7 @@ async function restoreTabs(): Promise<void> {
       }
     }
   } catch (err) {
-    syncError.value = String(err)
+    setError(err, 'tabs.restore', '恢复标签失败')
   }
 }
 
@@ -1876,13 +1966,13 @@ async function bootstrap(): Promise<void> {
   try {
     session.value = await AuthService.Current()
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'auth.current', '读取登录状态失败')
   }
   if (session.value) {
     try {
       status.value = await SystemService.Status()
     } catch (err) {
-      error.value = String(err)
+      setError(err, 'system.status', '读取运行状态失败')
     }
   }
   await Promise.all([loadRecent(), loadUIState()])
@@ -1909,7 +1999,7 @@ async function onLoggedIn(value: Session): Promise<void> {
   try {
     status.value = await SystemService.Status()
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'system.status', '读取运行状态失败')
   }
   message.value = '已登录，云端页签已可用'
   await refreshAfterMutation()
@@ -1934,7 +2024,7 @@ async function logout(): Promise<void> {
   try {
     await AuthService.Logout()
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'auth.logout', '退出登录失败')
   }
   session.value = null
   status.value = null
@@ -2104,14 +2194,14 @@ async function deleteNoteRow(note: NoteRow): Promise<void> {
   try {
     const result = await NotesService.Delete(note.id)
     if (result?.state === 'error') {
-      error.value = result.message
+      showError(result.message, 'notes.delete')
       return
     }
     removeTabs(new Set([tabKeyForNote(note, scopeIdForNote(note))]))
     await refreshAfterMutation()
     message.value = result?.message ?? '已删除'
   } catch (err) {
-    error.value = String(err)
+    setError(err, 'notes.delete', '删除失败')
   }
 }
 
@@ -2423,6 +2513,15 @@ watch(message, (value) => {
   }, 4000)
 })
 
+// 错误被清空时同步清掉详情，避免下一次操作弹出旧的技术细节。
+watch(error, (value) => {
+  if (!value) {
+    errorDetail.value = ''
+    errorKind.value = ''
+    errorOpen.value = false
+  }
+})
+
 watch(unsaved, (value) => {
   LocalFileService.SetUnsaved(value).catch(() => {})
 })
@@ -2469,6 +2568,14 @@ onBeforeUnmount(() => {
 
 function updateOnline(): void {
   online.value = navigator.onLine
+  if (!online.value) {
+    syncError.value = ''
+    return
+  }
+  // 系统恢复联网后主动重试一次；失败会再次把 online 置为 false。
+  if (session.value) {
+    void refreshIndex(false)
+  }
 }
 
 applyTheme()
@@ -2495,6 +2602,8 @@ applyTheme()
       @sync="refreshIndex(true)"
       @retry="retryOutbox"
       @toggle-theme="toggleTheme"
+      @open-logs="openLogs"
+      @copy-diagnostics="copyDiagnostics"
     />
 
     <div class="flex min-h-0 flex-1">
@@ -2596,7 +2705,9 @@ applyTheme()
       :folder-label="activeTab?.note && !activeTab.note.localOnly ? '云端' : activeTab?.note ? folderPath(activeTab.note.folderId) : ''"
       :message="message"
       :error="error"
+      :has-error-detail="!!errorDetail"
       :sync-error="syncError"
+      @show-error="showErrorDetails"
     />
 
     <QuickOpen
@@ -2670,6 +2781,14 @@ applyTheme()
       @discard-all="confirmCloseDialog('discard')"
       @cancel="confirmCloseDialog('cancel')"
       @one-by-one="confirmCloseDialog('one-by-one')"
+    />
+
+    <ErrorDetailsDialog
+      :open="errorOpen"
+      :summary="error"
+      :detail="errorDetail"
+      :kind="errorKind || 'unknown'"
+      @close="errorOpen = false"
     />
 
     <div

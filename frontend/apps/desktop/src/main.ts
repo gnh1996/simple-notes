@@ -1,6 +1,9 @@
 import { createApp } from 'vue'
 
 import App from './App.vue'
+import { installErrorLogging } from './lib/logger'
 import './styles/main.css'
 
-createApp(App).mount('#app')
+const app = createApp(App)
+installErrorLogging(app)
+app.mount('#app')
