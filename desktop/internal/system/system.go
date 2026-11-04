@@ -90,6 +90,13 @@ func (s *Service) SetTitle(title string) error {
 	return nil
 }
 
+// SetWindowTheme 让原生窗口标题栏 / 边框跟随应用明暗主题。
+// Wails 启动时只按系统主题设置一次，手动切换主题后由前端调用本方法重新下发。
+func (s *Service) SetWindowTheme(dark bool) error {
+	applyWindowTheme(dark)
+	return nil
+}
+
 // OpenAdmin 在系统浏览器打开管理端页面（发布 / 下架留在 admin）。
 // 管理端默认按 <server>/admin 推导，可用 SIMPLE_NOTES_ADMIN_BASE 覆盖部署形态。
 func (s *Service) OpenAdmin(path string) error {

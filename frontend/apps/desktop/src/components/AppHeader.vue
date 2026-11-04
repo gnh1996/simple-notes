@@ -3,6 +3,8 @@ import type { Session } from '../../bindings/cc.naihao/simplenotes/desktop/inter
 import type { Status } from '../../bindings/cc.naihao/simplenotes/desktop/internal/system/models'
 import { ref } from 'vue'
 
+import type { ThemeMode } from '../composables/useTheme'
+
 defineProps<{
   session: Session | null
   status: Status | null
@@ -10,7 +12,7 @@ defineProps<{
   pending: number
   online: boolean
   sidebarOpen: boolean
-  isDark: boolean
+  theme: ThemeMode
 }>()
 
 const emit = defineEmits<{
@@ -24,10 +26,16 @@ const emit = defineEmits<{
   logout: []
   sync: []
   retry: []
-  'toggle-theme': []
+  'set-theme': [value: ThemeMode]
   'open-logs': []
   'copy-diagnostics': []
 }>()
+
+const themeOptions: Array<{ value: ThemeMode; label: string }> = [
+  { value: 'system', label: '跟随系统' },
+  { value: 'light', label: '浅色' },
+  { value: 'dark', label: '深色' },
+]
 
 const newMenu = ref(false)
 const accountMenu = ref(false)
@@ -142,14 +150,6 @@ function run(action: () => void): void {
           重试待同步 {{ pending }} 项
         </button>
         <button
-          v-if="session"
-          class="w-full rounded px-2 py-1.5 text-left hover:bg-app-bg"
-          type="button"
-          @click="closeMenus(); emit('toggle-theme')"
-        >
-          {{ isDark ? '切换浅色主题' : '切换深色主题' }}
-        </button>
-        <button
           v-if="!session"
           class="mt-1 w-full rounded px-2 py-1.5 text-left text-brand-400 hover:bg-app-bg"
           type="button"
@@ -189,6 +189,20 @@ function run(action: () => void): void {
         >
           同步索引
         </button>
+        <div class="my-1 border-t border-app-border" />
+        <p class="px-1 pb-1 text-[10px] text-app-muted">主题</p>
+        <div class="flex gap-1 px-1">
+          <button
+            v-for="option in themeOptions"
+            :key="option.value"
+            class="flex-1 rounded border px-1 py-1 text-[11px]"
+            :class="theme === option.value ? 'border-brand-400/70 bg-brand-500/10 text-brand-400' : 'border-app-border text-app-muted hover:text-app-fg'"
+            type="button"
+            @click="closeMenus(); emit('set-theme', option.value)"
+          >
+            {{ option.label }}
+          </button>
+        </div>
         <div class="my-1 border-t border-app-border" />
         <button class="w-full rounded px-2 py-1.5 text-left hover:bg-app-bg" type="button" @click="run(() => emit('open-logs'))">
           打开日志目录

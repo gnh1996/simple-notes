@@ -44,6 +44,14 @@ export function SetUIState(key: string, value: string): $CancellablePromise<void
 }
 
 /**
+ * SetWindowTheme 让原生窗口标题栏 / 边框跟随应用明暗主题。
+ * Wails 启动时只按系统主题设置一次，手动切换主题后由前端调用本方法重新下发。
+ */
+export function SetWindowTheme(dark: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2269307040, dark);
+}
+
+/**
  * Status 返回当前运行状态；令牌只报告是否存在，不回传明文。
  */
 export function Status(): $CancellablePromise<$models.Status> {

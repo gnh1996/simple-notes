@@ -9,6 +9,18 @@
       html { background: #121212; color-scheme: dark; }
       html.light { background: #f7f7f8; color-scheme: light; }
     </style>
+    <script>
+      // 与 src/composables/useTheme.ts 保持一致：样式生效前先应用主题，避免首帧闪白。
+      try {
+        var stored = localStorage.getItem('sn.desktop.theme')
+        var dark = stored === 'dark' || (stored !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        var root = document.documentElement
+        root.classList.add(dark ? 'dark' : 'light')
+        root.style.colorScheme = dark ? 'dark' : 'light'
+      } catch (e) {
+        /* 拿不到 localStorage 时沿用默认深色 */
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>

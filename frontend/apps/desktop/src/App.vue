@@ -45,6 +45,7 @@ import type { FolderNode, FolderOption } from './types/folders'
 import type { QuickAction, QuickItem } from './types/quick'
 import { describeError, type ErrorKind } from './lib/errors'
 import { log, logError } from './lib/logger'
+import { useTheme } from './composables/useTheme'
 
 type Kind = 'NOTE' | 'POST'
 type DocumentAction =
@@ -105,7 +106,6 @@ const errorKind = ref<ErrorKind | ''>('')
 const errorOpen = ref(false)
 const syncError = ref('')
 const online = ref(navigator.onLine)
-const isDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
 const sidebarOpen = ref(false)
 const sidebarWidth = ref(440)
 const quickOpen = ref(false)
@@ -130,6 +130,7 @@ const exporting = ref(false)
 const closeDialog = ref<CloseState | null>(null)
 
 const { isDesktop } = useBreakpoint()
+const { mode: themeMode, isDark, setMode: setThemeMode } = useTheme()
 const editorTheme = computed<'light' | 'dark'>(() => (isDark.value ? 'dark' : 'light'))
 const activeTab = computed(() => tabs.value.find((tab) => tab.key === activeKey.value) ?? null)
 const unsaved = computed(() => tabs.value.some((tab) => tab.dirty || tab.saveState === 'saving'))
@@ -475,16 +476,6 @@ const quickActions = computed<QuickAction[]>(() => [
   { id: 'toggle-sidebar', title: sidebarOpen.value ? '收起资料库' : '展开资料库', hint: 'Ctrl B' },
   ...(!session.value ? [{ id: 'login' as const, title: '登录', hint: '' }] : []),
 ])
-
-function applyTheme(): void {
-  document.documentElement.classList.toggle('dark', isDark.value)
-  document.documentElement.classList.toggle('light', !isDark.value)
-}
-
-function toggleTheme(): void {
-  isDark.value = !isDark.value
-  applyTheme()
-}
 
 function findTab(key: string): DocumentTab | null {
   return tabs.value.find((tab) => tab.key === key) ?? null
@@ -2537,7 +2528,6 @@ watch(windowTitle, (value) => {
 })
 
 onMounted(() => {
-  applyTheme()
   window.addEventListener('keydown', onKeydown, true)
   window.addEventListener('contextmenu', handleContextMenu)
   window.addEventListener('online', updateOnline)
@@ -2580,8 +2570,6 @@ function updateOnline(): void {
     void refreshIndex(false)
   }
 }
-
-applyTheme()
 </script>
 
 <template>
@@ -2593,7 +2581,7 @@ applyTheme()
       :pending="pendingOutbox"
       :online="online"
       :sidebar-open="sidebarOpen"
-      :is-dark="isDark"
+      :theme="themeMode"
       @toggle-sidebar="toggleSidebar"
       @quick-open="quickOpen = true"
       @new-local="newNote('local')"
@@ -2604,7 +2592,7 @@ applyTheme()
       @logout="logout"
       @sync="refreshIndex(true)"
       @retry="retryOutbox"
-      @toggle-theme="toggleTheme"
+      @set-theme="setThemeMode"
       @open-logs="openLogs"
       @copy-diagnostics="copyDiagnostics"
     />
