@@ -242,7 +242,7 @@ Wails 的整个 UI 就是 WebView，这不是"用 WebView 做预览"，而是"�
 | **CORS / origin** | 直连后端需改后端 CORS；自定义 scheme 的 origin 不是普通 HTTP | 采用 Go 传输，彻底绕开 |
 | **IPC 载荷上限** | WebView2 ~2MB 限制（已有分片修复，但不适合大二进制） | 附件走文件路径/流；不把图片 base64 塞 binding |
 | **embed 路径** | `//go:embed` 不能跨 module | 构建后拷入 `desktop/web/dist`（推荐）或 Go module 前置到前端应用内 |
-| **开发服务器无图形环境** | 本仓库开发机无法跑 GUI | 同现状：构建/单测无头，GUI 与 IME 实机验证 |
+| **GUI 验证覆盖** | WebView 层（渲染、交互、binding、资产路由）可自动化；原生面与跨平台不可 | 能起窗口就做 CDP 冒烟（Windows 已验证可行，见 `desktop/README.md`）；对话框 / 托盘 / IME / 真实拖拽 / DPI 与 Linux、macOS 人工实机 |
 | **分发/签名** | macOS 公证、Windows 签名、Linux 包格式都需要新流水线 | 个人项目可先出未签名产物；正式分发再补 |
 
 ### 3.6 备选对比

@@ -52,7 +52,9 @@ Go 1.26+ + Wails v3（WebView）桌面端；前端是 `frontend/apps/desktop`（
 ## 环境注意
 
 - 本仓库开发机为 Windows，**Windows 构建 / 运行已验证**；Linux / macOS 与中文输入法（fcitx5 + Wayland、微软拼音）需实机验证
-- 无图形环境时只能跑 `go test ./...`、`pnpm typecheck`、`pnpm build:desktop`；`wails3 dev` / GUI 需桌面环境
+- **GUI 可测性由当前环境决定，不要在文档里写死**：先探测（Windows 看是否为交互式会话；WSL / Linux 看 `DISPLAY` / `WAYLAND_DISPLAY` 与 GTK4 + WebKitGTK 6.0），能起窗口就用 WebView2 CDP 冒烟（`SIMPLE_NOTES_WEBVIEW_ARGS="--remote-debugging-port=…"`，见 `README.md`）；起不了才退化为 `go test ./...`、`pnpm typecheck`、`pnpm build:desktop`，并在结论里明确"未测范围"
+- **WSL 结果不代表 Windows**：`GOOS=windows` 的 CGO 产物在 WSL 跑不起来；WSLg 只能验 Linux 目标，IME / DPI / 窗口行为与真机不同
+- **原生面不可自动化**：文件对话框、托盘、系统通知、中文输入法组合输入、真实拖拽（`WindowFilesDropped` 是 Go 侧窗口事件）、多显示器 / DPI 缩放必须人工实机
 
 ## 命令
 

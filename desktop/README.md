@@ -174,7 +174,29 @@ Windows 11 / WebView2，空闲 20s 后按进程树统计：
 
 - 本仓库开发机为 Windows；**Windows 构建 / 运行已验证**（2026-10-25）。
 - Linux / macOS 尚未实机验证：需要 GTK4 + WebKitGTK 6.0 / Xcode CLI；中文输入法（Windows 微软拼音、Linux fcitx5 + Wayland）必须在实机走查。
-- 当前开发容器若无图形环境，只能跑 `go test` / 前端 typecheck / build；GUI 需桌面环境。
+- GUI 可测性由环境决定，不在文档里写死：能起窗口就按下一节做 CDP 冒烟，起不了只跑 `go test` / typecheck / build 并注明未测范围；WSL 结果不代表 Windows 行为。
+
+## GUI 冒烟（可选）
+
+能起窗口的环境都可以做自动化冒烟，不必依赖人工逐项点击：
+
+```powershell
+# Windows：借 WebView2 的 CDP 端口启动（main.go 读取该环境变量透传给 Chromium）
+$env:SIMPLE_NOTES_WEBVIEW_ARGS="--remote-debugging-port=9223"
+.\bin\SimpleNotes.exe
+```
+
+```bash
+curl http://127.0.0.1:9223/json/list   # 取 webSocketDebuggerUrl
+```
+
+之后用任意 CDP 客户端驱动页面（`Runtime.evaluate` / `Page.captureScreenshot` / `Input.dispatchMouseEvent`）。仓库不内置驱动：本机实测用一个 Go 小程序即可，依赖树里已有 `github.com/coder/websocket`，**不要为冒烟新增依赖**，用完删除。
+
+**能覆盖**：窗口内渲染与主题、Vditor 编辑与自动保存（binding → SQLite）、标签 / 侧栏 / 自定义右键菜单 / 快速打开、binding 往返（如「复制诊断信息」）、`/__media` 导入与资产路由（含 HEAD / 404）、日志中是否出现 error。
+
+**不能覆盖**（必须人工实机）：原生标题栏与窗口装饰、文件对话框、托盘、系统通知、中文输入法组合输入、真实焦点与按键路由、从资源管理器拖文件进窗口（`WindowFilesDropped` 是 Go 侧窗口事件）、多显示器与 DPI 缩放；Linux / macOS 整条链路。
+
+> 不要把「本机能跑 GUI」或「本机不能跑 GUI」写进规则文件——环境会变（Windows / WSL / CI）。按上面的探测结果决定本次能测到哪一层，并如实写明未测范围。
 
 ## 下一步
 
