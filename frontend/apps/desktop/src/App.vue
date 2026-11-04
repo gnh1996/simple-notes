@@ -909,14 +909,25 @@ async function newNote(target: 'local' | 'server' = 'local'): Promise<void> {
   if (creatingNote.value) {
     return
   }
-  if (target === 'local') {
+  const serverTarget = target === 'server' && !!session.value
+  const folder = serverTarget
+    ? sourceFilter.value === 'server' && isServerFolder(folderId.value)
+      ? folderId.value
+      : ''
+    : sourceFilter.value === 'local' && isLocalFolder(folderId.value)
+      ? folderId.value
+      : ''
+  if (!serverTarget) {
     const current = activeTab.value
+    // 复用空白笔记必须要求目标文件夹一致：切换文件夹后新建要落到当前文件夹。
     if (
       current?.source === 'local' &&
       !current.dirty &&
       !current.content.trim() &&
-      current.title === '未命名'
+      current.title === '未命名' &&
+      (current.note?.folderId ?? '') === folder
     ) {
+      message.value = '当前已是空白笔记，直接开始写作即可'
       return
     }
   }
@@ -926,14 +937,6 @@ async function newNote(target: 'local' | 'server' = 'local'): Promise<void> {
   creatingNote.value = true
   error.value = ''
   try {
-    const serverTarget = target === 'server' && !!session.value
-    const folder = serverTarget
-      ? sourceFilter.value === 'server' && isServerFolder(folderId.value)
-        ? folderId.value
-        : ''
-      : sourceFilter.value === 'local' && isLocalFolder(folderId.value)
-        ? folderId.value
-        : ''
     const result = await NotesService.Create({
       kind: serverTarget ? kind.value : 'NOTE',
       title: '未命名',
