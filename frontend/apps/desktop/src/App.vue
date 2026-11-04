@@ -11,10 +11,11 @@ import { Service as SyncService } from '../bindings/cc.naihao/simplenotes/deskto
 import { Service as SystemService } from '../bindings/cc.naihao/simplenotes/desktop/internal/system'
 import type { Status } from '../bindings/cc.naihao/simplenotes/desktop/internal/system/models'
 import { useBreakpoint } from '@simple-notes/shared'
-import { Events } from '@wailsio/runtime'
+import { Clipboard, Events } from '@wailsio/runtime'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
 import AppHeader from './components/AppHeader.vue'
+import ContextMenu from './components/ContextMenu.vue'
 import DocumentView from './components/DocumentView.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import LibrarySidebar from './components/LibrarySidebar.vue'
@@ -37,6 +38,7 @@ import {
   type PersistedTabs,
 } from './types/document'
 import type { LibraryFilter, LibraryItem } from './types/library'
+import type { ContextMenuItem } from './types/context-menu'
 import type { FolderNode, FolderOption } from './types/folders'
 import type { QuickAction, QuickItem } from './types/quick'
 
@@ -63,6 +65,15 @@ interface CloseState {
   mode: CloseMode
   tab?: DocumentTab
   files: DocumentTab[]
+}
+
+/** 文本编辑控件右键菜单：记录打开时的焦点元素与选区，菜单点击后恢复。 */
+interface TextMenuState {
+  x: number
+  y: number
+  element: HTMLElement
+  input?: { start: number; end: number }
+  range?: Range
 }
 
 const UNCATEGORIZED_FOLDER = 'uncategorized'
@@ -106,7 +117,8 @@ const promoteFolderId = ref('')
 const promoting = ref(false)
 
 const diffOpen = ref(false)
-const listMenu = ref<{ x: number; y: number; note: NoteRow } | null>(null)
+const listMenu = ref<{ x: number; y: number; item: LibraryItem } | null>(null)
+const textMenu = ref<TextMenuState | null>(null)
 const exporting = ref(false)
 const closeDialog = ref<CloseState | null>(null)
 
@@ -2023,11 +2035,191 @@ function onQuickAction(id: QuickAction['id']): void {
   }
 }
 
+const EDITABLE_SELECTOR = 'input, textarea, [contenteditable]:not([contenteditable="false"])'
+
 function openListMenu(item: LibraryItem, event: MouseEvent): void {
-  if (!item.note) {
+  event.preventDefault()
+  listMenu.value = { x: event.clientX, y: event.clientY, item }
+}
+
+const listMenuItems = computed<ContextMenuItem[]>(() => {
+  const item = listMenu.value?.item
+  if (!item) {
+    return []
+  }
+  if (item.source === 'file') {
+    const items: ContextMenuItem[] = [{ key: 'open', label: '打开' }]
+    if (item.recent) {
+      items.push({ key: 'separator-1', separator: true })
+      items.push({ key: 'remove-recent', label: '从最近列表移除', danger: true })
+    }
+    return items
+  }
+  const items: ContextMenuItem[] = [{ key: 'open', label: '打开' }]
+  if (item.note) {
+    items.push({ key: 'export', label: '导出为 Markdown…' })
+    if (item.note.localOnly && session.value) {
+      items.push({ key: 'promote', label: '同步到云端' })
+    }
+    items.push({ key: 'separator-1', separator: true })
+    items.push({ key: 'delete', label: '删除', danger: true })
+  }
+  return items
+})
+
+async function runListMenu(key: string): Promise<void> {
+  const item = listMenu.value?.item
+  listMenu.value = null
+  if (!item) {
     return
   }
-  listMenu.value = { x: event.clientX, y: event.clientY, note: item.note }
+  switch (key) {
+    case 'open':
+      await selectItem(item)
+      break
+    case 'export':
+      if (item.note) {
+        await exportNote(item.note)
+      }
+      break
+    case 'promote':
+      if (item.note) {
+        startPromoteNote(item.note)
+      }
+      break
+    case 'delete':
+      if (item.note) {
+        await deleteNoteRow(item.note)
+      }
+      break
+    case 'remove-recent':
+      await removeRecent(item.recent?.path ?? '')
+      break
+  }
+}
+
+/** 列表内删除：与标签删除一致，顺手关掉已打开的标签。 */
+async function deleteNoteRow(note: NoteRow): Promise<void> {
+  error.value = ''
+  try {
+    const result = await NotesService.Delete(note.id)
+    if (result?.state === 'error') {
+      error.value = result.message
+      return
+    }
+    removeTabs(new Set([tabKeyForNote(note, scopeIdForNote(note))]))
+    await refreshAfterMutation()
+    message.value = result?.message ?? '已删除'
+  } catch (err) {
+    error.value = String(err)
+  }
+}
+
+const textMenuItems = computed<ContextMenuItem[]>(() => {
+  const state = textMenu.value
+  if (!state) {
+    return []
+  }
+  const hasSelection = state.range
+    ? !state.range.collapsed
+    : Boolean(state.input && state.input.start !== state.input.end)
+  return [
+    { key: 'undo', label: '撤销', hint: 'Ctrl+Z' },
+    { key: 'redo', label: '重做', hint: 'Ctrl+Y' },
+    { key: 'separator-1', separator: true },
+    { key: 'cut', label: '剪切', hint: 'Ctrl+X', disabled: !hasSelection },
+    { key: 'copy', label: '复制', hint: 'Ctrl+C', disabled: !hasSelection },
+    { key: 'paste', label: '粘贴', hint: 'Ctrl+V' },
+    { key: 'separator-2', separator: true },
+    { key: 'select-all', label: '全选', hint: 'Ctrl+A' },
+  ]
+})
+
+/** 应用内统一接管右键：编辑控件用自定义文本菜单，其余区域不显示浏览器默认菜单。 */
+function handleContextMenu(event: MouseEvent): void {
+  if (event.defaultPrevented) {
+    return
+  }
+  event.preventDefault()
+  const target = event.target instanceof HTMLElement ? event.target : null
+  const element = target?.closest<HTMLElement>(EDITABLE_SELECTOR) ?? null
+  if (!element) {
+    textMenu.value = null
+    return
+  }
+  const state: TextMenuState = { x: event.clientX, y: event.clientY, element }
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    state.input = { start: element.selectionStart ?? 0, end: element.selectionEnd ?? 0 }
+  } else {
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0)
+      if (element.contains(range.commonAncestorContainer)) {
+        state.range = range.cloneRange()
+      }
+    }
+  }
+  textMenu.value = state
+}
+
+function restoreTextSelection(state: TextMenuState): void {
+  const element = state.element
+  element.focus()
+  if (state.input && (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) {
+    element.setSelectionRange(state.input.start, state.input.end)
+    return
+  }
+  if (state.range) {
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(state.range)
+  }
+}
+
+function runTextMenu(key: string): void {
+  const state = textMenu.value
+  textMenu.value = null
+  if (!state) {
+    return
+  }
+  restoreTextSelection(state)
+  if (key === 'paste') {
+    void pasteInto(state)
+    return
+  }
+  const command = key === 'select-all' ? 'selectAll' : key
+  try {
+    document.execCommand(command)
+  } catch {
+    // 浏览器不支持 execCommand 时保持静默，不影响其他操作。
+  }
+}
+
+/** 粘贴走 Go 侧剪贴板：WebView 不以 navigator.clipboard 读系统剪贴板。 */
+async function pasteInto(state: TextMenuState): Promise<void> {
+  let text = ''
+  try {
+    text = await Clipboard.Text()
+  } catch {
+    return
+  }
+  if (!text) {
+    return
+  }
+  const element = state.element
+  restoreTextSelection(state)
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    const start = element.selectionStart ?? state.input?.start ?? element.value.length
+    const end = element.selectionEnd ?? state.input?.end ?? start
+    element.setRangeText(text, start, end, 'end')
+    element.dispatchEvent(new Event('input', { bubbles: true }))
+    return
+  }
+  try {
+    document.execCommand('insertText', false, text)
+  } catch {
+    // 同上：不支持时保持静默。
+  }
 }
 
 function startResize(event: PointerEvent): void {
@@ -2111,6 +2303,10 @@ function isEditorTarget(target: EventTarget | null): boolean {
 
 function onKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
+    if (textMenu.value) {
+      textMenu.value = null
+      return
+    }
     if (listMenu.value) {
       listMenu.value = null
       return
@@ -2241,6 +2437,7 @@ watch(windowTitle, (value) => {
 onMounted(() => {
   applyTheme()
   window.addEventListener('keydown', onKeydown, true)
+  window.addEventListener('contextmenu', handleContextMenu)
   window.addEventListener('online', updateOnline)
   window.addEventListener('offline', updateOnline)
   LocalFileService.SetUnsaved(false).catch(() => {})
@@ -2257,6 +2454,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown, true)
+  window.removeEventListener('contextmenu', handleContextMenu)
   window.removeEventListener('online', updateOnline)
   window.removeEventListener('offline', updateOnline)
   window.clearTimeout(searchTimer)
@@ -2517,24 +2715,24 @@ applyTheme()
       </div>
     </div>
 
-    <div v-if="listMenu" class="fixed inset-0 z-[55]" @click="listMenu = null" @contextmenu.prevent="listMenu = null">
-      <div
-        class="absolute w-56 rounded-lg border border-app-border bg-app-panel p-1 shadow-xl"
-        :style="{ left: `${listMenu.x}px`, top: `${listMenu.y}px` }"
-        @click.stop
-      >
-        <button class="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-app-bg" type="button" @click="exportNote(listMenu.note)">
-          导出为 Markdown…
-        </button>
-        <button
-          v-if="listMenu.note.localOnly && session"
-          class="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-app-bg"
-          type="button"
-          @click="startPromoteNote(listMenu.note); listMenu = null"
-        >
-          同步到云端
-        </button>
-      </div>
-    </div>
+    <ContextMenu
+      :open="!!listMenu"
+      :x="listMenu?.x ?? 0"
+      :y="listMenu?.y ?? 0"
+      :items="listMenuItems"
+      :min-width="196"
+      @select="runListMenu"
+      @close="listMenu = null"
+    />
+
+    <ContextMenu
+      :open="!!textMenu"
+      :x="textMenu?.x ?? 0"
+      :y="textMenu?.y ?? 0"
+      :items="textMenuItems"
+      :min-width="200"
+      @select="runTextMenu"
+      @close="textMenu = null"
+    />
   </div>
 </template>

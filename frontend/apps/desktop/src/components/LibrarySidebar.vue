@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import type { Session } from '../../bindings/cc.naihao/simplenotes/desktop/internal/auth/models'
+import type { ContextMenuItem } from '../types/context-menu'
 import type { FolderNode } from '../types/folders'
 import type { LibraryFilter, LibraryItem } from '../types/library'
 import type { ComponentPublicInstance } from 'vue'
-import { nextTick, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
+
+import ContextMenu from './ContextMenu.vue'
 
 const emit = defineEmits<{
   'update:sourceFilter': [value: LibraryFilter]
@@ -45,6 +48,8 @@ const newFolderName = ref('')
 const newFolderInput = ref<HTMLInputElement | null>(null)
 const renamingId = ref('__none__')
 const renameValue = ref('')
+const renameInput = ref<HTMLInputElement | null>(null)
+const folderMenu = ref<{ x: number; y: number; folder: FolderNode | null } | null>(null)
 
 // 本地文件夹始终可管理（不需要登录）；云端文件夹仅在登录后可管理。
 function canManageFolder(folder: FolderNode): boolean {
@@ -79,6 +84,105 @@ function setNewFolderInput(el: Element | ComponentPublicInstance | null): void {
   newFolderInput.value = el instanceof HTMLInputElement ? el : null
 }
 
+function setRenameInput(el: Element | ComponentPublicInstance | null): void {
+  renameInput.value = el instanceof HTMLInputElement ? el : null
+}
+
+/** 右键落在输入框 / 编辑区时交给全局文本菜单，不弹文件夹菜单。 */
+function isEditableTarget(event: MouseEvent): boolean {
+  return event.target instanceof HTMLElement && !!event.target.closest('input, textarea, [contenteditable]')
+}
+
+/** 根级新建只在本地 / 已登录的云端可用（云端还需在线）。 */
+function canCreateRoot(): boolean {
+  return canCreateFolder() && !(props.sourceFilter === 'server' && !props.online)
+}
+
+function openFolderMenu(folder: FolderNode, event: MouseEvent): void {
+  if (isEditableTarget(event)) {
+    return
+  }
+  event.preventDefault()
+  if (!folder.id || folder.id === 'uncategorized') {
+    folderMenu.value = canCreateRoot()
+      ? { x: event.clientX, y: event.clientY, folder: null }
+      : null
+    return
+  }
+  if (!canManageFolder(folder)) {
+    folderMenu.value = null
+    return
+  }
+  folderMenu.value = { x: event.clientX, y: event.clientY, folder }
+}
+
+/** 空白处右键：新建根文件夹；行内已处理的右键不重复弹菜单。 */
+function openFolderAreaMenu(event: MouseEvent): void {
+  if (event.defaultPrevented || isEditableTarget(event)) {
+    return
+  }
+  event.preventDefault()
+  folderMenu.value = canCreateRoot() ? { x: event.clientX, y: event.clientY, folder: null } : null
+}
+
+const folderMenuItems = computed<ContextMenuItem[]>(() => {
+  const folder = folderMenu.value?.folder
+  if (!folder) {
+    return [{ key: 'create-root', label: '新建文件夹' }]
+  }
+  const offline = props.sourceFilter === 'server' && !props.online
+  const items: ContextMenuItem[] = []
+  if (folder.hasChildren) {
+    items.push({ key: 'toggle', label: isCollapsed(folder.id) ? '展开' : '收起' })
+  }
+  items.push({
+    key: 'create-child',
+    label: '新建子文件夹',
+    disabled: folder.depth >= 5 || offline,
+    hint: folder.depth >= 5 ? '最多 5 级' : offline ? '离线' : '',
+  })
+  items.push({ key: 'rename', label: '重命名' })
+  items.push({ key: 'separator-1', separator: true })
+  items.push({
+    key: 'delete',
+    label: '删除',
+    danger: true,
+    disabled: folder.hasChildren,
+    hint: folder.hasChildren ? '含子文件夹' : '',
+  })
+  return items
+})
+
+function runFolderMenu(key: string): void {
+  const folder = folderMenu.value?.folder
+  folderMenu.value = null
+  switch (key) {
+    case 'create-root':
+      startCreateFolder('')
+      break
+    case 'create-child':
+      if (folder) {
+        startCreateFolder(folder.id)
+      }
+      break
+    case 'toggle':
+      if (folder) {
+        emit('toggle-folder', folder.id)
+      }
+      break
+    case 'rename':
+      if (folder) {
+        startRename(folder)
+      }
+      break
+    case 'delete':
+      if (folder) {
+        emit('delete-folder', folder)
+      }
+      break
+  }
+}
+
 function submitNewFolder(): void {
   const name = newFolderName.value.trim()
   if (!name) {
@@ -95,6 +199,10 @@ function submitNewFolder(): void {
 function startRename(folder: FolderNode): void {
   renamingId.value = folder.id
   renameValue.value = folder.name
+  void nextTick(() => {
+    renameInput.value?.focus()
+    renameInput.value?.select()
+  })
 }
 
 function submitRename(folder: FolderNode): void {
@@ -199,12 +307,14 @@ function formatTime(value: number): string {
       <div
         v-if="sourceFilter !== 'file' && kind !== 'POST'"
         class="flex w-[160px] shrink-0 flex-col overflow-y-auto border-r border-app-border px-1.5 py-2"
+        @contextmenu="openFolderAreaMenu"
       >
         <template v-for="folder in folders" :key="folder.id || 'all'">
           <div
             class="group flex items-center gap-1 rounded"
             :class="folderId === folder.id ? 'bg-brand-500/10 text-brand-400' : 'hover:bg-app-bg'"
             :style="folder.id ? { paddingLeft: `${(folder.depth - 1) * 10}px` } : undefined"
+            @contextmenu="openFolderMenu(folder, $event)"
           >
             <button
               v-if="folder.hasChildren"
@@ -227,6 +337,7 @@ function formatTime(value: number): string {
             </button>
             <input
               v-else
+              :ref="setRenameInput"
               v-model="renameValue"
               class="min-w-0 flex-1 rounded border border-brand-400/60 bg-app-bg px-1 py-1 text-[11px] outline-none"
               @keydown.enter="submitRename(folder)"
@@ -241,28 +352,9 @@ function formatTime(value: number): string {
               class="shrink-0 rounded px-0.5 text-[11px] leading-none text-app-muted hover:text-brand-400"
               type="button"
               title="在此文件夹下新建子文件夹"
-              @click="startCreateFolder(folder.id)"
+              @click.stop="startCreateFolder(folder.id)"
             >
               +
-            </button>
-            <button
-              v-if="canManageFolder(folder) && renamingId !== folder.id"
-              class="hidden px-0.5 text-[10px] text-app-muted group-hover:block hover:text-brand-400"
-              type="button"
-              title="重命名"
-              @click="startRename(folder)"
-            >
-              改
-            </button>
-            <button
-              v-if="canManageFolder(folder)"
-              class="hidden px-0.5 text-[10px] text-red-400 group-hover:block disabled:cursor-not-allowed disabled:opacity-40"
-              type="button"
-              :disabled="folder.hasChildren"
-              :title="folder.hasChildren ? '请先删除子文件夹' : '删除'"
-              @click="emit('delete-folder', folder)"
-            >
-              删
             </button>
           </div>
 
@@ -420,5 +512,15 @@ function formatTime(value: number): string {
         </div>
       </div>
     </div>
+
+    <ContextMenu
+      :open="!!folderMenu"
+      :x="folderMenu?.x ?? 0"
+      :y="folderMenu?.y ?? 0"
+      :items="folderMenuItems"
+      :min-width="180"
+      @select="runFolderMenu"
+      @close="folderMenu = null"
+    />
   </aside>
 </template>

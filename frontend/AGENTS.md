@@ -59,6 +59,7 @@ pnpm workspace：`apps/admin`（管理端）+ `apps/blog`（博客 runtime）+ `
 - **M0–M4 已实现**：登录 / 索引列表 / 打开即拉取 / Vditor 编辑 / 防抖推送 / 409 冲突二选一 / 删除与墓碑 / 文件夹写 / outbox / 离线新建 / 冲突 diff + 副本 / 发布状态展示 + 管理端深链（发布与下架只在 admin）；剩余三平台实机验收
 - **本地文件 v1.1 已实现**（`docs/desktop-local-file.md`）：打开文件=临时编辑（不入库）、**启动默认本地模式（不弹登录页）**、登录为顶栏可选模态、最近打开、纳入管理（本地 / 云端）、导出 Markdown；临时内容与最近路径不进入同步；**v2.0 文件夹树**：本地 / 云端两棵独立树（同父级唯一、跨层级可同名、最深 5 级、有子级禁止删除、子树筛选与计数），纳入云端时只选云端文件夹
 - **多标签 v1.2 已实现（Windows）**（`docs/desktop-layout.md` §3）：文件 / 本地 / 服务端笔记统一标签栏；单 Vditor 实例，切标签清空撤销栈；标签上限 12；文件标签只存路径、激活时读盘；不要为每个标签常驻一个编辑器
+- **右键菜单（v2.0）**：关闭 WebView2 默认菜单；文件夹 / 列表 / 标签 / 文本编辑统一用 `components/ContextMenu.vue`（Teleport、贴边、Esc），新增入口只提供菜单项；文本粘贴经 Go `Clipboard`，不依赖 WebView 权限
 - **不直连后端**：只调用 Go binding `api.Do({ method, path, body })`；token 不进入 JS / localStorage
 - `bindings/` 由 `wails3 task bindings` 生成（改 Go service 签名后重跑），随仓库提交；禁止手写 IPC 类型
 - API 类型来自 `@simple-notes/api`（OpenAPI 生成），不另写接口类型；Go 侧只做通用转发

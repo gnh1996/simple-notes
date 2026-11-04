@@ -104,6 +104,9 @@ func main() {
 		BackgroundColour: application.NewRGB(18, 18, 18),
 		URL:              "/",
 		EnableFileDrop:   true,
+		// 关闭 WebView2 默认右键菜单（刷新 / 打印 / 检查）；应用内右键菜单由前端自行渲染，
+		// 文本编辑控件的剪切 / 复制 / 粘贴也由前端接管（见 frontend/apps/desktop）。
+		DefaultContextMenuDisabled: true,
 	})
 
 	// 有未保存内容时先拦截关闭，由前端确认保存 / 放弃后再退出。

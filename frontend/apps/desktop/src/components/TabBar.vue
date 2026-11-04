@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import type { ContextMenuItem } from '../types/context-menu'
 import type { DocumentTab } from '../types/document'
 import { ref, watch } from 'vue'
+
+import ContextMenu from './ContextMenu.vue'
 
 const props = defineProps<{
   tabs: DocumentTab[]
@@ -33,12 +36,38 @@ watch(
 )
 
 function openMenu(tab: DocumentTab, event: MouseEvent): void {
+  event.preventDefault()
   menu.value = { x: event.clientX, y: event.clientY, tab }
 }
 
-function run(action: () => void): void {
+const menuItems: ContextMenuItem[] = [
+  { key: 'close', label: '关闭' },
+  { key: 'close-others', label: '关闭其他' },
+  { key: 'close-right', label: '关闭右侧' },
+  { key: 'separator-1', separator: true },
+  { key: 'close-all', label: '关闭全部', danger: true },
+]
+
+function runMenu(key: string): void {
+  const tab = menu.value?.tab
   menu.value = null
-  action()
+  if (!tab) {
+    return
+  }
+  switch (key) {
+    case 'close':
+      emit('close', tab)
+      break
+    case 'close-others':
+      emit('close-others', tab)
+      break
+    case 'close-right':
+      emit('close-right', tab)
+      break
+    case 'close-all':
+      emit('close-all')
+      break
+  }
 }
 
 function sourceDot(tab: DocumentTab): string {
@@ -115,25 +144,14 @@ function onWheel(event: WheelEvent): void {
       +
     </button>
 
-    <div v-if="menu" class="fixed inset-0 z-40" @click="menu = null" @contextmenu.prevent="menu = null">
-      <div
-        class="absolute w-44 rounded-lg border border-app-border bg-app-panel p-1 shadow-xl"
-        :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
-        @click.stop
-      >
-        <button class="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-app-bg" type="button" @click="run(() => emit('close', menu!.tab))">
-          关闭
-        </button>
-        <button class="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-app-bg" type="button" @click="run(() => emit('close-others', menu!.tab))">
-          关闭其他
-        </button>
-        <button class="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-app-bg" type="button" @click="run(() => emit('close-right', menu!.tab))">
-          关闭右侧
-        </button>
-        <button class="w-full rounded px-2 py-1.5 text-left text-xs text-red-400 hover:bg-app-bg" type="button" @click="run(() => emit('close-all'))">
-          关闭全部
-        </button>
-      </div>
-    </div>
+    <ContextMenu
+      :open="!!menu"
+      :x="menu?.x ?? 0"
+      :y="menu?.y ?? 0"
+      :items="menuItems"
+      :min-width="176"
+      @select="runMenu"
+      @close="menu = null"
+    />
   </div>
 </template>
