@@ -4,7 +4,7 @@ Go 1.26+ + Wails v3（WebView）桌面端；前端是 `frontend/apps/desktop`（
 
 ## 已定技术项
 
-- 壳 / 本地能力：Go + Wails v3.0.0-beta.34（锁版本）；services + bindings
+- 壳 / 本地能力：Go + Wails v3.1.0（锁版本；GA 线，只跟 hotfix，不追 weekly）；services + bindings
 - UI：Vue 3 + Vite + Tailwind（复用 `packages/shared`、`packages/ui`、`packages/api` 类型）
 - 数据：本地优先（SQLite，`modernc.org/sqlite`；离线 + 后台同步，协议见 `docs/desktop-sync.md`）
 - Markdown：**Vditor 4.0.1 + Lute**（方言 v2，与 admin / blog 同源，2026-10-31 迁移完成）；资源由 `pnpm sync:vditor` 自托管

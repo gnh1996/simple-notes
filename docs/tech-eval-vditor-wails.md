@@ -8,11 +8,13 @@
 
 1. **内存**：可接受 WebView 带来的上移，但要求尽量优化 → Wails 提案通过；以实测数据替代旧 74MB 基线。
 2. **编辑器**：写作体验与编辑器功能都在考虑范围内 → Vditor 不直接否决，先做 fixture POC。**POC 已执行（2026-10-25）**：暴露旧方言的 5 处冲突；随后产品决策改为 **v2 白名单**，admin / blog / desktop 均已切换 Vditor + Lute（桌面端 2026-10-31）。
-3. **Wails 版本**：接受 v3 beta → 锁定 `v3.0.0-beta.34`，预留 GA 升级窗口。
+3. **Wails 版本**：接受 v3 beta → 锁定 `v3.0.0-beta.34`，预留 GA 升级窗口（**2026-11-04 已兑现：升级到 GA 线 `v3.1.0`，零源码改动**）。
 
 已落地：`desktop/`（Go + Wails 骨架）+ `frontend/apps/desktop`（Vue UI）；Windows 构建 / 运行已验证，内存实测见 §3.5。
 
 **2026-10-31 更新：桌面端编辑器已从 md-editor-v3 迁移到 Vditor 4.0.1 + Lute（方言 v2，资源自托管 `/vditor`）。** 实测（Windows 11 / WebView2 进程树）：WS 413.5 → 437MB、私有 261.6 → 298MB、exe 17.9 → 24.8MB；`--disable-gpu` 私有 298 → 209.8MB。`packages/shared` 中 md-editor-v3 专用配置一并删除。
+
+**2026-11-04 更新：Wails 已升到 GA 线 `v3.1.0`。** 零源码改动：`go build` / `go vet` / `go test ./...`、`pnpm typecheck`、`wails3 build` 全绿；重生成的 bindings 与既有产物逐字节一致。升级评估与收益见 §3.1 / §3.5。
 
 ## 0. 结论速览
 
@@ -20,7 +22,7 @@
 
 | 提案 | 可行性 | 主要收益 | 主要代价 | 建议 |
 | --- | --- | --- | --- | --- |
-| 桌面端改 Wails v3 | **可行（beta 阶段）** | 复用 Vue/TS 资产；桌面端不再自带第三套 Markdown 引擎；Go 适合本地优先 / 后台同步 | WebView 内存基线；Wails v3 尚未 GA；Linux 依赖 GTK4 + WebKitGTK 6.0；放弃 NativeAOT 叙事 | **已采纳并落地骨架** |
+| 桌面端改 Wails v3 | **可行（已 GA）** | 复用 Vue/TS 资产；桌面端不再自带第三套 Markdown 引擎；Go 适合本地优先 / 后台同步 | WebView 内存基线；Linux 依赖 GTK4 + WebKitGTK 6.0；放弃 NativeAOT 叙事 | **已采纳并落地骨架** |
 | admin/blog 换 Vditor（仅编辑器） | 技术可行，**架构不成立** | IR / WYSIWYG 写作体验、中文语境好、维护活跃 | 渲染引擎由 markdown-it 变成 Lute，与 blog 不再同源，直接破坏"编辑器预览 = 发布所得" | **不推荐** |
 | 三端统一走 Lute（Vditor 全量） | 可行，**三端已落地（admin / blog 2026-10-25；desktop 2026-10-31）** | 真正单一引擎；编辑预览 = 发布；IR/WYSIWYG | 方言 v2（允许数学/emoji/安全 HTML）+ 主题 CSS + DOMPurify | **已执行，三端同源** |
 | Wails + 保留 md-editor-v3 | 可行 | 桌面与 admin 共用同一编辑器与方言配置，方言引擎从 3 套降为 2 套；无方言迁移 | WebView 内存基线 | **2026-10-25 路径，2026-10-31 由上一行取代** |
@@ -157,14 +159,14 @@
 
 | 项 | 结论 |
 | --- | --- |
-| 版本状态 | **v3.0.0-beta.34（2026-10-20）**；v3 于 2026-08-02 从 alpha 转 beta；GA 里程碑原定 2026-09-15，已逾期（完成度 92%，剩 7 个 issue）；beta 承诺"桌面 API 稳定"，但仍有预发布缺陷与公告式变更 |
-| 发布方式 | beta 为 nightly tag；`wails3` CLI 用 `go install ...@版本` 安装（无桌面二进制发布流水线）；**必须锁版本** |
-| 平台 | Windows amd64/arm64（WebView2）、macOS 10.15+/11+、Linux **Ubuntu 24.04 基线，GTK4 + WebKitGTK 6.0**；GTK3/WebKit2GTK 4.1 走 `-tags gtk3`，**v3.1 移除** |
+| 版本状态 | **v3.1.0（2026-11-01）——GA 线**；GA 为 `v3.0.0`（2026-10-26，结束自 2023-01 起的 alpha / beta）。此前评估（2026-10-25）时 GA 已逾期，现已落地 |
+| 发布方式 | GA 后为**周更**：minor 随时间递增（非功能里程碑），patch 为 hotfix，nightly 预演下一个 weekly；`wails3` CLI 仍用 `go install ...@版本` 安装（无桌面二进制流水线）；**必须锁版本** |
+| 平台 | Windows amd64/arm64（WebView2）、macOS 11+、Linux **Ubuntu 24.04 基线，GTK4 + WebKitGTK 6.0**；GTK3/WebKit2GTK 4.1 的 `-tags gtk3` 在 v3.1 起移除（本项目暂不发 Linux） |
 | 工具链 | Go **1.26**（beta.31 起模块声明；安装页仍写 1.24，以发布说明为准）+ CGO + 平台 WebView；**不支持交叉编译**，三平台各自构建 |
 | 许可证 | MIT / ISC |
 | 仓库现状 | 桌面端是骨架，尚无功能；此刻切换成本最低 |
 
-关键判断：项目本身处于预发布快速迭代阶段，采用 beta 工具链与项目节奏并不冲突；但 Wails GA 会先于本项目上线，**升级成本大概率要付一次**，需锁版本并预留升级窗口。
+关键判断：项目本身处于预发布快速迭代阶段，采用 beta 工具链与项目节奏并不冲突；Wails GA 已先于本项目上线，**升级成本已于 2026-11-04 付清（beta.34 → v3.1.0，零源码改动）**，此后只需锁版本并跟 hotfix。
 
 ### 3.2 与现有硬约束的冲突（必须先拍板）
 
@@ -232,7 +234,7 @@ Wails 的整个 UI 就是 WebView，这不是"用 WebView 做预览"，而是"�
 | 风险 | 说明 | 对策 |
 | --- | --- | --- |
 | **内存 / WebView 基线** | 整机内存显著高于 Avalonia；Linux WebKitGTK 往往更重 | **已实测（Windows）**：模板空壳 WS ≈361MB / 私有 ≈232MB；md-editor-v3 骨架 WS ≈390–403MB / 私有 ≈254MB；**Vditor + Lute（2026-10-31）WS ≈437MB / 私有 ≈298MB**；`--disable-gpu` 私有 ≈210MB。Go 进程仅 ~40–53MB，主要开销在 WebView2 进程树 |
-| **Wails v3 beta** | GA 逾期；beta 仍有 breaking 变更与偶发缺陷；CLI 只能 `go install` 锁版本 | 锁 `v3.0.0-beta.34`；隔离 v3 API 到少量文件；预留 GA 升级窗口；关注 changelog |
+| **Wails 版本节奏** | 已离开 beta（`v3.1.0` GA 线）；风险变为周更 churn 与偶发回归 | 锁 `v3.1.0`，只跟 hotfix / 安全公告，不追 weekly；升级时先比对 bindings 是否变化 |
 | **Linux 依赖面** | 默认 GTK4 + WebKitGTK 6.0；Ubuntu 24.04 之外需 `gtk3` tag（v3.1 移除）；AppImage 打包 WebKit 较麻烦 | 明确支持基线（Ubuntu 24.04+）；或提供 deb + 依赖声明；提前验证目标发行版 |
 | **中文输入法** | WebKitGTK / Wayland 下 IME 是历史风险点；WebView2 通常较好 | 必须在实机验证（fcitx5 + Wayland、Windows 微软拼音、macOS） |
 | **无交叉编译 + CGO** | 三平台需各自 runner / 容器；增加 CI 成本 | GitHub Actions 三平台矩阵；或本地按平台构建 |
@@ -247,7 +249,7 @@ Wails 的整个 UI 就是 WebView，这不是"用 WebView 做预览"，而是"�
 
 | 方案 | 成熟度 | 前端复用 | 内存 | 工具链 | 评价 |
 | --- | --- | --- | --- | --- | --- |
-| **Wails v3** | beta（GA 临近） | Vue/TS 直接复用 | WebView 基线 | Go 1.26 + CGO | 与既有 TS 资产最契合；接受 beta 风险 |
+| **Wails v3** | GA（`v3.1.0`） | Vue/TS 直接复用 | WebView 基线 | Go 1.26 + CGO | 与既有 TS 资产最契合；已达 GA |
 | Wails v2 | 稳定 | 同样可复用 | WebView 基线 | Go | 稳定但 API 代际落后，未来仍要迁 v3 |
 | **Tauri 2** | 稳定 | Vue/TS 直接复用 | WebView 基线 | Rust | 生态/签名/更新器更成熟；团队需接受 Rust 与更慢的构建 |
 | Avalonia（现状） | 稳定 | 不能复用 Web UI | **最低** | .NET 10 + AOT | 内存优先时仍是最优解；但 UI/编辑器要重写一套 |
@@ -389,7 +391,7 @@ Wails 的整个 UI 就是 WebView，这不是"用 WebView 做预览"，而是"�
 
 ## 6. 待确认 / 后续问题
 
-已确认（2026-10-25）：内存可接受上移、写作体验与编辑器功能都重要、接受 Wails v3 beta、桌面端采用 Web 技术栈 UI。
+已确认（2026-10-25）：内存可接受上移、写作体验与编辑器功能都重要、接受 Wails v3 beta、桌面端采用 Web 技术栈 UI。**2026-11-04 补充：Wails 已升到 GA 线 `v3.1.0`。**
 
 仍待确认：
 
@@ -426,9 +428,9 @@ Wails 的整个 UI 就是 WebView，这不是"用 WebView 做预览"，而是"�
 
 ## 参考
 
-- Wails v3 状态与路线图：<https://v3.wails.io/status/>（Last updated: 2026-10-20）
+- Wails v3 状态与路线图：<https://wails.io/status/>（`v3.0.0` GA 2026-10-26；本项目锁 `v3.1.0`）
 - Wails v3 安装与平台依赖：<https://v3.wails.io/getting-started/installation/>
-- Wails v3 changelog（beta.34 / Go 1.26 / GTK4+WebKitGTK 6.0）：<https://v3.wails.io/changelog/>
+- Wails v3 changelog（GA / 周更节奏 / Go 1.26 / GTK4+WebKitGTK 6.0）：<https://wails.io/changelog/>
 - Wails v3 Services / bindings：<https://v3.wails.io/features/bindings/services/>
 - Vditor changelog（4.0.1 / 4.0.0）：<https://github.com/Vanessa219/vditor/blob/master/CHANGELOG.md>
 - Vditor options / preview：<https://github.com/Vanessa219/vditor>

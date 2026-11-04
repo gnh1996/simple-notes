@@ -35,7 +35,7 @@ Go 的 `//go:embed` 不能引用 module 之外的路径，因此构建后把 `di
 
 | 项 | 结论 |
 | --- | --- |
-| 壳 | **Wails v3.0.0-beta.34**（锁版本；MIT/ISC） |
+| 壳 | **Wails v3.1.0**（锁版本；GA 线，MIT/ISC） |
 | 语言 | Go **1.26+**（本机 1.27.3）；三平台各自构建（CGO + 平台 WebView，无交叉编译） |
 | UI | Vue 3.5 + Vite 8 + TypeScript 6 + Tailwind v4 |
 | 本地存储 | SQLite（`modernc.org/sqlite`），库文件在 `os.UserConfigDir()/simple-notes/desktop.db`；表结构由 `internal/store/migrations` 的有序迁移维护（`PRAGMA user_version`，见 `docs/desktop-local-schema.md`） |
@@ -49,8 +49,10 @@ Go 的 `//go:embed` 不能引用 module 之外的路径，因此构建后把 `di
 先安装 CLI（版本必须与 `go.mod` 一致）：
 
 ```bash
-go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.34
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
 ```
+
+> Wails v3 自 GA（`v3.0.0`，2026-10-26）后改为**周更**：minor 号随时间递增（不代表功能里程碑），patch 为 hotfix。本项目锁 `v3.1.0`，只在出现需要的修复 / 安全公告时跟进 hotfix，不追每个 weekly。
 
 在 `desktop/` 下执行：
 

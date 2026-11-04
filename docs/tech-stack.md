@@ -32,7 +32,7 @@
 
 | 项 | 结论 |
 | --- | --- |
-| 基础栈 | Go 1.26+ + **Wails v3.0.0-beta.34**（WebView2 / WKWebView / GTK4 + WebKitGTK 6.0） |
+| 基础栈 | Go 1.26+ + **Wails v3.1.0**（GA 线；WebView2 / WKWebView / GTK4 + WebKitGTK 6.0） |
 | UI | Vue 3.5 + Vite 8 + TypeScript 6（pnpm workspace 成员，复用 `packages/*`） |
 | 架构 | Wails services / bindings；Go 侧负责窗口、HTTP 传输、SQLite、原生能力 |
 | 数据模式 | 本地优先（SQLite；离线可用 + 后台同步） |
@@ -65,6 +65,15 @@
 - 已发生的变更记录可追加到本文件文末
 
 ## 变更记录
+
+### 2026-11-04 · 桌面端 Wails v3 beta.34 → v3.1.0（GA 线）
+
+- **形态**：`desktop/go.mod` 的 `github.com/wailsapp/wails/v3` 由 `v3.0.0-beta.34` 改为 **`v3.1.0`**；`@wailsio/runtime` catalog 同步 `3.1.0`；CLI 安装命令改为 `go install .../wails3@v3.1.0`。**无一行 Go / 前端源码改动**
+- **背景**：Wails v3 GA 为 `v3.0.0`（2026-10-26），`v3.1.0`（2026-11-01）是 GA 后第一条周更线。官方发布节奏：minor 号随时间递增（非功能里程碑）、patch 为 hotfix、nightly 预演下一个周更；beta 线已停止修补
+- **理由**：① 兑现 2026-10-25「预留 GA 升级窗口」；② 命中本项目实际路径的修复——Windows `applyDarkMode` / 菜单栏 `SetTextColor` 崩溃、WebView2 省略 `Content-Length` 时保留请求体（`/__media` POST 导入）、资产服务 404 / HEAD / 转义路径路由、事件监听器投递顺序与 `Emit` hook 数据竞争
+- **验证（2026-11-04，本机 Windows）**：`go build` / `go vet` / `go test ./...` 全绿；`wails3 generate bindings` 产出与既有 `bindings/` **逐字节一致**（295 packages / 9 services / 50 methods / 23 models）；`wails3 build` 全链路通过；`pnpm typecheck` 通过；依赖仅 +`ebitengine/purego`、+`golang.org/x/term`，−`adrg/xdg`、−`go-colorable`；同 flag 产物 26.6 → 26.8MB
+- **版本策略**：锁 `v3.1.0`，只跟 hotfix / 安全公告，不追每个 weekly；升级时先跑 `wails3 task bindings` 确认 bindings 无 diff
+- **文档**：`AGENTS.md`、`desktop/AGENTS.md`、`desktop/README.md`、`docs/tech-stack.md`、`docs/tech-eval-vditor-wails.md` 同步
 
 ### 2026-10-31 · 桌面端切换 Vditor + Lute（方言 v2 三端同源）
 

@@ -25,8 +25,8 @@ catalogs:
       specifier: ^0.9.1
       version: 0.9.1
     '@wailsio/runtime':
-      specifier: 3.0.0-beta.34
-      version: 3.0.0-beta.34
+      specifier: 3.1.0
+      version: 3.1.0
     dompurify:
       specifier: ^3.4.17
       version: 3.4.17
@@ -186,7 +186,7 @@ importers:
         version: link:../../packages/ui
       '@wailsio/runtime':
         specifier: 'catalog:'
-        version: 3.0.0-beta.34
+        version: 3.1.0
       vditor:
         specifier: 'catalog:'
         version: 4.0.1
@@ -647,8 +647,8 @@ packages:
     peerDependencies:
       vue: ^3.5.0
 
-  '@wailsio/runtime@3.0.0-beta.34':
-    resolution: {integrity: sha512-uchPkqqbH+yAweQh4J0y0G1NRE6ILcas6huNTruTVU84aWqCFanlpdVM/KYJdcNzWKhdHGcGGBJYCUYn3ualoQ==}
+  '@wailsio/runtime@3.1.0':
+    resolution: {integrity: sha512-noEAedvRyO8TLCrqhGwzrp+mbMxAIDa2rYmdJQOzvJV9MxgaZeXAJGNBiMiKMTSSy4ESOtQi4VH/5heSzi6ZmA==}
 
   acorn@8.19.0:
     resolution: {integrity: sha512-oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw==}
@@ -1599,7 +1599,7 @@ snapshots:
     dependencies:
       vue: 3.5.44(typescript@6.0.3)
 
-  '@wailsio/runtime@3.0.0-beta.34': {}
+  '@wailsio/runtime@3.1.0': {}
 
   acorn@8.19.0: {}
 

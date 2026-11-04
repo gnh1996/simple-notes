@@ -65,7 +65,7 @@ pnpm build:admin && pnpm build:blog
 pnpm sync:theme           # 默认主题：packages/theme-starter → 后端兜底副本
 
 # 桌面（desktop/ 下执行；UI 在 frontend/apps/desktop）
-wails3 build              # bindings → 前端构建 → 同步 → 编译（需要先装 wails3 beta.34）
+wails3 build              # bindings → 前端构建 → 同步 → 编译（需要先装 wails3 v3.1.0）
 wails3 dev                # 需要图形环境
 go test ./...
 
