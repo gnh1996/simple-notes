@@ -8,9 +8,8 @@ import type { VersionResponse } from '@simple-notes/api'
 
 import { metaApi } from '@/api'
 
-/** 管理端自身版本：发布构建经 VITE_APP_VERSION 注入，本地开发为 0.0.0-dev。 */
-export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) || '0.0.0-dev'
+/** 管理端自身版本：构建时注入（vite define <- git describe，无 git 时 0.0.0-dev）。 */
+export const APP_VERSION: string = __APP_VERSION__
 
 export type { VersionResponse }
 
