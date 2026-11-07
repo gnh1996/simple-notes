@@ -20,11 +20,26 @@ func applyWindowTheme(dark bool) {
 	})
 }
 
-// mainWindowHandle 找到当前进程的可见顶层窗口（应用只有一个主窗口）。
-// 找到后缓存：SetWindowTheme 只在主线程串行调用，不需要额外加锁。
+// attachWindowHandle 注入主窗口原生句柄获取器（由 main 在创建窗口后注册）。
+func attachWindowHandle(provider func() uintptr) {
+	windowHandleProvider = provider
+}
+
+// windowHandleProvider 返回主窗口 HWND；Wails 在页面加载完成后才 Show 窗口，
+// 首帧里 EnumWindows 看不到可见窗口，必须靠它把主题直接下发到 DWM，
+// 否则深色主题的标题栏要手动切一次才会生效。
+var windowHandleProvider func() uintptr
+
+// cachedWindowHandle 缓存枚举结果：mainWindowHandle 只在主线程串行调用，不需要额外加锁。
 var cachedWindowHandle w32.HWND
 
+// mainWindowHandle 优先使用注入的句柄；拿不到时回退到枚举当前进程的可见顶层窗口。
 func mainWindowHandle() w32.HWND {
+	if windowHandleProvider != nil {
+		if hwnd := w32.HWND(windowHandleProvider()); hwnd != 0 {
+			return hwnd
+		}
+	}
 	if cachedWindowHandle != 0 {
 		return cachedWindowHandle
 	}

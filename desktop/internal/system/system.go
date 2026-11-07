@@ -90,6 +90,12 @@ func (s *Service) SetTitle(title string) error {
 	return nil
 }
 
+// AttachWindowHandle 注册主窗口原生句柄获取器，由 main 在创建窗口后调用。
+// 首帧主题下发早于 Wails 显示窗口，绑定回调需要直接拿到 HWND（Windows）。
+func AttachWindowHandle(provider func() uintptr) {
+	attachWindowHandle(provider)
+}
+
 // SetWindowTheme 让原生窗口标题栏 / 边框跟随应用明暗主题。
 // Wails 启动时只按系统主题设置一次，手动切换主题后由前端调用本方法重新下发。
 func (s *Service) SetWindowTheme(dark bool) error {

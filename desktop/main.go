@@ -119,6 +119,12 @@ func main() {
 		DefaultContextMenuDisabled: true,
 	})
 
+	// 首帧下发主题时窗口还没 Show（Wails 等页面加载完成才显示），
+	// 注入原生句柄让 SetWindowTheme 不必依赖“可见窗口”也能生效。
+	system.AttachWindowHandle(func() uintptr {
+		return uintptr(window.NativeWindow())
+	})
+
 	// 有未保存内容时先拦截关闭，由前端确认保存 / 放弃后再退出。
 	window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
 		if fileService.ShouldBlockClose() {
