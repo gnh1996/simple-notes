@@ -198,19 +198,22 @@ public class NoteFolderService {
                         tuple -> tuple.get(note.count())));
     }
 
-    /** 子树计数：每个文件夹沿父链累加 direct 数量。 */
+    /** 子树计数：每个文件夹累加自身及全部子孙的 direct 数量（沿子链向下，与 subtreeIds 同构）。 */
     private Map<String, Long> subtreeCounts(List<NoteFolder> folders, Map<String, Long> direct) {
-        Map<String, String> parentById = folders.stream().collect(Collectors.toMap(
-                NoteFolder::getId,
-                folder -> folder.getParentId() == null ? "" : folder.getParentId()));
+        Map<String, List<String>> children = new HashMap<>();
+        for (NoteFolder folder : folders) {
+            String parentId = folder.getParentId() == null ? "" : folder.getParentId();
+            children.computeIfAbsent(parentId, key -> new ArrayList<>()).add(folder.getId());
+        }
         Map<String, Long> result = new HashMap<>();
         for (NoteFolder folder : folders) {
             long sum = 0;
-            String cursor = folder.getId();
-            int guard = 0;
-            while (cursor != null && !cursor.isBlank() && guard++ <= MAX_DEPTH) {
-                sum += direct.getOrDefault(cursor, 0L);
-                cursor = parentById.get(cursor);
+            ArrayDeque<String> queue = new ArrayDeque<>();
+            queue.add(folder.getId());
+            while (!queue.isEmpty()) {
+                String current = queue.poll();
+                sum += direct.getOrDefault(current, 0L);
+                queue.addAll(children.getOrDefault(current, List.of()));
             }
             result.put(folder.getId(), sum);
         }
