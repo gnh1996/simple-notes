@@ -36,3 +36,6 @@ build/
 src/main/resources/application-local.yml
 src/main/resources/application-local.yaml
 src/main/resources/application-local.properties
+
+# 日志落盘产物（logging.file.name 默认 logs/simple-notes.log，可用 LOG_FILE 覆盖）
+logs/

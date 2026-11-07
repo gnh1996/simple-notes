@@ -27,6 +27,20 @@ spring:
       max-file-size: 20MB
       max-request-size: 25MB
 
+logging:
+  # 控制台 + 文件双写（默认相对路径 logs/simple-notes.log，可用 LOG_FILE 环境变量覆盖）；
+  # 滚动保留：单文件 10MB、保留 30 天、归档总量上限 1GB（归档命名走 Boot 默认 ${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz）
+  level:
+    root: INFO
+    cc.naihao.simplenotes: INFO
+  file:
+    name: "${LOG_FILE:logs/simple-notes.log}"
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 30
+      total-size-cap: 1GB
+
 simple-notes:
   auth:
     # JWT 签名密钥（HS256，32+ 字节随机值，值来源：本地 application-local.yml / 部署环境变量）。
