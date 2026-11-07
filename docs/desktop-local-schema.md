@@ -425,12 +425,16 @@ func alignLegacyColumns(tx *sql.Tx) error {
 
 ## 8. 与服务端的版本约定（评估）
 
-### 8.1 现状
+### 8.1 现状（2026-11-07 起：发版版本已落地，见 `docs/release.md`）
 
-- 后端没有「服务端版本」端点：无 `/api/version`，无 Actuator 暴露；
-- OpenAPI `info.version` 固定为 `"v1"`（`OpenApiConfig.java:28`），是**契约代际标签**，不是构建版本；
-- 桌面端 `system.Version` 只是本地展示用，不上报；
+- 后端有「服务端版本」端点：`GET /api/version`（匿名，`{version, commit, buildTime, contract}`），
+  版本来自构建注入（`-Drevision` → build-info），无 Actuator 暴露；
+- OpenAPI `info.version` 为常量 `"v1"`（`OpenApiConfig.CONTRACT_VERSION`），是**契约代际标签**，
+  不是构建版本；`/api/version` 的 `contract` 与之共用同一常量；
+- 桌面端 `system.Version/Commit/BuildTime` 由构建注入（`-ldflags -X`），展示在账户菜单与诊断信息，
+  **不上报服务端**；
 - 桌面端允许用户填写任意服务器地址（`docs/desktop-sync.md` §7），因此**服务端与桌面端的版本天然可能不一致**；
+  两端 UI 同时展示"本地版本 · 服务端版本"，不一致一眼可见；
 - 当前处于预发布阶段，`AGENTS.md` 明确「接口与数据结构允许破坏性调整，不承担兼容旧客户端的成本」。
 
 ### 8.2 结论先行
@@ -481,8 +485,9 @@ func alignLegacyColumns(tx *sql.Tx) error {
 ### 8.7 触发后的最小设计（备查）
 
 ```
+// 触发后实施；serverVersion 展示用 GET /api/version（匿名），此处仅作兼容性判定
 GET /api/desktop/meta        （认证后，权限 desktop:note）
-→ 200 { "protocol": 2, "minProtocol": 1, "serverVersion": "1.6.0" }
+→ 200 { "protocol": 2, "minProtocol": 1 }
 ```
 
 - 桌面端常量 `desktopProtocol = 2`，登录成功后拉一次，缓存到 scope 行（或内存）；

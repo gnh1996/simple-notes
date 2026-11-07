@@ -6,6 +6,8 @@
  */
 export interface Status {
     "version": string;
+    "commit": string;
+    "buildTime": string;
     "apiBaseUrl": string;
     "databasePath": string;
     "hasToken": boolean;
@@ -14,4 +16,14 @@ export interface Status {
     "serverUrl": string;
     "username": string;
     "nickname": string;
+}
+
+/**
+ * VersionInfo 是服务端 GET /api/version 的响应形状（后端 VersionResponse）。
+ */
+export interface VersionInfo {
+    "version": string;
+    "commit": string;
+    "buildTime": string;
+    "contract": string;
 }

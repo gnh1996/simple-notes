@@ -85,6 +85,8 @@ const UNCATEGORIZED_FOLDER = 'uncategorized'
 
 const session = ref<Session | null>(null)
 const status = ref<Status | null>(null)
+/** 服务端版本（GET /api/version；取不到时为空串，UI 展示"未知"）。 */
+const serverVersion = ref('')
 const kind = ref<Kind>('NOTE')
 const sourceFilter = ref<LibraryFilter>('local')
 const folderId = ref('')
@@ -1956,6 +1958,17 @@ async function persistTabsNow(): Promise<void> {
   }
 }
 
+/** 刷新服务端版本：失败只记日志，UI 展示"未知"，不阻塞启动 / 登录。 */
+async function refreshServerVersion(): Promise<void> {
+  try {
+    const info = await SystemService.ServerVersion()
+    serverVersion.value = info.version || ''
+  } catch (err) {
+    serverVersion.value = ''
+    log('warn', 'system.server-version', '服务端版本未知', { err: describeError(err).detail })
+  }
+}
+
 async function bootstrap(): Promise<void> {
   try {
     session.value = await AuthService.Current()
@@ -1968,6 +1981,7 @@ async function bootstrap(): Promise<void> {
     } catch (err) {
       setError(err, 'system.status', '读取运行状态失败')
     }
+    void refreshServerVersion()
   }
   await Promise.all([loadRecent(), loadUIState()])
   await restoreTabs()
@@ -1995,6 +2009,7 @@ async function onLoggedIn(value: Session): Promise<void> {
   } catch (err) {
     setError(err, 'system.status', '读取运行状态失败')
   }
+  void refreshServerVersion()
   message.value = '已登录，云端页签已可用'
   await refreshAfterMutation()
   if (session.value) {
@@ -2022,6 +2037,7 @@ async function logout(): Promise<void> {
   }
   session.value = null
   status.value = null
+  serverVersion.value = ''
   pendingOutbox.value = 0
   syncError.value = ''
   if (sourceFilter.value === 'server') {
@@ -2577,6 +2593,7 @@ function updateOnline(): void {
     <AppHeader
       :session="session"
       :status="status"
+      :server-version="serverVersion"
       :syncing="syncing"
       :pending="pendingOutbox"
       :online="online"

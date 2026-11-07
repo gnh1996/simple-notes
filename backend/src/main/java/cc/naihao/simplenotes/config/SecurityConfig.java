@@ -85,6 +85,8 @@ public class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         // OpenAPI 契约（docs/tech-stack.md：契约单一来源，前端 / 桌面端生成客户端用）
                         .requestMatchers(HttpMethod.GET, "/v3/api-docs", "/v3/api-docs/**").permitAll()
+                        // 版本自证（docs/release.md §2）：公开，不含敏感信息
+                        .requestMatchers(HttpMethod.GET, "/api/version").permitAll()
                         // 登录匿名可访问；其余认证接口（logout / me / password / profile）要求会话
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                         // blog 公开读接口匿名可访问；写操作要求会话（blog:* 权限码随 blog 功能设计补充）

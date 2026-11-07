@@ -18,11 +18,19 @@ tasks:
     summary: Builds the application
     cmds:
       - task: '{{.GOOS}}:build'
+        vars:
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
 
   package:
     summary: Packages a production build of the application
     cmds:
       - task: '{{.GOOS}}:package'
+        vars:
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
 
   run:
     summary: Runs the application

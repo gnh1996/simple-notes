@@ -692,6 +692,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/media/{id}": {
         parameters: {
             query?: never;
@@ -1427,6 +1443,16 @@ export interface components {
         PublishRequest: {
             /** Format: int64 */
             version: number;
+        };
+        VersionResponse: {
+            /** @description 产品发布版本：Git tag 去掉 v（如 0.2.0）；本地构建为 0.0.0-dev */
+            version: string;
+            /** @description 构建对应 commit 短哈希；未知时为 unknown */
+            commit: string;
+            /** @description 构建时间（ISO-8601）；未知时为 unknown */
+            buildTime: string;
+            /** @description API 契约代际标签，与 OpenAPI info.version 一致 */
+            contract: string;
         };
         StreamingResponseBody: unknown;
         SyncItem: {
@@ -3360,6 +3386,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["AttachmentResponse"];
+                };
+            };
+        };
+    };
+    getVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["VersionResponse"];
                 };
             };
         };

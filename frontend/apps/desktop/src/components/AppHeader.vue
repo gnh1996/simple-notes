@@ -8,6 +8,8 @@ import type { ThemeMode } from '../composables/useTheme'
 defineProps<{
   session: Session | null
   status: Status | null
+  /** 服务端版本；空串表示未知。 */
+  serverVersion: string
   syncing: boolean
   pending: number
   online: boolean
@@ -203,6 +205,10 @@ function run(action: () => void): void {
             {{ option.label }}
           </button>
         </div>
+        <div class="my-1 border-t border-app-border" />
+        <p class="px-1 py-1 text-[10px] leading-relaxed text-app-muted">
+          桌面端 v{{ status?.version || '0.0.0-dev' }} · 服务端 {{ serverVersion ? `v${serverVersion}` : '未知' }}
+        </p>
         <div class="my-1 border-t border-app-border" />
         <button class="w-full rounded px-2 py-1.5 text-left hover:bg-app-bg" type="button" @click="run(() => emit('open-logs'))">
           打开日志目录

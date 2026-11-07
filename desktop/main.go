@@ -40,12 +40,16 @@ var assets embed.FS
 var appIcon []byte
 
 func main() {
-	logService, logErr := logging.Init(system.Version)
+	logService, logErr := logging.Init(system.DisplayVersion())
 	if logErr != nil {
 		log.Printf("初始化运行日志失败: %v", logErr)
 	}
 	defer logService.Close()
-	logging.Info("app.start", "应用启动", map[string]string{"version": system.Version})
+	logging.Info("app.start", "应用启动", map[string]string{
+		"version":   system.Version,
+		"commit":    system.Commit,
+		"buildTime": system.BuildTime,
+	})
 
 	db, err := store.Open()
 	if err != nil {

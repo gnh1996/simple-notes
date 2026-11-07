@@ -7,5 +7,6 @@ export {
 };
 
 export type {
-    Status
+    Status,
+    VersionInfo
 } from "./models.js";

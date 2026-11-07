@@ -96,6 +96,7 @@ export const api: SimpleNotesApi = createSimpleNotesApi(
 )
 
 export const {
+  meta: metaApi,
   auth: authApi,
   users: userApi,
   roles: roleApi,

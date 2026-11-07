@@ -19,6 +19,9 @@ tasks:
           EXTRA_TAGS: '{{.EXTRA_TAGS}}'
           OBFUSCATED: '{{.OBFUSCATED}}'
           GARBLE_ARGS: '{{.GARBLE_ARGS}}'
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
     vars:
       DEFAULT_OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}'
       OUTPUT: '{{ .OUTPUT | default .DEFAULT_OUTPUT }}'
@@ -44,7 +47,13 @@ tasks:
       - wails3 tool prepare-macos-output --dir "{{.BIN_DIR}}"
       - '{{if eq .OBFUSCATED "true"}}garble {{.GARBLE_ARGS}} build{{else}}go build{{end}} {{.BUILD_FLAGS}} -o "{{.OUTPUT}}"'
     vars:
-      BUILD_FLAGS: '{{if eq .DEV "true"}}{{if or .EXTRA_TAGS (eq .OBFUSCATED "true")}}-tags {{if eq .OBFUSCATED "true"}}wails_obfuscated{{if .EXTRA_TAGS}},{{end}}{{end}}{{.EXTRA_TAGS}} {{end}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production{{if eq .OBFUSCATED "true"}},wails_obfuscated{{end}}{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}} -trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
+      # 发布版本三元组（docs/release.md §3）：由发布脚本经 VERSION= COMMIT= BUILD_TIME= 传入，
+      # 经 -X 烘焙进二进制；本地构建保持 dev 默认值。
+      VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+      COMMIT: '{{.COMMIT | default "unknown"}}'
+      BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
+      VERSION_LDFLAGS: '-X cc.naihao/simplenotes/desktop/internal/system.Version={{.VERSION}} -X cc.naihao/simplenotes/desktop/internal/system.Commit={{.COMMIT}} -X cc.naihao/simplenotes/desktop/internal/system.BuildTime={{.BUILD_TIME}}'
+      BUILD_FLAGS: '{{if eq .DEV "true"}}{{if or .EXTRA_TAGS (eq .OBFUSCATED "true")}}-tags {{if eq .OBFUSCATED "true"}}wails_obfuscated{{if .EXTRA_TAGS}},{{end}}{{end}}{{.EXTRA_TAGS}} {{end}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production{{if eq .OBFUSCATED "true"}},wails_obfuscated{{end}}{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}} -trimpath -buildvcs=false -ldflags="-w -s {{.VERSION_LDFLAGS}}"{{end}}'
       DEFAULT_OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}'
       OUTPUT: '{{ .OUTPUT | default .DEFAULT_OUTPUT }}'
     env:
@@ -93,10 +102,16 @@ tasks:
         vars:
           ARCH: amd64
           OUTPUT: "{{.BIN_DIR}}/{{.APP_NAME}}-amd64"
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
       - task: build
         vars:
           ARCH: arm64
           OUTPUT: "{{.BIN_DIR}}/{{.APP_NAME}}-arm64"
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
     cmds:
       - task: '{{if eq OS "darwin"}}build:universal:lipo:native{{else}}build:universal:lipo:go{{end}}'
 
@@ -118,6 +133,10 @@ tasks:
     summary: Packages the application into a `.app` bundle
     deps:
       - task: build
+        vars:
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
     cmds:
       - task: create:app:bundle
 
@@ -125,6 +144,10 @@ tasks:
     summary: Packages darwin universal binary (arm64 + amd64)
     deps:
       - task: build:universal
+        vars:
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
     cmds:
       - task: create:app:bundle
 
@@ -132,6 +155,10 @@ tasks:
     summary: Packages the application into a styled `.dmg`
     deps:
       - task: package
+        vars:
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
     cmds:
       - task: create:dmg
 

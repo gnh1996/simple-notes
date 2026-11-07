@@ -30,6 +30,14 @@ export function OpenAdmin(path: string): $CancellablePromise<void> {
 }
 
 /**
+ * ServerVersion 查询服务端版本（GET /version，匿名接口）。
+ * 后端不可达或版本未知时返回 error，前端展示"未知"，不阻塞其他功能。
+ */
+export function ServerVersion(): $CancellablePromise<$models.VersionInfo> {
+    return $Call.ByID(1982445442);
+}
+
+/**
  * SetTitle 更新窗口标题（当前标签标题 + 未保存标记）。
  */
 export function SetTitle(title: string): $CancellablePromise<void> {

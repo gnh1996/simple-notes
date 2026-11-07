@@ -9,15 +9,32 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"cc.naihao/simplenotes/desktop/internal/api"
 	"cc.naihao/simplenotes/desktop/internal/store"
 )
 
-// Version 为桌面端版本；发布时由构建参数覆盖。
-var Version = "0.1.0"
+// Version / Commit / BuildTime 为桌面端版本三元组（docs/release.md §3）。
+// 发布时由构建参数覆盖（-ldflags -X），本地构建保持 dev 默认值。
+// 前端"关于"与诊断信息展示 Version + Commit；Status 透出全部三元组。
+var (
+	Version   = "0.0.0-dev"
+	Commit    = "unknown"
+	BuildTime = "unknown"
+)
+
+// DisplayVersion 返回用户可见版本（about / 日志首行 / 诊断信息共用）。
+func DisplayVersion() string {
+	if Commit == "" || Commit == "unknown" {
+		return Version
+	}
+	return Version + " (" + Commit + ")"
+}
 
 // Status 是前端可见的运行状态。
 type Status struct {
 	Version      string `json:"version"`
+	Commit       string `json:"commit"`
+	BuildTime    string `json:"buildTime"`
 	APIBaseURL   string `json:"apiBaseUrl"`
 	DatabasePath string `json:"databasePath"`
 	HasToken     bool   `json:"hasToken"`
@@ -28,15 +45,24 @@ type Status struct {
 	Nickname     string `json:"nickname"`
 }
 
+// VersionInfo 是服务端 GET /api/version 的响应形状（后端 VersionResponse）。
+type VersionInfo struct {
+	Version   string `json:"version"`
+	Commit    string `json:"commit"`
+	BuildTime string `json:"buildTime"`
+	Contract  string `json:"contract"`
+}
+
 // Service 通过 Wails binding 暴露系统信息服务。
 type Service struct {
 	db      *store.Store
 	baseURL string
+	apiSvc  *api.Service
 }
 
 // New 创建系统信息服务。
 func New(db *store.Store, baseURL string) *Service {
-	return &Service{db: db, baseURL: baseURL}
+	return &Service{db: db, baseURL: baseURL, apiSvc: api.New(db, baseURL)}
 }
 
 // Status 返回当前运行状态；令牌只报告是否存在，不回传明文。
@@ -44,6 +70,8 @@ func (s *Service) Status() Status {
 	_, hasToken, err := s.db.Token()
 	status := Status{
 		Version:      Version,
+		Commit:       Commit,
+		BuildTime:    BuildTime,
 		APIBaseURL:   s.baseURL,
 		DatabasePath: s.db.Path(),
 		HasToken:     err == nil && hasToken,
@@ -59,6 +87,16 @@ func (s *Service) Status() Status {
 		status.Nickname = scope.Nickname
 	}
 	return status
+}
+
+// ServerVersion 查询服务端版本（GET /version，匿名接口）。
+// 后端不可达或版本未知时返回 error，前端展示"未知"，不阻塞其他功能。
+func (s *Service) ServerVersion() (VersionInfo, error) {
+	var info VersionInfo
+	if err := s.apiSvc.Get("/version", &info); err != nil {
+		return VersionInfo{}, err
+	}
+	return info, nil
 }
 
 // GetUIState 读取本机界面状态（标签顺序 / 侧栏宽度等）；不存在返回空串。

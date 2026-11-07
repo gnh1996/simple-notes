@@ -85,6 +85,9 @@ export type SiteResponse = Schema['SiteResponse']
 export type SitePageResponse = Schema['SitePageResponse']
 export type SitePageRequest = Schema['SitePageRequest']
 
+/** 服务端版本自证（`GET /api/version`，匿名；docs/release.md） */
+export type VersionResponse = Schema['VersionResponse']
+
 export type ThemeSummary = Schema['ThemeSummary']
 export type ThemeVersionResponse = Schema['ThemeVersionResponse']
 export type CreateThemeRequest = Schema['CreateThemeRequest']
@@ -361,6 +364,13 @@ export function createSiteApi(client: ApiClient) {
   }
 }
 
+/** 服务端版本自证（`/api/version`：匿名，不含敏感信息；docs/release.md） */
+export function createMetaApi(client: ApiClient) {
+  return {
+    version: () => client.get<VersionResponse>('/version'),
+  }
+}
+
 /** 主题管理（`/api/admin/themes`）：版本不可变，应用 / 回滚都走 activate */
 export function createThemeApi(client: ApiClient) {
   return {
@@ -383,6 +393,7 @@ export function createThemeApi(client: ApiClient) {
  */
 export function createSimpleNotesApi(client: ApiClient) {
   return {
+    meta: createMetaApi(client),
     auth: createAuthApi(client),
     users: createUserApi(client),
     roles: createRoleApi(client),

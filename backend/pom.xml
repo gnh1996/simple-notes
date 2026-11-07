@@ -5,7 +5,10 @@
 
     <groupId>cc.naihao</groupId>
     <artifactId>simple-notes</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <!-- 发布版本唯一来源：Git tag（docs/release.md）。
+         本地默认 0.0.0-dev；发布时用 -Drevision=<tag 去掉 v> 构建，
+         版本号经 build-info 烘焙进 jar，由 GET /api/version 对外自证。 -->
+    <version>${revision}</version>
     <name>simple-notes-backend</name>
     <description>随手记（Simple Notes）后端服务</description>
 
@@ -15,6 +18,8 @@
       - 插件版本、编译器参数等原先由 parent 提供的默认值在此显式声明（保持 pom 自描述）
     -->
     <properties>
+        <!-- 发布版本默认值（本地构建）；发布构建用 -Drevision 覆盖，见 docs/release.md -->
+        <revision>0.0.0-dev</revision>
         <java.version>25</java.version>
         <maven.compiler.release>${java.version}</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -221,6 +226,15 @@
                         <id>repackage</id>
                         <goals>
                             <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                    <!-- 生成 META-INF/build-info.properties：版本号与构建时间烘焙进 jar，
+                         由 GET /api/version 对外自证（docs/release.md）。缺失时（如 IDE 直接运行）
+                         控制器回退到 APP_VERSION / 0.0.0-dev，不影响启动。 -->
+                    <execution>
+                        <id>build-info</id>
+                        <goals>
+                            <goal>build-info</goal>
                         </goals>
                     </execution>
                 </executions>

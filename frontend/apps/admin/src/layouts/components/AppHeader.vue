@@ -2,11 +2,12 @@
 import { ArrowDown, Expand, Fold, Moon, Sunny, SwitchButton, User } from '@element-plus/icons-vue'
 import { useBreakpoint } from '@simple-notes/shared'
 import { ElMessageBox } from 'element-plus'
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useTheme } from '@/composables/useTheme'
 import { useAuthStore } from '@/stores/auth'
+import { APP_VERSION, fetchServerVersion } from '@/utils/version'
 
 import AppBreadcrumb from './AppBreadcrumb.vue'
 
@@ -19,6 +20,13 @@ const { isMobile } = useBreakpoint()
 const { isDark, toggleTheme } = useTheme()
 
 const avatarText = computed(() => auth.displayName.slice(0, 1).toUpperCase() || 'U')
+
+const serverVersion = ref('')
+
+onMounted(async () => {
+  const info = await fetchServerVersion()
+  serverVersion.value = info?.version ?? ''
+})
 
 async function onCommand(command: string): Promise<void> {
   if (command === 'profile') {
@@ -81,6 +89,9 @@ async function onCommand(command: string): Promise<void> {
             <el-dropdown-item command="logout" divided>
               <el-icon><SwitchButton /></el-icon>退出登录
             </el-dropdown-item>
+            <div class="px-4 py-1 text-xs text-[var(--el-text-color-secondary)]">
+              管理端 v{{ APP_VERSION }} · 服务端 {{ serverVersion ? `v${serverVersion}` : '未知' }}
+            </div>
           </el-dropdown-menu>
         </template>
       </el-dropdown>

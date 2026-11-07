@@ -26,6 +26,9 @@ tasks:
           EXTRA_TAGS: '{{.EXTRA_TAGS}}'
           OBFUSCATED: '{{.OBFUSCATED}}'
           GARBLE_ARGS: '{{.GARBLE_ARGS}}'
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
     vars:
       # Default to CGO_ENABLED=0 if not explicitly set
       CGO_ENABLED: '{{.CGO_ENABLED | default "0"}}'
@@ -57,7 +60,13 @@ tasks:
       - cmd: rm -f *.syso
         platforms: [linux, darwin]
     vars:
-      BUILD_FLAGS: '{{if eq .DEV "true"}}{{if or .EXTRA_TAGS (eq .OBFUSCATED "true")}}-tags {{if eq .OBFUSCATED "true"}}wails_obfuscated{{if .EXTRA_TAGS}},{{end}}{{end}}{{.EXTRA_TAGS}} {{end}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production{{if eq .OBFUSCATED "true"}},wails_obfuscated{{end}}{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}} -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui"{{end}}'
+      # 发布版本三元组（docs/release.md §3）：由发布脚本经 VERSION= COMMIT= BUILD_TIME= 传入，
+      # 经 -X 烘焙进二进制；本地构建保持 dev 默认值。
+      VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+      COMMIT: '{{.COMMIT | default "unknown"}}'
+      BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
+      VERSION_LDFLAGS: '-X cc.naihao/simplenotes/desktop/internal/system.Version={{.VERSION}} -X cc.naihao/simplenotes/desktop/internal/system.Commit={{.COMMIT}} -X cc.naihao/simplenotes/desktop/internal/system.BuildTime={{.BUILD_TIME}}'
+      BUILD_FLAGS: '{{if eq .DEV "true"}}{{if or .EXTRA_TAGS (eq .OBFUSCATED "true")}}-tags {{if eq .OBFUSCATED "true"}}wails_obfuscated{{if .EXTRA_TAGS}},{{end}}{{end}}{{.EXTRA_TAGS}} {{end}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production{{if eq .OBFUSCATED "true"}},wails_obfuscated{{end}}{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}} -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui {{.VERSION_LDFLAGS}}"{{end}}'
     env:
       GOOS: windows
       CGO_ENABLED: '{{.CGO_ENABLED | default "0"}}'
@@ -100,6 +109,9 @@ tasks:
       - task: '{{if eq (.FORMAT | default "nsis") "msix"}}create:msix:package{{else}}create:nsis:installer{{end}}'
         vars:
           INSTALL_SCOPE: '{{.INSTALL_SCOPE | default "machine"}}'
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
     vars:
       FORMAT: '{{.FORMAT | default "nsis"}}'
       INSTALL_SCOPE: '{{.INSTALL_SCOPE | default "machine"}}'
@@ -117,6 +129,10 @@ tasks:
     dir: build/windows/nsis
     deps:
       - task: build
+        vars:
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
     preconditions:
       - sh: '[ "{{.INSTALL_SCOPE}}" = "user" ] || [ "{{.INSTALL_SCOPE}}" = "machine" ]'
         msg: "INSTALL_SCOPE must be 'user' or 'machine', got '{{.INSTALL_SCOPE}}'"
@@ -138,6 +154,10 @@ tasks:
     summary: Creates an MSIX package
     deps:
       - task: build
+        vars:
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
     cmds:
       - |-
         wails3 tool msix \
@@ -173,6 +193,10 @@ tasks:
       Password is retrieved from system keychain (run: wails3 setup signing)
     deps:
       - task: build
+        vars:
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
     cmds:
       # Certificate vars are optional: if unset, `wails3 tool sign` falls back to
       # the certificate configured globally via `wails3 setup`.
@@ -189,6 +213,9 @@ tasks:
       - task: create:nsis:installer
         vars:
           INSTALL_SCOPE: '{{.INSTALL_SCOPE | default "machine"}}'
+          VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+          COMMIT: '{{.COMMIT | default "unknown"}}'
+          BUILD_TIME: '{{.BUILD_TIME | default "unknown"}}'
     vars:
       INSTALL_SCOPE: '{{.INSTALL_SCOPE | default "machine"}}'
     cmds:
