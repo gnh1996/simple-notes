@@ -4,6 +4,7 @@ import cc.naihao.simplenotes.security.DbUserDetailsService;
 import cc.naihao.simplenotes.security.RestAccessDeniedHandler;
 import cc.naihao.simplenotes.security.RestAuthenticationEntryPoint;
 import cc.naihao.simplenotes.security.SessionJwtFilter;
+import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -44,7 +45,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@EnableConfigurationProperties({ AuthProperties.class, SiteProperties.class })
+@EnableConfigurationProperties({ AuthProperties.class, SiteProperties.class, AiProperties.class })
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -81,6 +82,9 @@ public class SecurityConfig {
                 .logout(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // SSE（SseEmitter）异步重派发：初始派发已做完整认证 + 方法级权限，
+                        // 重入时 SecurityContext 为空（无状态 JWT 不传播），放行以免响应已提交后报 403 噪声
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         // Spring Boot 错误分发路径：保证异常响应不被授权规则二次拦截
                         .requestMatchers("/error").permitAll()
                         // OpenAPI 契约（docs/tech-stack.md：契约单一来源，前端 / 桌面端生成客户端用）

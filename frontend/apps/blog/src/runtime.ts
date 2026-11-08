@@ -6,7 +6,7 @@ import runtimeCss from './runtime.css?raw'
 
 import { api } from './api'
 import { blogComponents } from './components'
-import { RUNTIME_CONTRACT } from './contract'
+import { CONTRACT_CSS_VARS, RUNTIME_CONTRACT } from './contract'
 import { fixtureArchives, fixturePage, fixturePost, fixturePosts, fixtureTags } from './fixtures'
 import { warmMarkdown } from './markdown'
 import {
@@ -668,6 +668,83 @@ function scrollToTop(): void {
 let mountTemplate = ''
 let markdownRendered = false
 
+// ---------------------------------------------------------------------------
+// 渲染自检（docs/theme-ai.md §4 A 档回灌）：admin 抽屉 hidden iframe 收集确定性信号。
+// 只收 window error / unhandledrejection（不包 console 方法，不影响生产行为），最多 20 条。
+// ---------------------------------------------------------------------------
+
+const renderErrorLog: string[] = []
+
+function captureRenderError(message: string): void {
+  if (renderErrorLog.length >= 20) return
+  renderErrorLog.push(message.slice(0, 300))
+}
+
+window.addEventListener('error', (event) => {
+  captureRenderError(`error: ${event.message || String(event.error || 'unknown')}`)
+})
+
+window.addEventListener('unhandledrejection', (event) => {
+  captureRenderError(`rejection: ${String(event.reason)}`)
+})
+
+interface DiagnoseReport {
+  ok: boolean
+  errors: string[]
+  warnings: string[]
+  stats: Record<string, string | number | boolean>
+}
+
+/**
+ * 对“当前已挂载主题 + 候选 html/css”做确定性自检。
+ * 静态校验（validateTheme）+ 活 DOM 信号（挂载、横向溢出、未解析插值、契约变量计算值、启动错误）。
+ * 无截图、无视觉模型：弱模型也能消费的纯文本报告。
+ */
+function collectDiagnose(html: string, css: string): DiagnoseReport {
+  const errors: string[] = []
+  const warnings: string[] = []
+  const validation = validateTheme(html, css)
+  for (const item of validation.errors) {
+    errors.push(`第 ${item.line} 行：${item.message}`)
+  }
+
+  const app = document.getElementById('app')
+  const stats: DiagnoseReport['stats'] = {
+    hasApp: !!app,
+    appChildren: app?.childElementCount ?? 0,
+    blogReady: document.documentElement.dataset.blogReady === '1',
+    renderErrors: renderErrorLog.length,
+  }
+  if (!app) {
+    errors.push('活 DOM 缺少 id="app" 根节点（主题未挂载）')
+  } else if (app.childElementCount === 0) {
+    warnings.push('#app 已挂载但无子元素（首页可能空白）')
+  }
+
+  if (document.documentElement.scrollWidth > document.documentElement.clientWidth + 1) {
+    warnings.push(`横向溢出：scrollWidth=${document.documentElement.scrollWidth} > clientWidth=${document.documentElement.clientWidth}（320/375 下会出现横向滚动）`)
+  }
+
+  const leftover = app?.innerHTML.match(/{{[^}]+}}/g) ?? []
+  if (leftover.length) {
+    warnings.push(`有 ${leftover.length} 处插值未解析（首条：${(leftover[0] ?? '').slice(0, 60)}），可能是表达式写错或数据键未登记`)
+  }
+  stats.unresolvedInterpolations = leftover.length
+
+  const computed = getComputedStyle(document.documentElement)
+  const emptyVars = CONTRACT_CSS_VARS.filter((name) => !computed.getPropertyValue(name).trim())
+  stats.emptyContractVars = emptyVars.length
+  if (emptyVars.length) {
+    warnings.push(`契约变量无计算值（${emptyVars.length}）：${emptyVars.slice(0, 6).join('、')}${emptyVars.length > 6 ? '…' : ''}`)
+  }
+
+  for (const message of renderErrorLog) {
+    errors.push(`运行时错误：${message}`)
+  }
+
+  return { ok: errors.length === 0, errors: errors.slice(0, 20), warnings: warnings.slice(0, 10), stats }
+}
+
 // 首帧是否等到正文真正渲染：博客正文由 Lute 异步输出，早于它揭开 cloak 会只剩标题
 window.addEventListener('blog:markdown-rendered', () => {
   markdownRendered = true
@@ -791,6 +868,15 @@ async function main(): Promise<void> {
         id: data.id,
         ok: result.ok,
         errors: result.errors,
+      })
+    } else if (data.type === 'blog-preview:diagnose') {
+      reply({
+        type: 'blog-preview:diagnosed',
+        id: data.id,
+        report: collectDiagnose(
+          typeof data.html === 'string' ? data.html : mountTemplate,
+          typeof data.css === 'string' ? data.css : '',
+        ),
       })
     }
   })

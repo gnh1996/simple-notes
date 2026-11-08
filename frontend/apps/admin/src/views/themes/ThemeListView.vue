@@ -8,6 +8,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
 import { themeApi } from '@/api'
 import { notifyError } from '@/utils/feedback'
+import AiChatDrawer from './components/AiChatDrawer.vue'
 import LargeTextEditor from './components/LargeTextEditor.vue'
 
 const BLOG_URL = (import.meta.env.VITE_BLOG_URL as string | undefined) ?? 'http://localhost:8080'
@@ -33,6 +34,7 @@ const previewUrl = ref('')
 const previewWidth = ref(1024)
 const previewing = ref('')
 const previewVersion = ref<ThemeVersionResponse | null>(null)
+const previewDraft = ref<{ id: string; token: string; html: string; css: string } | null>(null)
 const previewIframe = ref<HTMLIFrameElement>()
 const previewErrors = ref<Array<{ line: number; message: string }>>([])
 const previewValidated = ref(false)
@@ -146,6 +148,15 @@ async function saveAndPreview(): Promise<void> {
 }
 
 function buildPreviewUrl(): void {
+  if (previewDraft.value) {
+    const params = new URLSearchParams({
+      previewDraft: previewDraft.value.id,
+      token: previewDraft.value.token,
+    })
+    if (useFixtures.value) params.set('fixtures', '1')
+    previewUrl.value = `${BLOG_URL}/?${params.toString()}`
+    return
+  }
   if (!previewVersion.value) {
     previewUrl.value = ''
     return
@@ -167,6 +178,7 @@ async function preview(version: any): Promise<void> {
   try {
     const token = await themeApi.previewToken(selected.value.id, version.id)
     previewToken.value = token.token
+    previewDraft.value = null
     previewVersion.value = version as ThemeVersionResponse
     previewing.value = `v${version.versionNo}`
     previewErrors.value = []
@@ -192,9 +204,18 @@ function sendPreviewMessage(payload: Record<string, unknown>): void {
 }
 
 function sendPreviewValidate(): void {
-  if (!previewVersion.value) return
   const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`
   previewMessageId.value = id
+  if (previewDraft.value) {
+    sendPreviewMessage({
+      type: 'blog-preview:validate',
+      id,
+      html: previewDraft.value.html,
+      css: previewDraft.value.css,
+    })
+    return
+  }
+  if (!previewVersion.value) return
   sendPreviewMessage({
     type: 'blog-preview:validate',
     id,
@@ -246,8 +267,50 @@ async function activate(version: any): Promise<void> {
   }
 }
 
+const aiVisible = ref(false)
 const htmlEditorRef = ref<InstanceType<typeof LargeTextEditor> | null>(null)
 const cssEditorRef = ref<InstanceType<typeof LargeTextEditor> | null>(null)
+const aiBaseHtml = computed(() => versions.value[0]?.html || starterThemeHtml)
+const aiBaseCss = computed(() => versions.value[0]?.css || starterThemeCss)
+
+function fillFromAi(html: string, css: string): void {
+  if (!selected.value) {
+    ElMessage.warning('请先选中一个主题')
+    return
+  }
+  aiVisible.value = false
+  editor.themeId = selected.value.id
+  editor.versionId = ''
+  editor.versionNo = (versions.value[0]?.versionNo ?? 0) + 1
+  editor.html = html
+  editor.css = css
+  editor.contract = starterThemeMeta.contract as number
+  editorVisible.value = true
+}
+
+async function afterAiSaved(): Promise<void> {
+  await loadThemes()
+  if (selected.value) await selectTheme(selected.value)
+}
+
+async function afterAiCreated(theme: ThemeSummary): Promise<void> {
+  aiVisible.value = false
+  await loadThemes()
+  const found = themes.value.find((item) => item.id === theme.id)
+  if (found) await selectTheme(found)
+}
+
+function openPreviewDraft(draftId: string, token: string, html: string, css: string): void {
+  aiVisible.value = false
+  previewDraft.value = { id: draftId, token, html, css }
+  previewVersion.value = null
+  previewing.value = 'AI 草稿'
+  previewErrors.value = []
+  previewValidated.value = false
+  buildPreviewUrl()
+  previewVisible.value = true
+}
+
 onMounted(() => {
   window.addEventListener('message', onPreviewMessage)
   void loadThemes()
@@ -266,6 +329,7 @@ onBeforeUnmount(() => {
           <span>主题</span>
           <div class="flex items-center gap-2">
             <el-button size="small" :loading="loading" @click="loadThemes">刷新</el-button>
+            <el-button v-perm="'admin:theme:write'" size="small" @click="aiVisible = true">AI 对话</el-button>
             <el-button type="primary" size="small" @click="createTheme">新建主题</el-button>
           </div>
         </div>
@@ -419,5 +483,16 @@ onBeforeUnmount(() => {
         ></iframe>
       </div>
     </el-dialog>
+
+    <AiChatDrawer
+      v-model:visible="aiVisible"
+      :theme-id="selected?.id ?? null"
+      :base-html="aiBaseHtml"
+      :base-css="aiBaseCss"
+      @fill="fillFromAi"
+      @saved="afterAiSaved"
+      @created="afterAiCreated"
+      @preview-draft="openPreviewDraft"
+    />
   </div>
 </template>

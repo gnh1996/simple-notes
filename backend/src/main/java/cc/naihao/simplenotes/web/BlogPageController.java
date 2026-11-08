@@ -3,6 +3,7 @@ package cc.naihao.simplenotes.web;
 import cc.naihao.simplenotes.config.SiteProperties;
 import cc.naihao.simplenotes.config.StorageProperties;
 import cc.naihao.simplenotes.domain.SiteThemeVersion;
+import cc.naihao.simplenotes.site.AiDraftCache;
 import cc.naihao.simplenotes.site.PreviewTokenService;
 import cc.naihao.simplenotes.site.SiteSettingService;
 import cc.naihao.simplenotes.site.ThemeService;
@@ -109,6 +110,7 @@ public class BlogPageController {
     private final SiteSettingService settingService;
     private final ThemeService themeService;
     private final PreviewTokenService previewTokenService;
+    private final AiDraftCache aiDraftCache;
     private final SiteProperties siteProperties;
     private final StorageProperties storageProperties;
     private final ObjectMapper objectMapper;
@@ -119,14 +121,34 @@ public class BlogPageController {
     @GetMapping({"/", SHELL_PATH, SHELL_PATH + "/**"})
     public void page(HttpServletRequest request, HttpServletResponse response) throws IOException {
         String previewVersionId = request.getParameter("previewTheme");
-        boolean preview = previewVersionId != null && !previewVersionId.isBlank();
+        String previewDraftId = request.getParameter("previewDraft");
+        boolean preview = (previewVersionId != null && !previewVersionId.isBlank())
+                || (previewDraftId != null && !previewDraftId.isBlank());
         SiteThemeVersion theme;
-        if (preview) {
-            if (!previewTokenService.verify(previewVersionId, request.getParameter("token"))) {
-                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        // AI 草稿预览（docs/theme-ai.md §4）：未入库的中间态，token 同主题预览签名，缓存过期即 404
+        String draftHtml = null;
+        String draftCss = null;
+        int draftContract = ThemeService.RUNTIME_CONTRACT;
+        if (previewDraftId != null && !previewDraftId.isBlank()) {
+            if (!previewTokenService.verify(previewDraftId, request.getParameter("token"))) {
+                deny(response);
+                return;
+            }
+            AiDraftCache.Draft draft = aiDraftCache.get(previewDraftId);
+            if (draft == null) {
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
                 response.setHeader("Cache-Control", "no-store");
                 response.setContentType("text/plain;charset=UTF-8");
-                response.getWriter().write("预览链接无效或已过期");
+                response.getWriter().write("草稿已过期，请重新生成");
+                return;
+            }
+            draftHtml = draft.html();
+            draftCss = draft.css();
+            draftContract = draft.contract();
+            theme = null;
+        } else if (preview) {
+            if (!previewTokenService.verify(previewVersionId, request.getParameter("token"))) {
+                deny(response);
                 return;
             }
             theme = ensureContract(themeService.previewVersion(previewVersionId));
@@ -136,11 +158,20 @@ public class BlogPageController {
         }
 
         SiteResponse site = settingService.publicSite();
-        String themeId = theme == null ? "default" : theme.getThemeId();
-        int themeVersionNo = theme == null ? 0 : theme.getVersionNo();
-        int themeContract = theme == null ? ThemeService.RUNTIME_CONTRACT : theme.getContract();
+        String themeId;
+        int themeVersionNo;
+        int themeContract;
+        if (draftHtml != null) {
+            themeId = "draft";
+            themeVersionNo = 0;
+            themeContract = draftContract;
+        } else {
+            themeId = theme == null ? "default" : theme.getThemeId();
+            themeVersionNo = theme == null ? 0 : theme.getVersionNo();
+            themeContract = theme == null ? ThemeService.RUNTIME_CONTRACT : theme.getContract();
+        }
 
-        String etag = "\"" + themeId + "-" + themeVersionNo + "-"
+        String etag = "\"" + themeId + "-" + (draftHtml != null ? previewDraftId : String.valueOf(themeVersionNo)) + "-"
                 + settingService.currentVersion() + "-" + assetBase() + "-" + SHELL_VERSION + "\"";
         String cacheControl = preview
                 ? "no-store"
@@ -154,8 +185,8 @@ public class BlogPageController {
             return;
         }
 
-        String html = theme == null ? defaultHtml() : theme.getHtml();
-        String css = theme == null ? defaultCss() : theme.getCss();
+        String html = draftHtml != null ? draftHtml : theme == null ? defaultHtml() : theme.getHtml();
+        String css = draftCss != null ? draftCss : theme == null ? defaultCss() : theme.getCss();
 
         response.setContentType("text/html;charset=UTF-8");
         response.setHeader("Content-Security-Policy", csp());
@@ -180,6 +211,13 @@ public class BlogPageController {
             return null;
         }
         return version;
+    }
+
+    private void deny(HttpServletResponse response) throws IOException {
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        response.setHeader("Cache-Control", "no-store");
+        response.setContentType("text/plain;charset=UTF-8");
+        response.getWriter().write("预览链接无效或已过期");
     }
 
     private String render(String themeHtml, String themeCss, String bootJson, SiteResponse site,

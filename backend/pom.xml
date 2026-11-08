@@ -32,6 +32,8 @@
         <lombok.version>1.18.46</lombok.version>
         <!-- 与 Spring Boot BOM 内 querydsl.version 属性区分，避免同名歧义 -->
         <openfeign-querydsl.version>7.7</openfeign-querydsl.version>
+        <!-- Spring AI（Apache-2.0）：主题 AI 对话（docs/theme-ai.md）；BOM 独立于 Boot BOM 管理 -->
+        <spring-ai.version>2.0.2</spring-ai.version>
         <!-- R2 / S3 兼容对象存储（Apache 2.0）；版本独立于 Spring Boot BOM -->
         <awssdk.version>2.57.8</awssdk.version>
 
@@ -45,6 +47,14 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
                 <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <!-- 主题 AI 对话（docs/theme-ai.md）：版本独立于 Boot BOM，用 spring-ai.version 钉死 -->
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -86,6 +96,19 @@
                 <groupId>tools.jackson.core</groupId>
                 <artifactId>jackson-core</artifactId>
                 <version>3.1.7</version>
+            </dependency>
+            <!-- openai-java-core 固定依赖 swagger-annotations:2.2.31（就近优先压过 springdoc），
+              springdoc 3.1.1（swagger-api 2.2.55）运行时反射 $dynamicRef 报 NoSuchMethodError，
+              故显式钉回 2.2.55（与 springdoc-openapi:3.1.1 的 swagger-api.version 对齐） -->
+            <dependency>
+                <groupId>io.swagger.core.v3</groupId>
+                <artifactId>swagger-annotations</artifactId>
+                <version>2.2.55</version>
+            </dependency>
+            <dependency>
+                <groupId>io.swagger.core.v3</groupId>
+                <artifactId>swagger-models</artifactId>
+                <version>2.2.55</version>
             </dependency>
             <dependency>
                 <!-- 6 个 CVE 统一在 9.11 修复；仅测试域 -->
@@ -141,6 +164,10 @@
             <groupId>io.github.openfeign.querydsl</groupId>
             <artifactId>querydsl-jpa</artifactId>
             <version>${openfeign-querydsl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
         </dependency>
         <dependency>
             <groupId>software.amazon.awssdk</groupId>

@@ -66,6 +66,14 @@
 
 ## 变更记录
 
+### 2026-11-07 · 主题 AI 对话 v1（Spring AI 2.0，见 `docs/theme-ai.md`）
+
+- **形态**：admin 端 `AI 对话` 抽屉（手写 SSE + artifact 卡片，不引入聊天 UI 依赖）；后端 `AiThemeService` 编排流式生成 + 校验修复循环（`token / round / done / error`），无服务端记忆、无 tool calling
+- **依赖**：新增 `spring-ai-bom:2.0.2`（`dependencyManagement` 独立 import）+ `spring-ai-starter-model-openai`（Apache-2.0）；`spring.ai.model.chat=none` 关自动装配，模型懒加载手工构建（key 缺失 fail-soft）
+- **配置**：`simple-notes.ai.*`（`AI_BASE_URL / AI_API_KEY / AI_MODEL / AI_TIMEOUT / AI_MAX_ROUNDS / AI_MAX_HISTORY_TURNS`），模板进 `application-local.yml.example`；密钥不入库不落日志
+- **预览**：`AiDraftCache`（Caffeine，TTL 对齐 `preview-ttl`，无 Flyway）+ `BlogPageController` 的 `previewDraft` 分支；定版复用 `createVersion` + 人工 `activate`
+- **验证**：`AiThemePromptTest`（抽取/校验/默认主题回归）+ 后端编译 + admin/api `typecheck` 全绿
+
 ### 2026-11-04 · 桌面端 Wails v3 beta.34 → v3.1.0（GA 线）
 
 - **形态**：`desktop/go.mod` 的 `github.com/wailsapp/wails/v3` 由 `v3.0.0-beta.34` 改为 **`v3.1.0`**；`@wailsio/runtime` catalog 同步 `3.1.0`；CLI 安装命令改为 `go install .../wails3@v3.1.0`。**无一行 Go / 前端源码改动**

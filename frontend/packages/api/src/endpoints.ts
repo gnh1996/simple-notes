@@ -385,6 +385,12 @@ export function createThemeApi(client: ApiClient) {
       client.post<ThemeSummary>(`/admin/themes/${id}/versions/${versionId}/activate`),
     previewToken: (id: string, versionId: string) =>
       client.post<PreviewTokenResponse>(`/admin/themes/${id}/versions/${versionId}/preview-token`),
+    /**
+     * AI 草稿预览 token（docs/theme-ai.md §4）。
+     * 流式对话本身走 fetch SSE（见 AiChatDrawer），不在此封装。
+     */
+    draftPreviewToken: (draftId: string) =>
+      client.post<PreviewTokenResponse>(`/admin/themes/ai-drafts/${draftId}/preview-token`),
   }
 }
 
