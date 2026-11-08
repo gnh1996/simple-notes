@@ -638,6 +638,7 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 体积 | HTML ≤ 64KB；CSS ≤ 256KB |
 | 版本 | `runtime.contract - theme.contract ∈ [0, 1]` |
 | CSS | `theme.overrides` 的键必须在 §3.6 白名单内，值须为安全的颜色 / 长度 / 字体族 token（后端校验；运行时只应用登记变量） |
+| 实体归一 | 保存时吃原文、运行时加载时吃 `app.outerHTML`（浏览器序列化把 `&&` 转写为 `&amp;&amp;`、`=>` 转写为 `=&gt;`）；三处扫描（`theme-contract.mjs` / `ThemeTemplateValidator` / runtime `validateTheme`）先按序列化逆操作解码实体再扫描，口径一致，否则合法表达式会被误判为未登记标识符导致回落默认主题 |
 
 校验失败一律拒绝保存，返回带行号的错误；运行时加载到历史 / 被篡改主题时校验失败会回落内置默认主题。
 

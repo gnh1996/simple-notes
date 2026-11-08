@@ -55,6 +55,30 @@ class ThemeTemplateValidatorTest {
     }
 
     @Test
+    @DisplayName("实体编码的操作符不误判：outerHTML 把 && / < / > 转写为实体，校验前已归一")
+    void serializedEntitiesPass() {
+        // 运行加载时校验吃的是 app.outerHTML（浏览器序列化产物），与这里的输入同形态
+        String outerHtmlLike = """
+                <div id="app">
+                  <blog-state v-if="state !== 'ready' || (searched &amp;&amp; !posts.length)" :state="state"></blog-state>
+                  <p>{{ posts.filter(item =&gt; item.title).length }} 篇</p>
+                  <p :class="{ active: listSort.direction == 'desc' &amp;&amp; state == 'ready' }">归档</p>
+                  <p :title="pager.total &gt; 0 ? keyword : 'y'">比较</p>
+                  <p>{{ pager.total &lt; 5 ? '少' : '多' }}</p>
+                </div>
+                """;
+        assertThatCode(() -> ThemeTemplateValidator.validateHtml(outerHtmlLike)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("编码后的禁用内容同样拒绝：&lt;script 与字面 <script 同口径")
+    void encodedScriptRejected() {
+        assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
+                "<div id=\"app\">&lt;script&gt;alert(1)&lt;/script&gt;</div>"))
+                .hasMessageContaining("禁用内容");
+    }
+
+    @Test
     @DisplayName("theme.overrides 只接受契约变量与安全值")
     void validatesThemeOverrides() {
         assertThatCode(() -> SiteSettingCatalog.validateThemeOverrides(

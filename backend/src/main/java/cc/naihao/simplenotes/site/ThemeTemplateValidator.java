@@ -60,11 +60,41 @@ public final class ThemeTemplateValidator {
             "(?<![\\w$.])([A-Za-z_$][\\w$]*)");
     private static final Pattern CSS_URL = Pattern.compile("url\\(([^)]*)\\)", Pattern.CASE_INSENSITIVE);
 
+    /**
+     * HTML 实体归一（docs/blog-runtime-theme.md §8）：解码回原文字符，与前端
+     * {@code theme.ts} 的 {@code normalizeEntities} 同口径。运行时加载时校验吃的是
+     * {@code app.outerHTML}（浏览器序列化产物，{@code &&} 会被转写为 {@code &amp;&amp;}，
+     * 连箭头函数 {@code =>} 都会变成 {@code =&gt;}），直接扫描会把 amp/lt/gt
+     * 误判为未登记标识符、把箭头参数冲掉，导致回落默认主题。
+     * 解码顺序固定（{@code &amp;} 必须最后），避免 {@code &amp;lt;} 被级联解码两次；
+     * 只处理序列化会产生的六种实体。
+     */
+    private static final Pattern HTML_ENTITY_LT = Pattern.compile("&lt;", Pattern.CASE_INSENSITIVE);
+    private static final Pattern HTML_ENTITY_GT = Pattern.compile("&gt;", Pattern.CASE_INSENSITIVE);
+    private static final Pattern HTML_ENTITY_QUOT = Pattern.compile("&quot;", Pattern.CASE_INSENSITIVE);
+    private static final Pattern HTML_ENTITY_APOS =
+            Pattern.compile("&#39;|&#x27;", Pattern.CASE_INSENSITIVE);
+    private static final Pattern HTML_ENTITY_NBSP = Pattern.compile("&nbsp;", Pattern.CASE_INSENSITIVE);
+    private static final Pattern HTML_ENTITY_AMP = Pattern.compile("&amp;", Pattern.CASE_INSENSITIVE);
+
+    private static String normalizeEntities(String html) {
+        String source = html == null ? "" : html;
+        source = HTML_ENTITY_LT.matcher(source).replaceAll("<");
+        source = HTML_ENTITY_GT.matcher(source).replaceAll(">");
+        source = HTML_ENTITY_QUOT.matcher(source).replaceAll("\"");
+        source = HTML_ENTITY_APOS.matcher(source).replaceAll("'");
+        source = HTML_ENTITY_NBSP.matcher(source).replaceAll(" ");
+        return HTML_ENTITY_AMP.matcher(source).replaceAll("&");
+    }
+
     private ThemeTemplateValidator() {
     }
 
     public static void validateHtml(String html) {
-        String lower = html.toLowerCase(Locale.ROOT);
+        // 先做实体归一（见 normalizeEntities）：保存时吃原文、运行时吃 outerHTML，
+        // 归一（解码）后两处口径一致，合法的 && / < / > 不会被误判。
+        String source = normalizeEntities(html);
+        String lower = source.toLowerCase(Locale.ROOT);
         if (!lower.contains("id=\"app\"") && !lower.contains("id='app'")) {
             throw ApiException.badRequest("主题必须包含 id=\"app\" 根节点");
         }
@@ -78,32 +108,32 @@ public final class ThemeTemplateValidator {
 
         List<String> errors = new ArrayList<>();
 
-        for (Matcher matcher = COMPONENT_TAG.matcher(html); matcher.find(); ) {
+        for (Matcher matcher = COMPONENT_TAG.matcher(source); matcher.find(); ) {
             String name = matcher.group(1);
             if (!COMPONENTS.contains(name)) {
-                errors.add(lineOf(html, matcher.start()) + " 使用了未登记的组件 <" + name + ">");
+                errors.add(lineOf(source, matcher.start()) + " 使用了未登记的组件 <" + name + ">");
             }
         }
 
-        for (Matcher matcher = DIRECTIVE.matcher(html); matcher.find(); ) {
+        for (Matcher matcher = DIRECTIVE.matcher(source); matcher.find(); ) {
             String name = matcher.group(1);
             if (!DIRECTIVES.contains(name)) {
-                errors.add(lineOf(html, matcher.start()) + " 使用了未登记的指令 " + name);
+                errors.add(lineOf(source, matcher.start()) + " 使用了未登记的指令 " + name);
             }
         }
 
-        Set<String> locals = collectLocals(html);
+        Set<String> locals = collectLocals(source);
         List<Expression> expressions = new ArrayList<>();
-        for (Matcher matcher = INTERPOLATION.matcher(html); matcher.find(); ) {
+        for (Matcher matcher = INTERPOLATION.matcher(source); matcher.find(); ) {
             expressions.add(new Expression(matcher.group(1), matcher.start()));
         }
-        for (Matcher matcher = BINDING.matcher(html); matcher.find(); ) {
+        for (Matcher matcher = BINDING.matcher(source); matcher.find(); ) {
             expressions.add(new Expression(matcher.group(2), matcher.start()));
         }
         for (Expression expression : expressions) {
             for (String name : freeIdentifiers(expression.text())) {
                 if (!JS_KEYWORDS.contains(name) && !locals.contains(name) && !TEMPLATE_KEYS.contains(name)) {
-                    errors.add(lineOf(html, expression.index()) + " 引用了未登记的标识符 \"" + name + "\"");
+                    errors.add(lineOf(source, expression.index()) + " 引用了未登记的标识符 \"" + name + "\"");
                 }
             }
         }

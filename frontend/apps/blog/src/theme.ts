@@ -28,6 +28,26 @@ const JS_KEYWORDS = new Set([
   'void', 'delete', 'return', 'if', 'else', 'this', 'NaN', 'Infinity',
 ])
 
+/**
+ * HTML 实体归一（docs/blog-runtime-theme.md §8）：解码回原文字符。
+ *
+ * 加载时校验吃的是 `app.outerHTML`（浏览器序列化产物）：`&&` 会被转写为 `&amp;&amp;`、
+ * `<` / `>` / `"` 转写为 `&lt;` / `&gt;` / `&quot;`（连箭头函数 `=>` 都会变成 `=&gt;`）。
+ * 直接做标识符扫描会把 amp/lt/gt 误判为未登记标识符、把箭头参数冲掉，导致回落默认主题。
+ * 因此先按序列化逆操作解码（`&amp;` 必须最后，避免 `&amp;lt;` 被级联解码两次），
+ * 解码后再走同一套扫描，三处口径（保存 / 预览 / 加载）一致。
+ * 只处理序列化会产生的六种实体；其他编码形式（如 &#58;）不在此列。
+ */
+function normalizeEntities(source: string): string {
+  return source
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'")
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+}
+
 /** v-for / slot 作用域的局部变量：表达式里出现它们不算未登记标识符。 */
 function collectLocals(html: string): Set<string> {
   const locals = new Set<string>()
@@ -148,7 +168,9 @@ const FORBIDDEN: ReadonlyArray<readonly [string, string]> = [
  */
 export function validateTheme(html: string, css: string): ThemeValidationResult {
   const errors: Array<{ line: number; message: string }> = []
-  const source = String(html || '')
+  // 先做实体归一（见 SERIALIZED_ENTITY_PATTERN）：加载时吃的是 outerHTML，
+  // 保存 / 预览校验吃的是原文；归一后三处口径一致。
+  const source = normalizeEntities(String(html || ''))
   const lower = source.toLowerCase()
 
   function lineOf(index: number): number {
