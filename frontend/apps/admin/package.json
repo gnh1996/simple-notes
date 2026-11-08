@@ -11,6 +11,13 @@
     "sync:vditor": "node ../../scripts/sync-vditor-assets.mjs"
   },
   "dependencies": {
+    "@codemirror/commands": "catalog:",
+    "@codemirror/lang-css": "catalog:",
+    "@codemirror/lang-html": "catalog:",
+    "@codemirror/language": "catalog:",
+    "@codemirror/state": "catalog:",
+    "@codemirror/theme-one-dark": "catalog:",
+    "@codemirror/view": "catalog:",
     "@element-plus/icons-vue": "catalog:",
     "@simple-notes/api": "workspace:*",
     "@simple-notes/markdown": "workspace:*",

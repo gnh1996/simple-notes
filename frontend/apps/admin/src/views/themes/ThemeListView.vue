@@ -8,6 +8,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
 import { themeApi } from '@/api'
 import { notifyError } from '@/utils/feedback'
+import LargeTextEditor from './components/LargeTextEditor.vue'
 
 const BLOG_URL = (import.meta.env.VITE_BLOG_URL as string | undefined) ?? 'http://localhost:8080'
 
@@ -114,11 +115,14 @@ function openVersion(version: any): void {
   editorVisible.value = true
 }
 
-async function saveVersion(): Promise<void> {
-  if (!editor.themeId) return
+async function saveVersion(): Promise<ThemeVersionResponse | undefined> {
+  if (!editor.themeId) return undefined
+  // 非受控编辑器：先把未防抖的内容落盘，再读 editor 状态
+  htmlEditorRef.value?.flush()
+  cssEditorRef.value?.flush()
   saving.value = true
   try {
-    await themeApi.createVersion(editor.themeId, {
+    const version = await themeApi.createVersion(editor.themeId, {
       html: editor.html,
       css: editor.css,
       contract: editor.contract,
@@ -127,11 +131,18 @@ async function saveVersion(): Promise<void> {
     editorVisible.value = false
     await loadThemes()
     if (selected.value) await selectTheme(selected.value)
+    return version
   } catch (error) {
     notifyError(error, '保存失败')
+    return undefined
   } finally {
     saving.value = false
   }
+}
+
+async function saveAndPreview(): Promise<void> {
+  const version = await saveVersion()
+  if (version && selected.value) await preview(version)
 }
 
 function buildPreviewUrl(): void {
@@ -235,6 +246,8 @@ async function activate(version: any): Promise<void> {
   }
 }
 
+const htmlEditorRef = ref<InstanceType<typeof LargeTextEditor> | null>(null)
+const cssEditorRef = ref<InstanceType<typeof LargeTextEditor> | null>(null)
 onMounted(() => {
   window.addEventListener('message', onPreviewMessage)
   void loadThemes()
@@ -329,16 +342,17 @@ onBeforeUnmount(() => {
       :title="`编辑主题 · 将保存为 v${editor.versionNo}`"
       width="min(1100px, 96vw)"
       top="4vh"
+      destroy-on-close
     >
       <p class="mb-3 text-xs text-[var(--el-text-color-secondary)]">
         版本不可变：保存会新增版本，不会覆盖历史。主题只允许 HTML + CSS，禁止脚本。
       </p>
       <el-tabs>
         <el-tab-pane label="HTML">
-          <el-input v-model="editor.html" type="textarea" :rows="20" spellcheck="false" />
+          <LargeTextEditor ref="htmlEditorRef" v-model="editor.html" lang="html" />
         </el-tab-pane>
         <el-tab-pane label="CSS">
-          <el-input v-model="editor.css" type="textarea" :rows="20" spellcheck="false" />
+          <LargeTextEditor ref="cssEditorRef" v-model="editor.css" lang="css" />
         </el-tab-pane>
       </el-tabs>
       <template #footer>
@@ -346,6 +360,7 @@ onBeforeUnmount(() => {
           <el-input-number v-model="editor.contract" :min="1" :max="1" size="small" />
           <div class="flex gap-2">
             <el-button @click="editorVisible = false">取消</el-button>
+            <el-button :loading="saving" @click="saveAndPreview">保存并预览</el-button>
             <el-button type="primary" :loading="saving" @click="saveVersion">保存为新版本</el-button>
           </div>
         </div>
