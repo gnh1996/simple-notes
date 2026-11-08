@@ -24,7 +24,7 @@ defineProps<{ post: PostSummary }>()
         <div class="bc-card-body">
           <div class="bc-card-meta">
             <span v-if="post.pinned" class="bc-card-pin">置顶</span>
-            <time>{{ formatDate(postDate(post)) }}</time>
+            <time :datetime="postDate(post)">{{ formatDate(postDate(post)) }}</time>
             <span>约 {{ post.readingMinutes }} 分钟</span>
           </div>
           <h2 class="bc-card-title"><a :href="'/posts/' + post.slug">{{ post.title }}</a></h2>

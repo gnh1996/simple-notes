@@ -37,7 +37,7 @@ onMounted(async () => {
 <template>
   <slot name="root" :tags="rows" :state="state" :message="message">
     <div v-if="state === 'error'" class="bc-state" data-state="error">{{ message }}</div>
-    <div v-else-if="state === 'loading'" class="bc-tag-cloud" aria-busy="true"></div>
+    <div v-else-if="state === 'loading'" class="bc-state" data-state="loading" aria-busy="true">加载中…</div>
     <div v-else-if="state === 'empty'" class="bc-state" data-state="empty">{{ message }}</div>
     <div v-else class="bc-tag-cloud">
       <a v-for="item in rows" :key="item.id" class="bc-tag" :href="'/tags/' + item.id">

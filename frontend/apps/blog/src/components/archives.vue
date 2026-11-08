@@ -39,7 +39,7 @@ onMounted(async () => {
 
 <template>
   <slot name="root" :archives="rows" :state="state" :message="message">
-    <ul v-if="state === 'loading'" class="archive-index" aria-busy="true"></ul>
+    <div v-if="state === 'loading'" class="bc-state" data-state="loading" aria-busy="true">加载中…</div>
     <div v-else-if="state === 'error'" class="bc-state" data-state="error">{{ message }}</div>
     <div v-else-if="state === 'empty'" class="bc-state" data-state="empty">{{ message }}</div>
     <ul v-else class="archive-index">

@@ -4,7 +4,7 @@
 
   <header class="site-head" data-blog-header>
     <div class="head-inner">
-      <a class="brand" href="/" :aria-label="site.name">
+      <a class="brand" href="/" :aria-label="site.name" @click="ui.navOpen = false">
         <span class="brand-mark" aria-hidden="true"></span>
         <img v-if="site.logoUrl" class="brand-logo" :src="site.logoUrl" alt="" />
         <span v-else class="brand-text">{{ site.name }}</span>
@@ -12,20 +12,27 @@
 
       <nav class="nav-desktop" data-blog-nav aria-label="主导航">
         <a v-for="n in nav" :key="n.key" :href="n.to"
-           :class="{ active: isNavActive(n.to) }">{{ n.label }}</a>
+           :class="{ active: isNavActive(n.to) }"
+           :aria-current="isNavActive(n.to) ? 'page' : undefined">{{ n.label }}</a>
       </nav>
 
       <div class="head-actions">
         <blog-theme-toggle></blog-theme-toggle>
-        <details class="nav-mobile">
-          <summary aria-label="打开菜单">
+        <div class="nav-mobile">
+          <button type="button" class="nav-toggle"
+                  :aria-label="ui.navOpen ? '关闭菜单' : '打开菜单'"
+                  :aria-expanded="ui.navOpen ? 'true' : 'false'"
+                  aria-controls="blog-mobile-nav"
+                  @click="ui.navOpen = !ui.navOpen">
             <span class="burger" aria-hidden="true"></span>
-          </summary>
-          <nav aria-label="移动端导航">
+          </button>
+          <nav v-show="ui.navOpen" id="blog-mobile-nav" data-blog-nav aria-label="移动端导航">
             <a v-for="n in nav" :key="n.key" :href="n.to"
-               :class="{ active: isNavActive(n.to) }">{{ n.label }}</a>
+               :class="{ active: isNavActive(n.to) }"
+               :aria-current="isNavActive(n.to) ? 'page' : undefined"
+               @click="ui.navOpen = false">{{ n.label }}</a>
           </nav>
-        </details>
+        </div>
       </div>
     </div>
   </header>
@@ -34,7 +41,7 @@
     <!-- 首页 -->
     <template v-if="route.name === 'home'">
       <section class="hero">
-        <p class="eyebrow">{{ site.tagline }}</p>
+        <p v-if="site.tagline" class="eyebrow">{{ site.tagline }}</p>
         <h1 class="hero-title">{{ site.name }}</h1>
         <p v-if="site.description" class="lede">{{ site.description }}</p>
         <div class="hero-rule" aria-hidden="true"><span></span></div>
@@ -64,7 +71,7 @@
           <h1 class="post-title">{{ post.title }}</h1>
           <p class="post-meta">
             <span>{{ post.authorName }}</span>
-            <time>{{ formatDate(post.displayAt) }}</time>
+            <time :datetime="post.displayAt">{{ formatDate(post.displayAt) }}</time>
             <span>约 {{ post.readingMinutes }} 分钟</span>
           </p>
           <div v-if="post.tags.length" class="post-tags">
@@ -124,7 +131,7 @@
       <section class="page-head">
         <p class="eyebrow">Archive</p>
         <h1>归档</h1>
-        <p>选择月份查看已发布文章。</p>
+        <p>{{ route.query.year && route.query.month ? '浏览该月已发布文章。' : '选择月份查看已发布文章。' }}</p>
       </section>
       <div class="archive-layout">
         <aside class="archive-index">
@@ -141,7 +148,7 @@
             <ul>
               <li v-for="p in posts" :key="p.slug">
                 <a :href="'/posts/' + p.slug">{{ p.title }}</a>
-                <time>{{ formatDate(postDate(p)) }}</time>
+                <time :datetime="postDate(p)">{{ formatDate(postDate(p)) }}</time>
               </li>
             </ul>
             <blog-pager :pager="pager" @go="go"></blog-pager>
@@ -173,7 +180,7 @@
     <template v-else-if="route.name === 'page'">
       <blog-state v-if="state !== 'ready'" :state="state" :message="message"></blog-state>
       <article v-else-if="page" class="page-doc">
-        <p class="eyebrow">About</p>
+        <p class="eyebrow">{{ page.slug === 'about' ? 'About' : 'Page' }}</p>
         <h1>{{ page.title }}</h1>
         <blog-markdown :source="page.content"></blog-markdown>
       </article>
@@ -193,18 +200,21 @@
   <footer class="site-foot" data-blog-footer>
     <div class="foot-inner">
       <p class="foot-mark">{{ site.name }}</p>
-      <div class="foot-grid">
-        <div class="foot-col">
+      <div class="foot-grid"
+           v-if="site.footerText || site.author.name || site.social.some(item => item.url) || site.icp || site.policeRecord">
+        <div class="foot-col" v-if="site.footerText || site.author.name">
           <p class="foot-label">About</p>
           <p v-if="site.footerText" class="foot-text">{{ site.footerText }}</p>
           <p v-if="site.author.name" class="foot-text">© {{ site.author.name }}</p>
         </div>
-        <div class="foot-col" v-if="site.social.length">
+        <div class="foot-col" v-if="site.social.some(item => item.url)">
           <p class="foot-label">Elsewhere</p>
-          <a v-for="s in site.social" :key="s.url" :href="s.url" rel="noopener noreferrer"
-             target="_blank">{{ s.label }}</a>
+          <template v-for="(s, index) in site.social" :key="(s.url || '') + '-' + index">
+            <a v-if="s.url" :href="s.url" rel="noopener noreferrer"
+               target="_blank">{{ s.label || s.type || s.url }}</a>
+          </template>
         </div>
-        <div class="foot-col">
+        <div class="foot-col" v-if="site.icp || site.policeRecord">
           <p class="foot-label">Record</p>
           <a v-if="site.icp" href="https://beian.miit.gov.cn/" rel="noopener noreferrer"
              target="_blank">{{ site.icp }}</a>

@@ -295,7 +295,7 @@ SitePage    { id, slug, title, content, visible, sort, updatedAt }   // /p/:slug
 | `--blog-prose-size` / `--blog-prose-line-height` | 正文字号 / 行高 |
 | `--blog-content-width` | 阅读区最大宽度 |
 | `--blog-gap` | 间距基准 |
-| `--blog-code-bg` | 代码块背景 |
+| `--blog-code-bg` | 行内代码背景（代码块背景由主题内部变量控制，便于与高亮 token 配对） |
 
 DOM 钩子（只增不改）：
 
@@ -362,7 +362,7 @@ theme.css     全部样式（含暗色与响应式）
 内置默认主题的唯一源是 `frontend/packages/theme-starter/`，随 runtime 构建进入 bundle，同时作为管理端「新建主题」的起点：
 
 ```text
-frontend/packages/theme-starter/{theme.html,theme.css,src/index.ts}
+frontend/packages/theme-starter/{theme.html,theme.css,src/index.ts,README.md}
 backend/src/main/resources/blog/default-theme/{theme.html,theme.css}   ← pnpm sync:theme 同步的兜底副本
 ```
 
