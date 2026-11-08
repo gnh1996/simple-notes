@@ -1,0 +1,89 @@
+<!--
+  headless 能力 fixture（docs/theme-contract-v2.md，2A）
+  作用：锁住 root slot 的合法写法——主题接管组件输出时，组件默认 DOM / 样式不出现。
+  规则：只使用 contract.ts 登记的组件 / 数据 / 动作 / slot / 作用域字段。
+-->
+<div id="app" :data-state="state">
+  <template v-if="route.name === 'home'">
+    <blog-state :state="state" v-slot:root="{ state, message }">
+      <p :data-state="state">{{ message }}</p>
+    </blog-state>
+
+    <template v-for="item in posts" :key="item.slug">
+      <blog-post-card :post="item" v-slot:root="{ post }">
+        <article class="t-card">
+          <h2><a :href="'/posts/' + post.slug">{{ post.title }}</a></h2>
+          <p>{{ post.summary }}</p>
+          <time>{{ formatDate(postDate(post)) }}</time>
+        </article>
+      </blog-post-card>
+    </template>
+
+    <blog-pager :pager="pager" v-slot:root="{ pager, go, pages }">
+      <nav class="t-pager" aria-label="分页">
+        <button
+          v-for="page in pages"
+          :key="page"
+          type="button"
+          :disabled="page === pager.page"
+          @click="go(page)"
+        >
+          {{ page }}
+        </button>
+      </nav>
+    </blog-pager>
+  </template>
+
+  <template v-else-if="route.name === 'post'">
+    <h1>{{ post ? post.title : '' }}</h1>
+    <blog-markdown :source="post ? post.content : ''"></blog-markdown>
+    <blog-toc v-slot:root="{ items, activeId, scrollTo }">
+      <ul class="t-toc">
+        <li v-for="item in items" :key="item.id" :class="{ active: activeId === item.id }">
+          <a :href="'#' + item.id" @click.prevent="scrollTo(item.id)">{{ item.text }}</a>
+        </li>
+      </ul>
+    </blog-toc>
+  </template>
+
+  <template v-else-if="route.name === 'tags'">
+    <blog-tag-cloud v-slot:root="{ tags, state, message }">
+      <p v-if="state === 'empty'">{{ message }}</p>
+      <ul v-else>
+        <li v-for="item in tags" :key="item.id">
+          <a :href="'/tags/' + item.id">{{ item.name }}</a>
+        </li>
+      </ul>
+    </blog-tag-cloud>
+  </template>
+
+  <template v-else-if="route.name === 'archives'">
+    <blog-archives v-slot:root="{ archives, state, message }">
+      <p v-if="state === 'empty'">{{ message }}</p>
+      <ul v-else>
+        <li v-for="item in archives" :key="item.year + '-' + item.month">
+          {{ item.year }} / {{ item.month }}
+        </li>
+      </ul>
+    </blog-archives>
+  </template>
+
+  <blog-search-box :value="keyword" @search="search" v-slot:root="{ value, search }">
+    <form class="t-search" @submit.prevent="search(value)">
+      <input :value="value" type="search" aria-label="搜索" />
+      <button type="submit">搜索</button>
+    </form>
+  </blog-search-box>
+
+  <blog-theme-toggle v-slot:root="{ colorMode, toggle }">
+    <button type="button" @click="toggle">{{ colorMode }}</button>
+  </blog-theme-toggle>
+
+  <blog-back-to-top v-slot:root="{ visible, scroll }">
+    <button v-if="visible" type="button" @click="scroll">回到顶部</button>
+  </blog-back-to-top>
+
+  <blog-reading-progress v-slot:root="{ progress }">
+    <div class="t-progress" :style="{ transform: 'scaleX(' + progress + ')' }"></div>
+  </blog-reading-progress>
+</div>

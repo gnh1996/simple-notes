@@ -2,10 +2,11 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { contentVersion, currentPath } from '../store'
+import type { TocItem } from '../types'
 
 defineOptions({ name: 'BlogToc' })
 
-const items = ref<Array<{ id: string; text: string; depth: number }>>([])
+const items = ref<TocItem[]>([])
 const activeId = ref('')
 let observer: IntersectionObserver | null = null
 
@@ -49,25 +50,31 @@ onBeforeUnmount(() => {
   observer?.disconnect()
 })
 
-function jump(event: Event, id: string): void {
-  event.preventDefault()
+function scrollTo(id: string): void {
   const target = document.getElementById(id)
   if (target) {
     target.scrollIntoView({ behavior: 'smooth', block: 'start' })
     history.replaceState(null, '', `#${id}`)
   }
 }
+
+function jump(event: Event, id: string): void {
+  event.preventDefault()
+  scrollTo(id)
+}
 </script>
 
 <template>
-  <ul class="bc-toc">
-    <li v-for="item in items" :key="item.id" :class="'depth-' + item.depth">
-      <a
-        :href="'#' + item.id"
-        :class="{ active: activeId === item.id }"
-        @click="jump($event, item.id)"
-        >{{ item.text }}</a
-      >
-    </li>
-  </ul>
+  <slot name="root" :items="items" :activeId="activeId" :scrollTo="scrollTo">
+    <ul class="bc-toc">
+      <li v-for="item in items" :key="item.id" :class="'depth-' + item.depth">
+        <a
+          :href="'#' + item.id"
+          :class="{ active: activeId === item.id }"
+          @click="jump($event, item.id)"
+          >{{ item.text }}</a
+        >
+      </li>
+    </ul>
+  </slot>
 </template>

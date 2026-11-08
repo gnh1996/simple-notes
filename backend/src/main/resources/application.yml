@@ -103,3 +103,4 @@ simple-notes:
     max-tokens: "${AI_MAX_TOKENS:0}"
     thinking: "${AI_THINKING:}"
     reasoning-effort: "${AI_REASONING_EFFORT:}"
+    prompt-dump-dir: "${AI_PROMPT_DUMP_DIR:}"

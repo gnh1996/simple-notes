@@ -1,6 +1,16 @@
 import { computed, ref } from 'vue'
 
-import type { Archive, ListSort, Pager, PostDetail, PostSummary, SitePage, SortField, Tag } from './types'
+import type {
+  Archive,
+  ArchiveGroup,
+  ListSort,
+  Pager,
+  PostDetail,
+  PostSummary,
+  SitePage,
+  SortField,
+  Tag,
+} from './types'
 
 /** 运行时状态：主题只能读取，不能写（契约 §3.2）。 */
 
@@ -51,12 +61,9 @@ export function postDate(post: PostSummary, sortBy: SortField = listSort.value.s
   return post[sortBy] || post.displayAt
 }
 
-export const archiveGroups = computed(() => {
+export const archiveGroups = computed<ArchiveGroup[]>(() => {
   const sortBy = listSort.value.sortBy
-  const groups = new Map<
-    string,
-    { key: string; year: number; month: number; posts: PostSummary[] }
-  >()
+  const groups = new Map<string, ArchiveGroup>()
   for (const item of posts.value) {
     const value = postDate(item, sortBy)
     const date = value ? new Date(value) : null

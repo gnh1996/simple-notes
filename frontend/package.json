@@ -19,6 +19,7 @@
     "sync:theme": "node scripts/sync-theme-starter.mjs",
     "check:theme": "node scripts/sync-theme-starter.mjs --check",
     "check:contract": "node scripts/theme-contract.mjs",
+    "sync:contract": "node scripts/theme-contract.mjs --emit",
     "typecheck": "pnpm check:theme && pnpm check:contract && pnpm -r --if-present typecheck"
   },
   "devDependencies": {

@@ -14,14 +14,20 @@ watch(
   },
 )
 
+function search(value: string): void {
+  emit('search', value)
+}
+
 function submit(): void {
-  emit('search', text.value)
+  search(text.value)
 }
 </script>
 
 <template>
-  <form class="bc-search" role="search" @submit.prevent="submit">
-    <input v-model="text" type="search" placeholder="输入关键词" aria-label="搜索关键词" />
-    <button type="submit">搜索</button>
-  </form>
+  <slot name="root" :value="text" :search="search">
+    <form class="bc-search" role="search" @submit.prevent="submit">
+      <input v-model="text" type="search" placeholder="输入关键词" aria-label="搜索关键词" />
+      <button type="submit">搜索</button>
+    </form>
+  </slot>
 </template>

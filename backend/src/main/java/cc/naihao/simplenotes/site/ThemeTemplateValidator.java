@@ -22,22 +22,10 @@ import java.util.regex.Pattern;
  */
 public final class ThemeTemplateValidator {
 
-    private static final Set<String> COMPONENTS = Set.of(
-            "blog-post-card", "blog-pager", "blog-markdown", "blog-toc", "blog-tag-chip",
-            "blog-tag-cloud", "blog-archives", "blog-search-box", "blog-theme-toggle",
-            "blog-image", "blog-back-to-top", "blog-reading-progress", "blog-state");
-
-    private static final Set<String> DIRECTIVES = Set.of(
-            "v-if", "v-else-if", "v-else", "v-for", "v-show", "v-model", "v-text", "v-once",
-            "v-cloak", "v-bind", "v-on", "v-slot");
-
-    /** data / helpers / actions 的并集（contract.ts 的 29 个模板键）。 */
-    private static final Set<String> TEMPLATE_KEYS = Set.of(
-            "site", "nav", "route", "state", "message", "colorMode", "posts", "pager", "post",
-            "prevPost", "nextPost", "tags", "tag", "archives", "archiveGroups", "keyword",
-            "searched", "page", "listSort", "ui",
-            "isNavActive", "formatDate", "postDate",
-            "go", "search", "setColorMode", "toggleColorMode", "scrollToTop", "openLightbox");
+    /** 组件 / 指令 / 模板键全部来自生成的契约投影，禁止在本类手写清单。 */
+    private static final Set<String> COMPONENTS = ThemeContract.COMPONENTS;
+    private static final Set<String> DIRECTIVES = ThemeContract.DIRECTIVES;
+    private static final Set<String> TEMPLATE_KEYS = ThemeContract.TEMPLATE_KEYS;
 
     private static final Set<String> JS_KEYWORDS = Set.of(
             "true", "false", "null", "undefined", "in", "of", "new", "typeof", "instanceof",
@@ -59,6 +47,14 @@ public final class ThemeTemplateValidator {
     private static final Pattern FREE_IDENTIFIER = Pattern.compile(
             "(?<![\\w$.])([A-Za-z_$][\\w$]*)");
     private static final Pattern CSS_URL = Pattern.compile("url\\(([^)]*)\\)", Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern COMPONENT_WITH_ATTRS = Pattern.compile("<\\s*(blog-[a-z-]+)([^>]*)>");
+    private static final Pattern SLOT_USAGE = Pattern.compile(
+            "(?:#([\\w-]+)|v-slot(?::([\\w-]+))?)\\s*=\\s*\"([^\"]*)\"");
+    private static final Pattern EVENT_ATTR = Pattern.compile("(?:^|\\s)(?:@|v-on:)([\\w-]+)");
+    private static final Pattern CSS_CLASS = Pattern.compile("\\.(bc-[a-z0-9-]+)");
+    private static final Pattern CSS_COMMENT = Pattern.compile("/\\*.*?\\*/", Pattern.DOTALL);
+    private static final Pattern CSS_STRING = Pattern.compile("'(?:\\\\.|[^'\\\\])*'|\"(?:\\\\.|[^\"\\\\])*\"");
 
     /**
      * HTML 实体归一（docs/blog-runtime-theme.md §8）：解码回原文字符，与前端
@@ -138,6 +134,8 @@ public final class ThemeTemplateValidator {
             }
         }
 
+        validateComponentUsage(source, errors);
+
         if (!errors.isEmpty()) {
             throw ApiException.badRequest("主题 HTML 校验失败：\n- " + String.join("\n- ", errors));
         }
@@ -145,6 +143,9 @@ public final class ThemeTemplateValidator {
 
     public static void validateCss(String css) {
         String lower = css.toLowerCase(Locale.ROOT);
+        if (lower.contains("</style")) {
+            throw ApiException.badRequest("主题 CSS 含 </style>，会逃逸样式块");
+        }
         if (lower.contains("@import")) {
             throw ApiException.badRequest("主题 CSS 禁止使用 @import");
         }
@@ -153,6 +154,79 @@ public final class ThemeTemplateValidator {
             String target = matcher.group(1).trim().replace("\"", "").replace("'", "");
             if (!target.startsWith("/api/media/") && !target.startsWith("data:")) {
                 throw ApiException.badRequest("主题 CSS 仅允许 /api/media/ 与 data: 资源");
+            }
+        }
+
+        // .bc-* 是组件的公开样式接口：主题只能覆盖已登记的 class，不能发明新的。
+        String cleaned = CSS_COMMENT.matcher(css).replaceAll(" ");
+        cleaned = CSS_STRING.matcher(cleaned).replaceAll(" ");
+        Set<String> unknown = new LinkedHashSet<>();
+        Matcher classes = CSS_CLASS.matcher(cleaned);
+        while (classes.find()) {
+            String name = classes.group(1);
+            if (!ThemeContract.PUBLIC_PARTS.contains(name)) {
+                unknown.add(name);
+            }
+        }
+        if (!unknown.isEmpty()) {
+            throw ApiException.badRequest("主题 CSS 使用了未登记的 .bc-* class：" + String.join(", ", unknown));
+        }
+    }
+
+    /**
+     * 组件使用约束：必填 props、组件事件、slot 名与 slot 作用域字段。
+     *
+     * <p>slot 采用 union 口径（与前端 check:contract 一致）：只校验“这个名字存在”，
+     * 不判断它是否属于当前组件；精确到组件需要完整模板解析，留待后续。
+     */
+    private static void validateComponentUsage(String source, List<String> errors) {
+        for (Matcher matcher = COMPONENT_WITH_ATTRS.matcher(source); matcher.find(); ) {
+            String tag = matcher.group(1);
+            String attrs = matcher.group(2) == null ? "" : matcher.group(2);
+            ThemeContract.ComponentDef def = ThemeContract.COMPONENT_DEFS.get(tag);
+            if (def == null) {
+                continue;
+            }
+            for (String prop : def.requiredProps()) {
+                Pattern required = Pattern.compile(
+                        "(?<![\\w-])(?:(?::|v-bind:)" + Pattern.quote(prop) + "(?=[\\s=/>])|"
+                                + Pattern.quote(prop) + "\\s*=)");
+                if (!required.matcher(attrs).find()) {
+                    errors.add(lineOf(source, matcher.start()) + " <" + tag
+                            + "> 缺少必填 prop \"" + prop + "\"");
+                }
+            }
+            if (!def.events().isEmpty()) {
+                Matcher events = EVENT_ATTR.matcher(attrs);
+                while (events.find()) {
+                    String event = events.group(1);
+                    if (!def.events().contains(event)) {
+                        errors.add(lineOf(source, matcher.start()) + " <" + tag
+                                + "> 使用了未登记事件 \"" + event + "\"");
+                    }
+                }
+            }
+        }
+
+        Matcher slots = SLOT_USAGE.matcher(source);
+        while (slots.find()) {
+            String name = slots.group(1) != null
+                    ? slots.group(1)
+                    : (slots.group(2) != null ? slots.group(2) : "default");
+            if (!ThemeContract.SLOT_NAMES.contains(name)) {
+                errors.add(lineOf(source, slots.start()) + " 使用了未登记的 slot #" + name);
+                continue;
+            }
+            String value = slots.group(3) == null ? "" : slots.group(3).trim();
+            int end = value.lastIndexOf('}');
+            String inner = value.startsWith("{") && end > 0 ? value.substring(1, end) : value;
+            Set<String> fields = ThemeContract.SLOT_SCOPE.getOrDefault(name, Set.of());
+            for (String part : inner.split(",")) {
+                String field = part.split(":")[0].trim().replaceFirst("^\\.\\.\\.", "");
+                if (!field.isEmpty() && field.matches("[A-Za-z_$][\\w$]*") && !fields.contains(field)) {
+                    errors.add(lineOf(source, slots.start()) + " slot #" + name
+                            + " 引用了未登记的作用域字段 \"" + field + "\"");
+                }
             }
         }
     }

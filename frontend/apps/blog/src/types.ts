@@ -49,6 +49,30 @@ export interface ListSort {
   sortBy: SortField
 }
 
+/** 主题可见的路由视图（只暴露模板需要的字段，不泄漏 vue-router 内部类型）。 */
+export interface RouteView {
+  name: string | symbol | null | undefined
+  path: string
+  params: Record<string, string | string[]>
+  query: Record<string, string | string[] | null>
+  hash: string
+}
+
+/** 目录项（`blog-toc` 的 root slot 作用域）。 */
+export interface TocItem {
+  id: string
+  text: string
+  depth: number
+}
+
+/** 归档列表按当前排序字段分组后的结果（`archiveGroups`）。 */
+export interface ArchiveGroup {
+  key: string
+  year: number
+  month: number
+  posts: PostSummary[]
+}
+
 export interface PostSummary {
   slug: string
   title: string

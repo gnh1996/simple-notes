@@ -7,6 +7,8 @@ import cc.naihao.simplenotes.web.dto.AiChatTurn;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -199,6 +201,7 @@ public class AiThemeService {
                         round, shortId(request.sessionId()), mode, chars(system), chars(userText),
                         round == 1 ? 0.7 : 0.3, ai.getMaxTokens(),
                         blankToDash(ai.getThinking()), blankToDash(ai.getReasoningEffort()));
+                dumpPrompt(conversationId, round, system, userText);
 
                 RoundResult result = streamRound(chatClient, conversationId, system, userText,
                         round == 1 ? 0.7 : 0.3, emitter, round);
@@ -322,6 +325,50 @@ public class AiThemeService {
         log.info("AI 补丁应用 ops={} applied={} errors={}", extracted.patch().ops().size(), applied.applied(), errors);
         return new Outcome(applied.html(), applied.css(), extracted.patch().summary(), extracted.patch().plan(),
                 errors, false, extracted.json());
+    }
+
+    /**
+     * 调试用：把本轮实际拼装的 system / user 与当前 ChatMemory 写入目录。
+     *
+     * <p>这是确认“模型到底看到了什么”的最短路径：system 含契约投影、输出格式与当前主题，
+     * user 是本轮指令或修复指令，memory 是压缩后的历史。默认关闭（AI_PROMPT_DUMP_DIR 为空）。
+     */
+    private void dumpPrompt(String conversationId, int round, String system, String userText) {
+        String dir = ai.getPromptDumpDir();
+        if (isBlank(dir)) {
+            return;
+        }
+        try {
+            Path base = Path.of(dir.strip());
+            Files.createDirectories(base);
+            String prefix = "ai-prompt-" + System.currentTimeMillis() + "-r" + round + "-"
+                    + safeName(conversationId);
+            Files.writeString(base.resolve(prefix + "-system.txt"),
+                    system == null ? "" : system, StandardCharsets.UTF_8);
+            Files.writeString(base.resolve(prefix + "-user.txt"),
+                    userText == null ? "" : userText, StandardCharsets.UTF_8);
+
+            StringBuilder memoryText = new StringBuilder()
+                    .append("# ChatMemory before round ").append(round).append("\n\n");
+            for (Message message : chatMemory.get(conversationId)) {
+                memoryText.append('[').append(message.getMessageType()).append("]\n")
+                        .append(message.getText()).append("\n\n");
+            }
+            Files.writeString(base.resolve(prefix + "-memory.txt"),
+                    memoryText.toString(), StandardCharsets.UTF_8);
+            log.info("AI prompt 已写入 {}（round={} session={}）",
+                    base.toAbsolutePath(), round, shortId(conversationId));
+        } catch (Exception e) {
+            // 调试能力不能影响生成
+            log.warn("AI prompt dump 失败 dir={} session={}", dir, shortId(conversationId), e);
+        }
+    }
+
+    private static String safeName(String value) {
+        if (value == null || value.isBlank()) {
+            return "session";
+        }
+        return value.replaceAll("[^A-Za-z0-9_-]", "-");
     }
 
     private RoundResult streamRound(ChatClient chatClient, String conversationId, String system, String userText,

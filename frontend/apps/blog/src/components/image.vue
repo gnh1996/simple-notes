@@ -11,7 +11,9 @@ function open(): void {
 </script>
 
 <template>
-  <button type="button" class="bc-image" @click="open">
-    <img :src="src" :alt="alt" loading="lazy" />
-  </button>
+  <slot name="root" :src="src" :alt="alt" :open="open">
+    <button type="button" class="bc-image" @click="open">
+      <img :src="src" :alt="alt" loading="lazy" />
+    </button>
+  </slot>
 </template>

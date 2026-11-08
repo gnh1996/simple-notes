@@ -1,5 +1,6 @@
 package cc.naihao.simplenotes.site;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -76,6 +77,70 @@ class ThemeTemplateValidatorTest {
         assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
                 "<div id=\"app\">&lt;script&gt;alert(1)&lt;/script&gt;</div>"))
                 .hasMessageContaining("禁用内容");
+    }
+
+    @Test
+    @DisplayName("headless fixture 通过校验：root slot 接管结构")
+    void headlessFixturePasses() throws Exception {
+        Path fixture = Path.of("..", "frontend", "scripts", "fixtures", "theme-headless.html");
+        Assumptions.assumeTrue(Files.exists(fixture), "headless fixture 不在当前工作区");
+        String html = Files.readString(fixture);
+        assertThatCode(() -> ThemeTemplateValidator.validateHtml(html)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("拒绝未登记 slot / 作用域字段 / 缺必填 props / 未登记事件")
+    void rejectsSlotAndPropErrors() {
+        assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml("""
+                <div id="app">
+                  <blog-post-card v-for="post in posts" :key="post.slug" :post="post"
+                                  v-slot:missing="{ post }"></blog-post-card>
+                </div>
+                """)).hasMessageContaining("未登记的 slot");
+
+        assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml("""
+                <div id="app">
+                  <blog-post-card v-for="post in posts" :key="post.slug" :post="post"
+                                  v-slot:root="{ unknown }"></blog-post-card>
+                </div>
+                """)).hasMessageContaining("未登记的作用域字段");
+
+        assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
+                "<div id=\"app\"><blog-post-card></blog-post-card></div>"))
+                .hasMessageContaining("缺少必填 prop");
+
+        // v-for 的局部变量不能被误判成 prop 绑定
+        assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml("""
+                <div id="app">
+                  <blog-post-card v-for="post in posts" :key="post.slug"></blog-post-card>
+                </div>
+                """)).hasMessageContaining("缺少必填 prop");
+
+        assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
+                "<div id=\"app\"><blog-pager :pager=\"pager\" @change=\"go\"></blog-pager></div>"))
+                .hasMessageContaining("未登记事件");
+    }
+
+    @Test
+    @DisplayName("CSS 拒绝 </style> 逃逸与未登记的 .bc-* class")
+    void rejectsCssEscapeAndUnknownParts() {
+        assertThatThrownBy(() -> ThemeTemplateValidator.validateCss(".a{color:red}</style><script>"))
+                .hasMessageContaining("</style>");
+        assertThatThrownBy(() -> ThemeTemplateValidator.validateCss(".bc-unknown{color:red}"))
+                .hasMessageContaining("未登记的 .bc-* class");
+        assertThatCode(() -> ThemeTemplateValidator.validateCss(".bc-card{color:red}"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("契约生成物包含类型 / slot scope / 路由，且修正了 --blog-mono 漂移")
+    void contractProjectionLoaded() {
+        assertThat(ThemeContract.COMPONENT_DEFS.get("blog-pager").slots())
+                .anyMatch(slot -> slot.name().equals("root") && slot.provides().contains("pages"));
+        assertThat(ThemeContract.ROUTES).containsKeys("home", "post", "archives");
+        assertThat(ThemeContract.root().get("types").get("PostSummary").get("slug").asString())
+                .isEqualTo("string");
+        assertThat(ThemeContract.CSS_VARS).contains("--blog-font-mono").doesNotContain("--blog-mono");
     }
 
     @Test

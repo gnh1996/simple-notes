@@ -21,13 +21,15 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
 </script>
 
 <template>
-  <button
-    type="button"
-    class="bc-back-to-top"
-    :data-visible="visible ? '1' : '0'"
-    aria-label="回到顶部"
-    @click="scrollToTop"
-  >
-    ↑
-  </button>
+  <slot name="root" :visible="visible" :scroll="scrollToTop">
+    <button
+      type="button"
+      class="bc-back-to-top"
+      :data-visible="visible ? '1' : '0'"
+      aria-label="回到顶部"
+      @click="scrollToTop"
+    >
+      ↑
+    </button>
+  </slot>
 </template>

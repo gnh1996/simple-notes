@@ -26,42 +26,33 @@ public final class AiThemePrompt {
     static final int HTML_MAX = 64 * 1024;
     static final int CSS_MAX = 256 * 1024;
 
-    /** 允许覆盖的 CSS 变量（与 CONTRACT_RULES 第 8 条、contract.ts 同名）。 */
-    static final Set<String> ALLOWED_CSS_VARS = Set.of(
-            "--blog-accent", "--blog-accent-contrast", "--blog-bg", "--blog-surface", "--blog-text",
-            "--blog-text-muted", "--blog-border", "--blog-radius", "--blog-font-sans", "--blog-mono",
-            "--blog-prose-size", "--blog-prose-line-height", "--blog-content-width", "--blog-gap",
-            "--blog-code-bg");
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
-     * 系统规则（契约白名单摘要）。L0 冻结项只增不改，新增组件 / 数据键时同步追加。
+     * 系统规则：只写“约束”，不写具体清单。
+     *
+     * <p>组件 / props / slots / 类型 / 路由 / URL / CSS 变量 / 指令全部来自
+     * {@link ThemeContract#promptSection()}（由 {@code pnpm sync:contract} 生成），
+     * 本类不再维护手写清单。
      */
-    static final String CONTRACT_RULES = """
+    static final String RULES = """
             你是博客主题设计师，只输出主题，不解释与主题无关的内容。
             主题 = 整页 HTML + 全部 CSS，零 JavaScript。
             用户的审美指令优先级最高：如果用户要求全新风格（卡通 / 杂志 / 极简 / 暗黑等），
             允许重写整体 DOM 结构、区块顺序与全部样式，只要满足下面的硬约束。
-            不要为了省事而照抄起点模板——起点只是契约用法的参考，不是设计终点。
+            不要为了省事而照抄默认主题——它只是契约用法的参考，不是设计终点。
 
             【硬约束（违反会被校验器拒绝）】
             1. HTML 必须包含 id="app" 根节点；禁止 <script>、v-html、javascript:、window.、document.、localStorage、fetch(、eval(、import(。
-            2. 只允许以下组件标签：blog-post-card, blog-pager, blog-markdown, blog-toc, blog-tag-chip, blog-tag-cloud, \
-            blog-archives, blog-search-box, blog-theme-toggle, blog-image, blog-back-to-top, blog-reading-progress, blog-state。
-            3. 只允许以下指令：v-if, v-else-if, v-else, v-for, v-show, v-model（仅 v-model="ui.xxx"）, v-text, v-once, v-cloak, v-bind, v-on, v-slot。\
-            不允许除 @click 调用动作外的其他脚本表达式。
-            4. 模板可引用的数据键只有：site, nav, route, state, message, colorMode, posts, pager, post, prevPost, nextPost, \
-            tags, tag, archives, archiveGroups, keyword, searched, page, listSort, ui；辅助函数只有 isNavActive, formatDate, postDate；\
-            动作只有 go, search, setColorMode, toggleColorMode, scrollToTop, openLightbox。引用其他标识符会被拒绝（v-for 局部变量与 slot 作用域除外）。
-            5. 页面分支（route.name）：home 首页, post 文章详情, tags 标签, tag-posts 标签文章, archives 归档, search 搜索, page 独立页面，其他走 404 分支。\
-            缺失的页面分支运行时回落默认主题，但首屏 home 与 post 必须完整实现。
-            6. Markdown 必须用 <blog-markdown :source="..."> 渲染，不得自行解析；列表用 v-for + blog-post-card；分页用 blog-pager。
-            7. CSS 禁止 @import；url() 只允许 /api/media/ 与 data:；体积 HTML ≤ 64KB、CSS ≤ 256KB。
-            8. 覆盖样式只允许这些 CSS 变量：--blog-accent, --blog-accent-contrast, --blog-bg, --blog-surface, --blog-text, \
-            --blog-text-muted, --blog-border, --blog-radius, --blog-font-sans, --blog-mono, --blog-prose-size, \
-            --blog-prose-line-height, --blog-content-width, --blog-gap, --blog-code-bg。
-            9. 移动端 320/375/414 无横向滚动；可点元素 ≥ 44px；明暗两套配色（[data-color-mode] 或 colorMode）；中文正文 16-17px、行高 ≥ 1.7。
+            2. 组件标签、props、events、slots、slot 作用域字段、parts 只能使用下面【组件】列出的内容。
+               root slot 传内容即整体接管默认结构；default / 具名 slot 只替换内部内容。
+            3. 模板指令、数据键、辅助函数、动作只能使用下面列出的内容；引用其他标识符会被拒绝（v-for 局部变量与 slot 作用域除外）。
+            4. 页面分支（route.name）至少完整实现 home 与 post；缺失的分支运行时回落默认主题。
+            5. Markdown 必须用 <blog-markdown :source="..."> 渲染，不得自行解析；列表用 v-for + blog-post-card；分页用 blog-pager。
+            6. CSS 禁止 @import；url() 只允许 /api/media/ 与 data:；主题 CSS 只能覆盖下面列出的 .bc-* parts；体积 HTML ≤ 64KB、CSS ≤ 256KB。
+            7. 覆盖样式只允许下面【CSS 变量】列出的变量；深色专用值用 [data-color-mode="dark"] 选择器。
+            8. 移动端 320/375/414 无横向滚动；可点元素 ≥ 44px；明暗两套配色；中文正文 16-17px、行高 ≥ 1.7。
+            9. 链接使用【URL 形态】列出的前缀；不要自行发明路由。
             """;
 
     // 规则部分（不含输出格式）；v2.1 由 fullSystemPrompt / patchSystemPrompt 拼输出格式。
@@ -105,12 +96,12 @@ public final class AiThemePrompt {
 
     /** 完整主题的 system prompt（首轮 / 无当前主题时）。 */
     public static String fullSystemPrompt(String referenceHtml, String referenceCss) {
-        return CONTRACT_RULES + FULL_FORMAT + referenceBlock(referenceHtml, referenceCss);
+        return RULES + ThemeContract.promptSection() + FULL_FORMAT + referenceBlock(referenceHtml, referenceCss);
     }
 
     /** 编辑补丁的 system prompt（已有当前主题时）。当前主题只放这里一次，不进 ChatMemory。 */
     public static String patchSystemPrompt(String currentHtml, String currentCss) {
-        return CONTRACT_RULES + PATCH_FORMAT + referenceBlock(currentHtml, currentCss);
+        return RULES + ThemeContract.promptSection() + PATCH_FORMAT + referenceBlock(currentHtml, currentCss);
     }
 
     private static String referenceBlock(String html, String css) {
@@ -223,7 +214,19 @@ public final class AiThemePrompt {
         } catch (ApiException e) {
             errors.addAll(split(e.getMessage()));
         }
+        if (!hasBranch(html, "home")) {
+            errors.add("主题必须完整实现 home 页面分支（route.name === 'home'）");
+        }
+        if (!hasBranch(html, "post")) {
+            errors.add("主题必须完整实现 post 页面分支（route.name === 'post'）");
+        }
         return errors;
+    }
+
+    private static boolean hasBranch(String html, String name) {
+        return Pattern.compile("route\\.name\\s*===?\\s*['\"]" + Pattern.quote(name) + "['\"]")
+                .matcher(html)
+                .find();
     }
 
     /**

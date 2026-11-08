@@ -22,11 +22,19 @@ import { parse as parseSfc } from 'vue/compiler-sfc'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '..')
+const repoRoot = path.resolve(root, '..')
 const blogSrc = path.join(root, 'apps/blog/src')
 const starterHtml = path.join(root, 'packages/theme-starter/theme.html')
 
 const contract = await import(pathToFileURL(path.join(blogSrc, 'contract.ts')).href)
-const { CONTRACT_DATA, CONTRACT_HELPERS, CONTRACT_ACTIONS, CONTRACT_COMPONENTS } = contract
+const {
+  CONTRACT_DATA,
+  CONTRACT_HELPERS,
+  CONTRACT_ACTIONS,
+  CONTRACT_COMPONENTS,
+  CONTRACT_ROUTES,
+  CONTRACT_URLS,
+} = contract
 const CONTRACT_CSS_VARS = new Set(contract.CONTRACT_CSS_VARS)
 const CONTRACT_DIRECTIVES = new Set(contract.CONTRACT_DIRECTIVES)
 const CONTRACT_COMPONENT_NAMES = new Set(Object.keys(CONTRACT_COMPONENTS))
@@ -37,6 +45,24 @@ const TEMPLATE_KEYS = new Set([
 ])
 
 const errors = []
+
+// ---------------------------------------------------------------------------
+// 0. 契约自身一致性：requiredProps ⊆ props；slot.provides == slot.scope.name
+// ---------------------------------------------------------------------------
+for (const [key, entry] of Object.entries(CONTRACT_COMPONENTS)) {
+  const props = new Set(entry.props)
+  for (const required of entry.requiredProps ?? []) {
+    if (!props.has(required)) {
+      errors.push(`组件 ${key} 的 requiredProps 含未登记 props：${required}`)
+    }
+  }
+  for (const slot of entry.slots ?? []) {
+    const scopeNames = (slot.scope ?? []).map((field) => field.name)
+    if (scopeNames.join('|') !== slot.provides.join('|')) {
+      errors.push(`组件 ${key} 的 slot #${slot.name}：provides 与 scope 字段不一致`)
+    }
+  }
+}
 
 /** 相对仓库根目录的路径，便于报错定位 */
 function rel(file) {
@@ -326,6 +352,7 @@ for (const [key, entry] of Object.entries(CONTRACT_COMPONENTS)) {
 
 const runtimeSource = await readSource(path.join(blogSrc, 'runtime.ts'))
 const routeNames = []
+const routePaths = new Map()
 walk(runtimeSource, (node) => {
   if (!ts.isObjectLiteralExpression(node)) {
     return
@@ -335,7 +362,11 @@ walk(runtimeSource, (node) => {
   )
   const pathProperty = node.properties.find((property) => propertyName(property) === 'path')
   if (nameProperty && pathProperty) {
-    routeNames.push(nameProperty.initializer.text)
+    const name = nameProperty.initializer.text
+    routeNames.push(name)
+    if (ts.isStringLiteral(pathProperty.initializer)) {
+      routePaths.set(name, pathProperty.initializer.text)
+    }
   }
 })
 
@@ -351,6 +382,141 @@ for (const name of referencedRoutes) {
   if (!routeNames.includes(name)) {
     errors.push(`契约引用了不存在的路由名 "${name}"（apps/blog/src/runtime.ts）`)
   }
+}
+
+// CONTRACT_ROUTES 必须与 runtime.ts 双向一致（名字 + path）
+for (const [name, def] of Object.entries(CONTRACT_ROUTES)) {
+  if (!routeNames.includes(name)) {
+    errors.push(`CONTRACT_ROUTES 登记了 runtime 不存在的路由 "${name}"`)
+    continue
+  }
+  const path = routePaths.get(name)
+  if (path && path !== def.path) {
+    errors.push(`路由 "${name}" 的 path 不一致：runtime=${path} contract=${def.path}`)
+  }
+}
+for (const name of routeNames) {
+  if (!CONTRACT_ROUTES[name]) {
+    errors.push(`runtime 路由 "${name}" 未登记到 CONTRACT_ROUTES`)
+  }
+}
+for (const [name, url] of Object.entries(CONTRACT_URLS)) {
+  if (!CONTRACT_ROUTES[name] && name !== 'tag') {
+    errors.push(`CONTRACT_URLS 引用了未知路由 "${name}"（${url}）`)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 4.1 类型投影：CONTRACT_DATA.shape / slot.scope.shape → types.ts 字段
+// ---------------------------------------------------------------------------
+const typesSource = await readSource(path.join(blogSrc, 'types.ts'))
+const typeInterfaces = new Map()
+const typeAliases = new Map()
+walk(typesSource, (node) => {
+  if (ts.isInterfaceDeclaration(node) && node.name) {
+    typeInterfaces.set(node.name.text, node)
+  } else if (ts.isTypeAliasDeclaration(node) && node.name) {
+    typeAliases.set(node.name.text, node.type.getText(typesSource))
+  }
+})
+
+const BUILTIN_TYPES = new Set([
+  'Array',
+  'Date',
+  'Map',
+  'Omit',
+  'Partial',
+  'Pick',
+  'Promise',
+  'Readonly',
+  'ReadonlyArray',
+  'Record',
+  'Required',
+  'Set',
+])
+
+function typeNames(text) {
+  // 去掉字符串字面量（'displayAt' / "firstPublishedAt" 里的首字母不是类型名）
+  const cleaned = String(text ?? '').replace(/'[^']*'|"[^"]*"/g, ' ')
+  return [...cleaned.matchAll(/[A-Z][A-Za-z0-9_]*/g)]
+    .map((match) => match[0])
+    .filter((name) => !BUILTIN_TYPES.has(name))
+}
+
+function interfaceFields(node, seen = new Set()) {
+  const fields = {}
+  for (const clause of node.heritageClauses ?? []) {
+    for (const type of clause.types) {
+      const baseName = type.expression.getText(typesSource)
+      if (seen.has(baseName)) {
+        continue
+      }
+      const base = typeInterfaces.get(baseName)
+      if (!base) {
+        errors.push(`类型 ${node.name.text} 继承的类型无法解析：${baseName}`)
+        continue
+      }
+      Object.assign(fields, interfaceFields(base, new Set([...seen, node.name.text])))
+    }
+  }
+  for (const member of node.members) {
+    if (!ts.isPropertySignature(member) || !member.name) {
+      continue
+    }
+    const name = propertyName(member)
+    if (!name) {
+      continue
+    }
+    const type = member.type ? member.type.getText(typesSource) : 'unknown'
+    fields[name] = member.questionToken ? `${type} | undefined` : type
+  }
+  return fields
+}
+
+const shapeRoots = new Set()
+for (const entry of Object.values(CONTRACT_DATA)) {
+  typeNames(entry.shape).forEach((name) => shapeRoots.add(name))
+}
+for (const entry of Object.values(CONTRACT_COMPONENTS)) {
+  for (const slot of entry.slots ?? []) {
+    for (const field of slot.scope ?? []) {
+      typeNames(field.shape).forEach((name) => shapeRoots.add(name))
+    }
+  }
+}
+
+const emittedTypes = {}
+const pendingTypes = [...shapeRoots]
+while (pendingTypes.length) {
+  const name = pendingTypes.shift()
+  if (emittedTypes[name] !== undefined) {
+    continue
+  }
+  if (typeAliases.has(name)) {
+    const text = typeAliases.get(name)
+    emittedTypes[name] = text
+    typeNames(text).forEach((next) => pendingTypes.push(next))
+    continue
+  }
+  const node = typeInterfaces.get(name)
+  if (!node) {
+    errors.push(`契约 shape 无法解析为 types.ts 类型：${name}`)
+    continue
+  }
+  const fields = interfaceFields(node)
+  emittedTypes[name] = fields
+  for (const type of Object.values(fields)) {
+    typeNames(type).forEach((next) => pendingTypes.push(next))
+  }
+}
+
+const sortedTypes = Object.fromEntries(
+  Object.keys(emittedTypes)
+    .sort()
+    .map((key) => [key, emittedTypes[key]]),
+)
+if (JSON.stringify(sortedTypes).includes('RouteLocationNormalizedLoaded')) {
+  errors.push('类型投影泄漏了 vue-router 内部类型 RouteLocationNormalizedLoaded，请使用 RouteView')
 }
 
 // ---------------------------------------------------------------------------
@@ -465,12 +631,67 @@ function freeIdentifiers(expression) {
   return names
 }
 
+const SLOT_NAMES = new Set(
+  Object.values(CONTRACT_COMPONENTS).flatMap((entry) => entry.slots.map((slot) => slot.name)),
+)
+const SLOT_SCOPE = new Map()
+for (const entry of Object.values(CONTRACT_COMPONENTS)) {
+  for (const slot of entry.slots) {
+    if (!SLOT_SCOPE.has(slot.name)) {
+      SLOT_SCOPE.set(slot.name, new Set())
+    }
+    slot.provides.forEach((field) => SLOT_SCOPE.get(slot.name).add(field))
+  }
+}
+
 function scanTheme(file, html) {
   const locals = collectLocals(html)
 
   for (const match of html.matchAll(/<\s*(blog-[a-z-]+)/g)) {
     if (!CONTRACT_COMPONENT_NAMES.has(match[1])) {
       errors.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的组件 <${match[1]}>`)
+    }
+  }
+
+  // slot 名与作用域字段（union 口径：不区分具体组件，后端校验同口径）
+  for (const match of html.matchAll(/(?:#([\w-]+)|v-slot(?::([\w-]+))?)\s*=\s*"([^"]*)"/g)) {
+    const name = match[1] ?? match[2] ?? 'default'
+    if (!SLOT_NAMES.has(name)) {
+      errors.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的 slot #${name}`)
+      continue
+    }
+    const value = match[3].trim()
+    const inner = value.startsWith('{') ? value.slice(1, value.lastIndexOf('}')) : value
+    for (const part of inner.split(',')) {
+      const field = part.split(':')[0].trim().replace(/^\.\.\./, '')
+      if (field && /^[A-Za-z_$][\w$]*$/.test(field) && !SLOT_SCOPE.get(name)?.has(field)) {
+        errors.push(
+          `${rel(file)}:${lineAt(html, match.index)} slot #${name} 引用了未登记的作用域字段 "${field}"`,
+        )
+      }
+    }
+  }
+
+  // 必填 props 与组件事件
+  for (const match of html.matchAll(/<\s*(blog-[a-z-]+)([^>]*)>/g)) {
+    const tag = match[1]
+    const attrs = match[2]
+    const entry = CONTRACT_COMPONENTS[tag]
+    if (!entry) {
+      continue
+    }
+    for (const prop of entry.requiredProps) {
+      const pattern = new RegExp(`(?<![\\w-])(?:(?::|v-bind:)${prop}(?=[\\s=/>])|${prop}\\s*=)`)
+      if (!pattern.test(attrs)) {
+        errors.push(`${rel(file)}:${lineAt(html, match.index)} <${tag}> 缺少必填 prop "${prop}"`)
+      }
+    }
+    if (entry.events.length) {
+      for (const event of attrs.matchAll(/(?:^|\s)(?:@|v-on:)([\w-]+)/g)) {
+        if (!entry.events.includes(event[1])) {
+          errors.push(`${rel(file)}:${lineAt(html, match.index)} <${tag}> 使用了未登记事件 "${event[1]}"`)
+        }
+      }
     }
   }
 
@@ -514,6 +735,10 @@ if (unknownStarterClasses.length) {
 const capabilitiesFixture = path.join(root, 'scripts/fixtures/theme-capabilities.html')
 scanTheme(capabilitiesFixture, await readText(capabilitiesFixture))
 
+// headless fixture：锁住 root slot 的使用方式（2A）
+const headlessFixture = path.join(root, 'scripts/fixtures/theme-headless.html')
+scanTheme(headlessFixture, await readText(headlessFixture))
+
 const extraThemeIndex = process.argv.indexOf('--theme')
 if (extraThemeIndex >= 0) {
   const extra = process.argv[extraThemeIndex + 1]
@@ -529,11 +754,25 @@ if (extraThemeIndex >= 0) {
 // 输出
 // ---------------------------------------------------------------------------
 
+const emitted = { ...contract.CONTRACT, types: sortedTypes }
+const serialized = `${JSON.stringify(emitted, null, 2)}\n`
+const backendOutput = path.join(repoRoot, 'backend', 'src', 'main', 'resources', 'theme', 'theme-contract.json')
+
 if (process.argv.includes('--emit')) {
   const output = path.join(root, 'apps/blog/dist/theme-contract.json')
   await mkdir(path.dirname(output), { recursive: true })
-  await writeFile(output, `${JSON.stringify(contract.CONTRACT, null, 2)}\n`, 'utf8')
-  console.log(`已生成 ${rel(output)}`)
+  await writeFile(output, serialized, 'utf8')
+  await mkdir(path.dirname(backendOutput), { recursive: true })
+  await writeFile(backendOutput, serialized, 'utf8')
+  console.log(`已生成 ${rel(output)} 与 ${rel(backendOutput)}`)
+} else {
+  const existing = await readFile(backendOutput, 'utf8').catch(() => null)
+  const normalizeEol = (text) => text.replace(/\r\n/g, '\n')
+  if (existing === null) {
+    errors.push(`缺少后端契约生成物 ${rel(backendOutput)}，请运行 pnpm sync:contract`)
+  } else if (normalizeEol(existing) !== normalizeEol(serialized)) {
+    errors.push(`后端契约生成物过期 ${rel(backendOutput)}，请运行 pnpm sync:contract`)
+  }
 }
 
 if (errors.length) {

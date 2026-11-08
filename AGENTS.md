@@ -13,6 +13,7 @@
 | `docs/markdown-dialect.md` | Markdown 内容方言规范（v2 白名单 / 边界 / 三端配置对齐） |
 | `docs/markdown-dialect-fixture.md` | 方言验收样本：新增语法必须 admin / blog / 桌面三端渲染比对 |
 | `docs/blog-runtime-theme.md` | 博客运行时与主题化设计（v1.15 已实现）：运行时/主题职责、契约表、主题版本与预览、站点配置与独立页面 |
+| `docs/theme-contract-v2.md` | 主题契约 v2（2A 增量 headless，阶段 1 已实现）：`root` slot、slot scope、类型/路由投影、校验与 AI 提示词接入；合并进 `blog-runtime-theme.md` §3 后删除 |
 | `docs/desktop-sync.md` | 桌面端同步设计（v1 草案）：本地优先 + 懒加载 manifest、`version` 修订号与本地 hash、整篇冲突 + diff、离线新建、账号隔离 |
 | `docs/desktop-local-schema.md` | 桌面端本地库结构演进（SQLite schema 迁移，v1.1 已实现）：`user_version` 版本轴、有序迁移与老库桥接、备份与降级检测、与后端 API 契约版本的关系 |
 | `docs/desktop-local-file.md` | 桌面端本地 Markdown（v1.1 已实现 / v1.2 多标签已实现，Windows）：打开文件=临时编辑、免登录本地笔记、最近打开、纳入管理（内置「本地文件」分组 / 服务端同步）、导出 Markdown；多标签 / 独立未保存 / 标签恢复 |

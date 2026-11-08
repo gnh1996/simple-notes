@@ -22,5 +22,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="bc-reading-progress" :style="{ transform: 'scaleX(' + progress + ')' }"></div>
+  <slot name="root" :progress="progress">
+    <div class="bc-reading-progress" :style="{ transform: 'scaleX(' + progress + ')' }"></div>
+  </slot>
 </template>

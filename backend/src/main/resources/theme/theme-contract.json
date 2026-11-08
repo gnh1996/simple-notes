@@ -1,0 +1,791 @@
+{
+  "version": 1,
+  "data": {
+    "site": {
+      "shape": "Site",
+      "routes": "all"
+    },
+    "nav": {
+      "shape": "NavItem[]",
+      "routes": "all"
+    },
+    "route": {
+      "shape": "RouteView",
+      "routes": "all"
+    },
+    "state": {
+      "shape": "'loading' | 'empty' | 'error' | 'ready'",
+      "routes": "all"
+    },
+    "message": {
+      "shape": "string",
+      "routes": "all"
+    },
+    "colorMode": {
+      "shape": "'light' | 'dark'",
+      "routes": "all"
+    },
+    "posts": {
+      "shape": "PostSummary[]",
+      "routes": [
+        "home",
+        "tags",
+        "tag-posts",
+        "archives",
+        "search"
+      ]
+    },
+    "pager": {
+      "shape": "Pager",
+      "routes": [
+        "home",
+        "tags",
+        "tag-posts",
+        "archives",
+        "search"
+      ]
+    },
+    "post": {
+      "shape": "PostDetail | null",
+      "routes": [
+        "post"
+      ]
+    },
+    "prevPost": {
+      "shape": "PostSummary | null",
+      "routes": [
+        "post"
+      ]
+    },
+    "nextPost": {
+      "shape": "PostSummary | null",
+      "routes": [
+        "post"
+      ]
+    },
+    "tags": {
+      "shape": "Tag[]",
+      "routes": [
+        "tags",
+        "tag-posts"
+      ]
+    },
+    "tag": {
+      "shape": "Tag | null",
+      "routes": [
+        "tag-posts"
+      ]
+    },
+    "archives": {
+      "shape": "Archive[]",
+      "routes": [
+        "archives"
+      ]
+    },
+    "archiveGroups": {
+      "shape": "ArchiveGroup[]",
+      "routes": [
+        "archives"
+      ]
+    },
+    "keyword": {
+      "shape": "string",
+      "routes": [
+        "search"
+      ]
+    },
+    "searched": {
+      "shape": "boolean",
+      "routes": [
+        "search"
+      ]
+    },
+    "page": {
+      "shape": "SitePage | null",
+      "routes": [
+        "page"
+      ]
+    },
+    "listSort": {
+      "shape": "ListSort",
+      "routes": "all",
+      "note": "当前列表 / 详情上下文解析后的排序参数（只读）"
+    },
+    "ui": {
+      "shape": "Record<string, unknown>",
+      "routes": "all",
+      "writable": true,
+      "note": "主题自有 UI 状态（抽屉 / 标签页 / 筛选），可 v-model；路由切换时清空，不持久化"
+    }
+  },
+  "helpers": {
+    "isNavActive": {
+      "signature": "(to: string): boolean"
+    },
+    "formatDate": {
+      "signature": "(value: string | null | undefined): string"
+    },
+    "postDate": {
+      "signature": "(post: PostSummary): string"
+    }
+  },
+  "actions": {
+    "go": {
+      "signature": "(page: number): void"
+    },
+    "search": {
+      "signature": "(keyword: string): void"
+    },
+    "setColorMode": {
+      "signature": "(mode: 'light' | 'dark' | 'system'): void"
+    },
+    "toggleColorMode": {
+      "signature": "(): void"
+    },
+    "scrollToTop": {
+      "signature": "(): void"
+    },
+    "openLightbox": {
+      "signature": "(src: string, alt?: string): void"
+    }
+  },
+  "components": {
+    "blog-post-card": {
+      "props": [
+        "post"
+      ],
+      "requiredProps": [
+        "post"
+      ],
+      "events": [],
+      "selfFetch": false,
+      "parts": [
+        "bc-card",
+        "bc-card-cover",
+        "bc-card-body",
+        "bc-card-meta",
+        "bc-card-pin",
+        "bc-card-title",
+        "bc-card-summary",
+        "bc-card-tags"
+      ],
+      "slots": [
+        {
+          "name": "root",
+          "provides": [
+            "post"
+          ],
+          "scope": [
+            {
+              "name": "post",
+              "shape": "PostSummary"
+            }
+          ]
+        },
+        {
+          "name": "default",
+          "provides": [
+            "post"
+          ],
+          "scope": [
+            {
+              "name": "post",
+              "shape": "PostSummary"
+            }
+          ]
+        }
+      ]
+    },
+    "blog-pager": {
+      "props": [
+        "pager"
+      ],
+      "requiredProps": [
+        "pager"
+      ],
+      "events": [
+        "go"
+      ],
+      "selfFetch": false,
+      "parts": [
+        "bc-pager"
+      ],
+      "slots": [
+        {
+          "name": "root",
+          "provides": [
+            "pager",
+            "go",
+            "pages"
+          ],
+          "scope": [
+            {
+              "name": "pager",
+              "shape": "Pager"
+            },
+            {
+              "name": "go",
+              "shape": "(page: number) => void"
+            },
+            {
+              "name": "pages",
+              "shape": "number[]"
+            }
+          ]
+        }
+      ]
+    },
+    "blog-markdown": {
+      "props": [
+        "source"
+      ],
+      "requiredProps": [],
+      "events": [],
+      "selfFetch": false,
+      "parts": [
+        "bc-prose"
+      ],
+      "slots": []
+    },
+    "blog-toc": {
+      "props": [],
+      "requiredProps": [],
+      "events": [],
+      "selfFetch": false,
+      "parts": [
+        "bc-toc"
+      ],
+      "slots": [
+        {
+          "name": "root",
+          "provides": [
+            "items",
+            "activeId",
+            "scrollTo"
+          ],
+          "scope": [
+            {
+              "name": "items",
+              "shape": "TocItem[]"
+            },
+            {
+              "name": "activeId",
+              "shape": "string"
+            },
+            {
+              "name": "scrollTo",
+              "shape": "(id: string) => void"
+            }
+          ]
+        }
+      ]
+    },
+    "blog-tag-chip": {
+      "props": [
+        "tag"
+      ],
+      "requiredProps": [
+        "tag"
+      ],
+      "events": [],
+      "selfFetch": false,
+      "parts": [
+        "bc-tag"
+      ],
+      "slots": [
+        {
+          "name": "root",
+          "provides": [
+            "tag"
+          ],
+          "scope": [
+            {
+              "name": "tag",
+              "shape": "TagBrief"
+            }
+          ]
+        }
+      ]
+    },
+    "blog-tag-cloud": {
+      "props": [],
+      "requiredProps": [],
+      "events": [],
+      "selfFetch": true,
+      "parts": [
+        "bc-tag-cloud",
+        "bc-tag",
+        "bc-tag-count",
+        "bc-state"
+      ],
+      "slots": [
+        {
+          "name": "root",
+          "provides": [
+            "tags",
+            "state",
+            "message"
+          ],
+          "scope": [
+            {
+              "name": "tags",
+              "shape": "Tag[]"
+            },
+            {
+              "name": "state",
+              "shape": "string"
+            },
+            {
+              "name": "message",
+              "shape": "string"
+            }
+          ]
+        }
+      ]
+    },
+    "blog-archives": {
+      "props": [],
+      "requiredProps": [],
+      "events": [],
+      "selfFetch": true,
+      "parts": [
+        "archive-index",
+        "bc-state"
+      ],
+      "slots": [
+        {
+          "name": "root",
+          "provides": [
+            "archives",
+            "state",
+            "message"
+          ],
+          "scope": [
+            {
+              "name": "archives",
+              "shape": "Archive[]"
+            },
+            {
+              "name": "state",
+              "shape": "string"
+            },
+            {
+              "name": "message",
+              "shape": "string"
+            }
+          ]
+        }
+      ]
+    },
+    "blog-search-box": {
+      "props": [
+        "value"
+      ],
+      "requiredProps": [],
+      "events": [
+        "search"
+      ],
+      "selfFetch": false,
+      "parts": [
+        "bc-search"
+      ],
+      "slots": [
+        {
+          "name": "root",
+          "provides": [
+            "value",
+            "search"
+          ],
+          "scope": [
+            {
+              "name": "value",
+              "shape": "string"
+            },
+            {
+              "name": "search",
+              "shape": "(value: string) => void"
+            }
+          ]
+        }
+      ]
+    },
+    "blog-theme-toggle": {
+      "props": [],
+      "requiredProps": [],
+      "events": [],
+      "selfFetch": false,
+      "parts": [
+        "bc-theme-toggle"
+      ],
+      "slots": [
+        {
+          "name": "root",
+          "provides": [
+            "colorMode",
+            "toggle",
+            "set"
+          ],
+          "scope": [
+            {
+              "name": "colorMode",
+              "shape": "'light' | 'dark'"
+            },
+            {
+              "name": "toggle",
+              "shape": "() => void"
+            },
+            {
+              "name": "set",
+              "shape": "(mode: 'light' | 'dark' | 'system') => void"
+            }
+          ]
+        }
+      ]
+    },
+    "blog-image": {
+      "props": [
+        "src",
+        "alt"
+      ],
+      "requiredProps": [
+        "src"
+      ],
+      "events": [],
+      "selfFetch": false,
+      "parts": [
+        "bc-image"
+      ],
+      "slots": [
+        {
+          "name": "root",
+          "provides": [
+            "src",
+            "alt",
+            "open"
+          ],
+          "scope": [
+            {
+              "name": "src",
+              "shape": "string"
+            },
+            {
+              "name": "alt",
+              "shape": "string"
+            },
+            {
+              "name": "open",
+              "shape": "() => void"
+            }
+          ]
+        }
+      ]
+    },
+    "blog-back-to-top": {
+      "props": [],
+      "requiredProps": [],
+      "events": [],
+      "selfFetch": false,
+      "parts": [
+        "bc-back-to-top"
+      ],
+      "slots": [
+        {
+          "name": "root",
+          "provides": [
+            "visible",
+            "scroll"
+          ],
+          "scope": [
+            {
+              "name": "visible",
+              "shape": "boolean"
+            },
+            {
+              "name": "scroll",
+              "shape": "() => void"
+            }
+          ]
+        }
+      ]
+    },
+    "blog-reading-progress": {
+      "props": [],
+      "requiredProps": [],
+      "events": [],
+      "selfFetch": false,
+      "parts": [
+        "bc-reading-progress"
+      ],
+      "slots": [
+        {
+          "name": "root",
+          "provides": [
+            "progress"
+          ],
+          "scope": [
+            {
+              "name": "progress",
+              "shape": "number"
+            }
+          ]
+        }
+      ]
+    },
+    "blog-state": {
+      "props": [
+        "state",
+        "message"
+      ],
+      "requiredProps": [],
+      "events": [],
+      "selfFetch": false,
+      "parts": [
+        "bc-state",
+        "bc-skeleton"
+      ],
+      "slots": [
+        {
+          "name": "root",
+          "provides": [
+            "state",
+            "message"
+          ],
+          "scope": [
+            {
+              "name": "state",
+              "shape": "string"
+            },
+            {
+              "name": "message",
+              "shape": "string"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "globalParts": [
+    "bc-lightbox"
+  ],
+  "cssVars": [
+    "--blog-accent",
+    "--blog-accent-contrast",
+    "--blog-bg",
+    "--blog-surface",
+    "--blog-text",
+    "--blog-text-muted",
+    "--blog-border",
+    "--blog-radius",
+    "--blog-font-sans",
+    "--blog-font-mono",
+    "--blog-prose-size",
+    "--blog-prose-line-height",
+    "--blog-content-width",
+    "--blog-gap",
+    "--blog-code-bg"
+  ],
+  "directives": [
+    "v-if",
+    "v-else-if",
+    "v-else",
+    "v-for",
+    "v-show",
+    "v-model",
+    "v-text",
+    "v-once",
+    "v-cloak",
+    "v-bind",
+    "v-on",
+    "v-slot"
+  ],
+  "routes": {
+    "home": {
+      "path": "/",
+      "query": []
+    },
+    "post": {
+      "path": "/posts/:slug",
+      "query": []
+    },
+    "tags": {
+      "path": "/tags",
+      "query": [
+        "page",
+        "size",
+        "sortBy",
+        "direction",
+        "pinnedFirst"
+      ]
+    },
+    "tag-posts": {
+      "path": "/tags/:id",
+      "query": [
+        "page",
+        "size",
+        "sortBy",
+        "direction",
+        "pinnedFirst"
+      ]
+    },
+    "archives": {
+      "path": "/archives",
+      "query": [
+        "year",
+        "month",
+        "page",
+        "size",
+        "sortBy",
+        "direction",
+        "pinnedFirst"
+      ]
+    },
+    "search": {
+      "path": "/search",
+      "query": [
+        "q",
+        "page",
+        "size",
+        "sortBy",
+        "direction",
+        "pinnedFirst"
+      ]
+    },
+    "page": {
+      "path": "/p/:slug",
+      "alias": [
+        "/about"
+      ],
+      "query": []
+    },
+    "not-found": {
+      "path": "/:pathMatch(.*)*",
+      "query": []
+    }
+  },
+  "urls": {
+    "post": "/posts/{slug}",
+    "tag": "/tags/{id}",
+    "archives": "/archives?year={year}&month={month}",
+    "search": "/search?q={q}",
+    "page": "/p/{slug}"
+  },
+  "types": {
+    "Archive": {
+      "year": "number",
+      "month": "number",
+      "count": "number"
+    },
+    "ArchiveGroup": {
+      "key": "string",
+      "year": "number",
+      "month": "number",
+      "posts": "PostSummary[]"
+    },
+    "Author": {
+      "name": "string",
+      "avatarUrl": "string | null",
+      "bio": "string"
+    },
+    "ListSort": {
+      "pinnedFirst": "boolean",
+      "direction": "'asc' | 'desc'",
+      "sortBy": "SortField"
+    },
+    "NavItem": {
+      "key": "string",
+      "label": "string",
+      "to": "string"
+    },
+    "Pager": {
+      "page": "number",
+      "size": "number",
+      "total": "number",
+      "totalPages": "number",
+      "hasPrev": "boolean",
+      "hasNext": "boolean"
+    },
+    "PostDetail": {
+      "slug": "string",
+      "title": "string",
+      "summary": "string",
+      "coverUrl": "string | null",
+      "tags": "TagBrief[]",
+      "pinned": "boolean",
+      "firstPublishedAt": "string",
+      "lastPublishedAt": "string",
+      "authoredAt": "string | null",
+      "displayAt": "string",
+      "readingMinutes": "number",
+      "content": "string",
+      "authorName": "string",
+      "prevPost": "PostSummary | null",
+      "nextPost": "PostSummary | null"
+    },
+    "PostSummary": {
+      "slug": "string",
+      "title": "string",
+      "summary": "string",
+      "coverUrl": "string | null",
+      "tags": "TagBrief[]",
+      "pinned": "boolean",
+      "firstPublishedAt": "string",
+      "lastPublishedAt": "string",
+      "authoredAt": "string | null",
+      "displayAt": "string",
+      "readingMinutes": "number"
+    },
+    "RouteView": {
+      "name": "string | symbol | null | undefined",
+      "path": "string",
+      "params": "Record<string, string | string[]>",
+      "query": "Record<string, string | string[] | null>",
+      "hash": "string"
+    },
+    "Site": {
+      "name": "string",
+      "tagline": "string",
+      "description": "string",
+      "logoUrl": "string | null",
+      "faviconUrl": "string | null",
+      "baseUrl": "string | null",
+      "icp": "string | null",
+      "policeRecord": "string | null",
+      "author": "Author",
+      "social": "SocialLink[]",
+      "nav": "NavItem[]",
+      "themeMode": "string",
+      "themeOverrides": "Record<string, string> | null",
+      "footerText": "string",
+      "pageSize": "number"
+    },
+    "SitePage": {
+      "id": "string",
+      "slug": "string",
+      "title": "string",
+      "content": "string",
+      "visible": "boolean",
+      "sort": "number",
+      "updatedAt": "string"
+    },
+    "SocialLink": {
+      "type": "string | null",
+      "label": "string | null",
+      "url": "string | null"
+    },
+    "SortField": "'displayAt' | 'firstPublishedAt' | 'lastPublishedAt'",
+    "Tag": {
+      "id": "string",
+      "name": "string",
+      "count": "number"
+    },
+    "TagBrief": {
+      "id": "string",
+      "name": "string"
+    },
+    "TocItem": {
+      "id": "string",
+      "text": "string",
+      "depth": "number"
+    }
+  }
+}

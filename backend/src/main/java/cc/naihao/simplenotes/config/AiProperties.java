@@ -37,4 +37,10 @@ public class AiProperties {
 
     /** reasoning_effort（环境变量 AI_REASONING_EFFORT）：none / low / high / max；空 = 不发送 */
     private String reasoningEffort = "";
+
+    /**
+     * 非空时把每轮实际发送的 system / user / ChatMemory 写入该目录（环境变量 AI_PROMPT_DUMP_DIR）。
+     * 仅用于本地调试，默认关闭；不会写入 API Key。
+     */
+    private String promptDumpDir = "";
 }

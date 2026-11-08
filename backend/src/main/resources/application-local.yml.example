@@ -62,3 +62,5 @@ AI_MAX_TOKENS: 0
 # DeepSeek: disabled 关闭 thinking；空 = 不发送；reasoning effort: none/low/high/max
 AI_THINKING: ""
 AI_REASONING_EFFORT: ""
+# 非空时把每轮 system / user / ChatMemory 写入该目录（调试用；默认关闭）
+AI_PROMPT_DUMP_DIR: ""

@@ -25,10 +25,21 @@ export interface DataEntry {
   readonly note?: string
 }
 
+export interface SlotField {
+  /** 作用域名 */
+  readonly name: string
+  /** 引用 CONTRACT_TYPES 的键；基本类型用 'string' / 'number' / 'boolean' */
+  readonly shape: string
+  readonly optional?: boolean
+  readonly note?: string
+}
+
 export interface SlotEntry {
   readonly name: string
-  /** slot 作用域向主题暴露的变量名 */
+  /** slot 作用域向主题暴露的变量名（必须与 scope 的 name 一致） */
   readonly provides: readonly string[]
+  /** 带类型与语义的作用域字段；供 theme-contract.json / 校验 / AI 提示词消费 */
+  readonly scope: readonly SlotField[]
 }
 
 export interface FunctionEntry {
@@ -37,6 +48,8 @@ export interface FunctionEntry {
 
 export interface ComponentEntry {
   readonly props: readonly string[]
+  /** props 的子集；主题未传时组件无法正常工作 */
+  readonly requiredProps: readonly string[]
   readonly events: readonly string[]
   /** 组件自取数据（放上去即产生请求） */
   readonly selfFetch: boolean
@@ -47,12 +60,14 @@ export interface ComponentEntry {
   readonly parts: readonly string[]
   /** 具名 slot（公开接口，只增不改）；为空表示组件不接受覆盖 */
   readonly slots: readonly SlotEntry[]
+  /** 可选：最小用法示例；当前未使用，保留给 cookbook 扩展 */
+  readonly example?: string
 }
 
 export const CONTRACT_DATA = {
   site: { shape: 'Site', routes: 'all' },
   nav: { shape: 'NavItem[]', routes: 'all' },
-  route: { shape: 'RouteLocation', routes: 'all' },
+  route: { shape: 'RouteView', routes: 'all' },
   state: { shape: "'loading' | 'empty' | 'error' | 'ready'", routes: 'all' },
   message: { shape: 'string', routes: 'all' },
   colorMode: { shape: "'light' | 'dark'", routes: 'all' },
@@ -75,7 +90,7 @@ export const CONTRACT_DATA = {
   searched: { shape: 'boolean', routes: ['search'] },
   page: { shape: 'SitePage | null', routes: ['page'] },
   listSort: {
-    shape: "{ pinnedFirst: boolean; direction: 'asc' | 'desc'; sortBy: SortField }",
+    shape: 'ListSort',
     routes: 'all',
     note: '当前列表 / 详情上下文解析后的排序参数（只读）',
   },
@@ -105,6 +120,7 @@ export const CONTRACT_ACTIONS = {
 export const CONTRACT_COMPONENTS = {
   'blog-post-card': {
     props: ['post'],
+    requiredProps: ['post'],
     events: [],
     selfFetch: false,
     parts: [
@@ -117,61 +133,213 @@ export const CONTRACT_COMPONENTS = {
       'bc-card-summary',
       'bc-card-tags',
     ],
-    slots: [{ name: 'default', provides: ['post'] }],
+    slots: [
+      {
+        name: 'root',
+        provides: ['post'],
+        scope: [{ name: 'post', shape: 'PostSummary' }],
+      },
+      {
+        name: 'default',
+        provides: ['post'],
+        scope: [{ name: 'post', shape: 'PostSummary' }],
+      },
+    ],
   },
-  'blog-pager': { props: ['pager'], events: ['go'], selfFetch: false, parts: ['bc-pager'], slots: [] },
-  'blog-markdown': { props: ['source'], events: [], selfFetch: false, parts: ['bc-prose'], slots: [] },
-  'blog-toc': { props: [], events: [], selfFetch: false, parts: ['bc-toc'], slots: [] },
-  'blog-tag-chip': { props: ['tag'], events: [], selfFetch: false, parts: ['bc-tag'], slots: [] },
+  'blog-pager': {
+    props: ['pager'],
+    requiredProps: ['pager'],
+    events: ['go'],
+    selfFetch: false,
+    parts: ['bc-pager'],
+    slots: [
+      {
+        name: 'root',
+        provides: ['pager', 'go', 'pages'],
+        scope: [
+          { name: 'pager', shape: 'Pager' },
+          { name: 'go', shape: '(page: number) => void' },
+          { name: 'pages', shape: 'number[]' },
+        ],
+      },
+    ],
+  },
+  'blog-markdown': {
+    props: ['source'],
+    requiredProps: [],
+    events: [],
+    selfFetch: false,
+    parts: ['bc-prose'],
+    slots: [],
+  },
+  'blog-toc': {
+    props: [],
+    requiredProps: [],
+    events: [],
+    selfFetch: false,
+    parts: ['bc-toc'],
+    slots: [
+      {
+        name: 'root',
+        provides: ['items', 'activeId', 'scrollTo'],
+        scope: [
+          { name: 'items', shape: 'TocItem[]' },
+          { name: 'activeId', shape: 'string' },
+          { name: 'scrollTo', shape: '(id: string) => void' },
+        ],
+      },
+    ],
+  },
+  'blog-tag-chip': {
+    props: ['tag'],
+    requiredProps: ['tag'],
+    events: [],
+    selfFetch: false,
+    parts: ['bc-tag'],
+    slots: [
+      {
+        name: 'root',
+        provides: ['tag'],
+        scope: [{ name: 'tag', shape: 'TagBrief' }],
+      },
+    ],
+  },
   'blog-tag-cloud': {
     props: [],
+    requiredProps: [],
     events: [],
     selfFetch: true,
     parts: ['bc-tag-cloud', 'bc-tag', 'bc-tag-count', 'bc-state'],
-    slots: [],
+    slots: [
+      {
+        name: 'root',
+        provides: ['tags', 'state', 'message'],
+        scope: [
+          { name: 'tags', shape: 'Tag[]' },
+          { name: 'state', shape: 'string' },
+          { name: 'message', shape: 'string' },
+        ],
+      },
+    ],
   },
   'blog-archives': {
     props: [],
+    requiredProps: [],
     events: [],
     selfFetch: true,
     parts: ['archive-index', 'bc-state'],
-    slots: [],
+    slots: [
+      {
+        name: 'root',
+        provides: ['archives', 'state', 'message'],
+        scope: [
+          { name: 'archives', shape: 'Archive[]' },
+          { name: 'state', shape: 'string' },
+          { name: 'message', shape: 'string' },
+        ],
+      },
+    ],
   },
   'blog-search-box': {
     props: ['value'],
+    requiredProps: [],
     events: ['search'],
     selfFetch: false,
     parts: ['bc-search'],
-    slots: [],
+    slots: [
+      {
+        name: 'root',
+        provides: ['value', 'search'],
+        scope: [
+          { name: 'value', shape: 'string' },
+          { name: 'search', shape: '(value: string) => void' },
+        ],
+      },
+    ],
   },
   'blog-theme-toggle': {
     props: [],
+    requiredProps: [],
     events: [],
     selfFetch: false,
     parts: ['bc-theme-toggle'],
-    slots: [],
+    slots: [
+      {
+        name: 'root',
+        provides: ['colorMode', 'toggle', 'set'],
+        scope: [
+          { name: 'colorMode', shape: "'light' | 'dark'" },
+          { name: 'toggle', shape: '() => void' },
+          { name: 'set', shape: "(mode: 'light' | 'dark' | 'system') => void" },
+        ],
+      },
+    ],
   },
-  'blog-image': { props: ['src', 'alt'], events: [], selfFetch: false, parts: ['bc-image'], slots: [] },
+  'blog-image': {
+    props: ['src', 'alt'],
+    requiredProps: ['src'],
+    events: [],
+    selfFetch: false,
+    parts: ['bc-image'],
+    slots: [
+      {
+        name: 'root',
+        provides: ['src', 'alt', 'open'],
+        scope: [
+          { name: 'src', shape: 'string' },
+          { name: 'alt', shape: 'string' },
+          { name: 'open', shape: '() => void' },
+        ],
+      },
+    ],
+  },
   'blog-back-to-top': {
     props: [],
+    requiredProps: [],
     events: [],
     selfFetch: false,
     parts: ['bc-back-to-top'],
-    slots: [],
+    slots: [
+      {
+        name: 'root',
+        provides: ['visible', 'scroll'],
+        scope: [
+          { name: 'visible', shape: 'boolean' },
+          { name: 'scroll', shape: '() => void' },
+        ],
+      },
+    ],
   },
   'blog-reading-progress': {
     props: [],
+    requiredProps: [],
     events: [],
     selfFetch: false,
     parts: ['bc-reading-progress'],
-    slots: [],
+    slots: [
+      {
+        name: 'root',
+        provides: ['progress'],
+        scope: [{ name: 'progress', shape: 'number' }],
+      },
+    ],
   },
   'blog-state': {
     props: ['state', 'message'],
+    requiredProps: [],
     events: [],
     selfFetch: false,
     parts: ['bc-state', 'bc-skeleton'],
-    slots: [],
+    slots: [
+      {
+        name: 'root',
+        provides: ['state', 'message'],
+        scope: [
+          { name: 'state', shape: 'string' },
+          { name: 'message', shape: 'string' },
+        ],
+      },
+    ],
   },
 } as const satisfies Record<string, ComponentEntry>
 
@@ -216,6 +384,30 @@ export const CONTRACT_DIRECTIVES = [
   'v-slot',
 ] as const
 
+/** 主题可见的路由名 / path / query；与 runtime.ts 保持一致（check:contract 守护）。 */
+export const CONTRACT_ROUTES = {
+  home: { path: '/', query: [] },
+  post: { path: '/posts/:slug', query: [] },
+  tags: { path: '/tags', query: ['page', 'size', 'sortBy', 'direction', 'pinnedFirst'] },
+  'tag-posts': { path: '/tags/:id', query: ['page', 'size', 'sortBy', 'direction', 'pinnedFirst'] },
+  archives: {
+    path: '/archives',
+    query: ['year', 'month', 'page', 'size', 'sortBy', 'direction', 'pinnedFirst'],
+  },
+  search: { path: '/search', query: ['q', 'page', 'size', 'sortBy', 'direction', 'pinnedFirst'] },
+  page: { path: '/p/:slug', alias: ['/about'], query: [] },
+  'not-found': { path: '/:pathMatch(.*)*', query: [] },
+} as const
+
+/** 主题里可直接拼接的 URL 形态；校验与提示词使用。 */
+export const CONTRACT_URLS = {
+  post: '/posts/{slug}',
+  tag: '/tags/{id}',
+  archives: '/archives?year={year}&month={month}',
+  search: '/search?q={q}',
+  page: '/p/{slug}',
+} as const
+
 /** 一次性取用：构建产物 / 校验器 / 文档生成的统一形状。 */
 export const CONTRACT = {
   version: RUNTIME_CONTRACT,
@@ -226,4 +418,6 @@ export const CONTRACT = {
   globalParts: CONTRACT_GLOBAL_PARTS,
   cssVars: CONTRACT_CSS_VARS,
   directives: CONTRACT_DIRECTIVES,
+  routes: CONTRACT_ROUTES,
+  urls: CONTRACT_URLS,
 } as const

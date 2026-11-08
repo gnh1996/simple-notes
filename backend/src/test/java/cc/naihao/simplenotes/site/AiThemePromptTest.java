@@ -25,6 +25,19 @@ class AiThemePromptTest {
     }
 
     @Test
+    @DisplayName("提示词使用生成的契约：类型 / slot scope / 路由，且无 --blog-mono 漂移")
+    void promptUsesGeneratedContract() {
+        String full = AiThemePrompt.fullSystemPrompt(null, null);
+        assertThat(full).contains("PostSummary").contains("RouteView").contains("#root");
+        assertThat(full).contains("--blog-font-mono");
+        assertThat(full).doesNotContain("--blog-mono");
+        assertThat(full).contains("blog-pager").contains("pages");
+
+        String patch = AiThemePrompt.patchSystemPrompt("<div id=\"app\"></div>", ".a{}");
+        assertThat(patch).contains("setCssVar").contains("--blog-radius");
+    }
+
+    @Test
     @DisplayName("完整模式：抽取 html/css、plan 与说明")
     void extractsFullTheme() {
         String text = """

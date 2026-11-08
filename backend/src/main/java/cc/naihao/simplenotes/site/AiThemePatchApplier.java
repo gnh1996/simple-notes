@@ -72,7 +72,7 @@ public final class AiThemePatchApplier {
 
     private static String setCssVar(String css, ThemePatch.ThemeOp op) {
         String name = require(op.name(), "setCssVar.name");
-        if (!AiThemePrompt.ALLOWED_CSS_VARS.contains(name)) {
+        if (!ThemeContract.CSS_VARS.contains(name)) {
             throw new IllegalArgumentException("CSS 变量不在白名单：" + name);
         }
         String value = require(op.value(), "setCssVar.value").strip();

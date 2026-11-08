@@ -44,14 +44,10 @@ public final class SiteSettingCatalog {
     private static final Set<String> MANAGED_KEYS = Set.of("theme.id");
 
     /**
-     * 主题可覆盖的 CSS 变量（docs/blog-runtime-theme.md §3.6）；与前端
-     * {@code contract.ts} 的 {@code CONTRACT_CSS_VARS} 保持同名。
+     * 主题可覆盖的 CSS 变量（docs/blog-runtime-theme.md §3.6）；来自生成的
+     * {@code theme-contract.json}，不再手写镜像。
      */
-    public static final Set<String> THEME_OVERRIDE_KEYS = Set.of(
-            "--blog-accent", "--blog-accent-contrast", "--blog-bg", "--blog-surface",
-            "--blog-text", "--blog-text-muted", "--blog-border", "--blog-radius",
-            "--blog-font-sans", "--blog-font-mono", "--blog-prose-size",
-            "--blog-prose-line-height", "--blog-content-width", "--blog-gap", "--blog-code-bg");
+    public static final Set<String> THEME_OVERRIDE_KEYS = ThemeContract.CSS_VARS;
 
     /** CSS 变量值的保守白名单：不允许分号 / 花括号 / 协议冒号 / url() 等可逃逸写法。 */
     private static final Pattern SAFE_CSS_VALUE = Pattern.compile(

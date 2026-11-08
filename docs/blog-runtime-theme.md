@@ -84,6 +84,8 @@ runtime（浏览器）
 > **唯一登记处**：`frontend/apps/blog/src/contract.ts`。本文描述语义与边界，键名 / 组件 props / CSS 变量以该文件为准；两者冲突视为缺陷。
 > `pnpm check:contract` 会在 CI / `typecheck` 中校验「runtime 实际暴露面 == 契约登记」，并扫描默认主题，防止契约悄悄漂移（§3.7）。
 > `theme-contract.json` 是构建产物（`pnpm build:blog` 生成到 `apps/blog/dist/`），供管理端文档、未来的 agent 与外部工具消费，**不手工维护**。
+>
+> **2A 已落地（阶段 1）**：`docs/theme-contract-v2.md` 的增量 headless（`root` slot + 类型/路由投影 + 后端只读 JSON）已实现。本文与草案冲突时，以本文为准；草案合并进本节后删除。
 
 ### 3.1 契约版本
 
@@ -215,6 +217,8 @@ SitePage    { id, slug, title, content, visible, sort, updatedAt }   // /p/:slug
 
 > props / slots 以 `contract.ts` 的 `CONTRACT_COMPONENTS` 为准（上表与其不一致视为缺陷）。`<blog-post-list>` 尚未实现，列表请用 `v-for` + `<blog-post-card>`。
 >
+> **2A 已落地（阶段 1）**：展示型 / 数据型组件新增 `root` slot（传内容即整体接管默认 DOM/样式），`requiredProps`、slot scope 类型与路由/URL 投影见 `docs/theme-contract-v2.md` §3–§4；合并进本节时更新上表。
+>
 > **样式接口（v1.8）**：每个组件对外暴露的 class 登记在 `contract.ts` 的 `parts`，属于公开接口、只增不改；`globalParts` 记录不属于组件但由 runtime 渲染的 class（如灯箱 `bc-lightbox`）。历史遗留的非 `bc-` 前缀 class（如归档的 `archive-index`）也已登记，同样承诺稳定。主题只能通过这些 class 定制组件外观，**不承诺其他内部结构**。组件模板输出的 class 与登记不一致（多或少）时 `pnpm check:contract` 直接失败。
 
 **具名 slot（v1.9）**：组件登记了哪些 slot、每个 slot 作用域提供什么变量，都在 `slots` 里；主题给槽位传内容即**整体替换**该组件内部结构，不传则用默认结构。
@@ -329,7 +333,7 @@ html[data-blog-navigating="1"]        路由取数中，顶部进度条可见
 | 默认主题只使用已登记的组件 / 指令 / 标识符 | starter 用了契约外能力（会让照抄 starter 的主题走上未承诺路径） |
 | 能力 fixture（`scripts/fixtures/theme-capabilities.html`）通过 | 扫描器误判了合法写法（`ui` / 具名 slot / 箭头函数），会挡掉主题作者 |
 
-`--theme <file>` 可校验任意主题 HTML（如库内版本），`--emit` 生成 `apps/blog/dist/theme-contract.json`。
+`--theme <file>` 可校验任意主题 HTML（如库内版本），`--emit` 同时生成 `apps/blog/dist/theme-contract.json` 与后端 `backend/src/main/resources/theme/theme-contract.json`（后者随仓库提交，供校验器与 AI 提示词消费）。
 
 保存主题版本时，后端 `site/ThemeTemplateValidator` 会按同一套组件 / 指令 / 模板键清单再扫描一次（含行号错误）；运行时加载前还会执行 `validateTheme`，因此库内旧数据或被篡改的数据不会直接进入模板编译器。
 

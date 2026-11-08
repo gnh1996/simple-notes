@@ -9,7 +9,12 @@ import org.junit.jupiter.api.Test;
 /** 主题补丁应用（docs/theme-ai.md §3，v2.1）。 */
 class AiThemePatchApplierTest {
 
-    private static final String HTML = "<div id=\"app\"><main class=\"home\">首页</main></div>";
+    private static final String HTML = """
+            <div id="app">
+              <main v-if="route.name === 'home'">首页</main>
+              <main v-else-if="route.name === 'post'">文章</main>
+            </div>
+            """;
     private static final String CSS = ":root { --blog-radius: 8px; }";
 
     @Test

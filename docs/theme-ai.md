@@ -34,7 +34,7 @@ simple-notes.ai:
   timeout: "${AI_TIMEOUT:300s}"
   max-rounds: "${AI_MAX_ROUNDS:2}"
   max-history-turns: "${AI_MAX_HISTORY_TURNS:10}"
-  max-tokens: "${AI_MAX_TOKENS:16384}"
+  max-tokens: "${AI_MAX_TOKENS:0}"
 spring.ai.model:
   chat: openai
   embedding: none
@@ -117,14 +117,14 @@ DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX
 
 ### 2.3 服务端提示词（`AiThemePrompt`）
 
-* `CONTRACT_RULES`：契约白名单摘要（组件 / 指令 / 数据键 / 动作 / CSS 变量 / 页面分支 / 体积 / 移动端），与 `contract.ts` + `ThemeTemplateValidator` 同名；改契约时同步改此处（见 §6 自检缺口）。
+* **契约投影**：组件 / props / slots / slot scope / 类型 / 路由 / URL / CSS 变量 / 指令全部来自 `theme-contract.json`（`pnpm sync:contract` 生成，`ThemeContract.promptSection()` 拼装）；本类只保留“约束”文案，不再手写清单（见 `docs/theme-contract-v2.md`）。
 * **完整模式**（`fullSystemPrompt`）：只在“没有当前主题 / 没有 base / 没勾 starter”时使用；先输出 `<plan>`，再输出恰好一个 ````html` 与 ````css`。
 * **补丁模式**（`patchSystemPrompt`）：有当前主题（含 starter 起点）时使用；只输出单个 JSON `{summary, plan, ops}`；当前主题放 `<reference-html>` / `<reference-css>`，每轮只注入一次。
 * 补丁操作（`ThemePatch.ThemeOp`）：
 
 | op | 字段 | 用途 |
 | --- | --- | --- |
-| `setCssVar` | `name` + `value` | 只允许 `CONTRACT_RULES` 第 8 条白名单变量；替换 CSS 中首个同名定义（通常是 `:root`），没有定义时追加 `:root { ... }`；深色专用值用 `appendCss` 指定 `[data-color-mode]` 选择器 |
+| `setCssVar` | `name` + `value` | 只允许 `ThemeContract.CSS_VARS`（`theme-contract.json`）中的变量；替换 CSS 中首个同名定义（通常是 `:root`），没有定义时追加 `:root { ... }`；深色专用值用 `appendCss` 指定 `[data-color-mode]` 选择器 |
 | `appendCss` | `css` | 追加 CSS；适合改组件间距、圆角、颜色等局部样式 |
 | `replace` | `target=html/css` + `find` + `content` | 从当前主题原样复制一段**唯一**片段替换；结构改动的首选 |
 | `replaceCss` | `css` | 完整重写 CSS（仅在整体换风格时） |
@@ -183,7 +183,7 @@ DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX
 
 ## 6. 已知缺口与后续
 
-1. `AiThemePrompt.CONTRACT_RULES` 是契约的手工摘要，`pnpm check:contract` 管不到；新增组件 / 数据键时必须人肉同步（与 `ThemeTemplateValidator` 的手工集合同类问题）。
+1. ~~`AiThemePrompt.CONTRACT_RULES` 是契约的手工摘要~~：已由 `theme-contract.json` 投影解决（`docs/theme-contract-v2.md`）；`ThemeTemplateValidator` / `AiThemePrompt` / `SiteSettingCatalog` 均只读生成物，`pnpm typecheck` 会校验生成物无漂移。
 2. `done.html/css` 全量下发（≤320KB），弱网下 SSE 单帧大；后续可只下发 `draftId` + 分片拉取。
 3. 会话记忆在后端（`MessageWindowChatMemory` 默认 20 条 + Caffeine 2h 过期），长会话仍可能丢早期版式决策；后续可做“首轮目标 + 最近补丁”快照压缩。
 4. 补丁能力边界：`replaceHtml` / `replaceCss` 仍是完整文件，适合整体换风格但不适合超大主题；`replace` 要求唯一片段，模型可能因片段不唯一失败；
@@ -246,5 +246,18 @@ INFO 覆盖：
 * 取消 / SSE 超时 / 断开 / 修复轮 / 会话种子 / 网关错误（含堆栈）。
 
 DEBUG 额外输出每轮模型原始输出的头尾各 600 字符；不会输出 API Key，也不会输出整篇主题。
+
+### 8.1 确认模型实际看到的 prompt
+
+设置 `AI_PROMPT_DUMP_DIR`（非空目录）后，每轮会把三份文件写入该目录：
+
+```text
+ai-prompt-<毫秒>-r<轮次>-<会话>-system.txt   # 契约投影 + 输出格式 + 当前主题
+ai-prompt-<毫秒>-r<轮次>-<会话>-user.txt     # 本轮指令 / 修复指令
+ai-prompt-<毫秒>-r<轮次>-<会话>-memory.txt   # 本轮发送前的 ChatMemory（压缩后的历史）
+```
+
+这三部分就是 `ChatClient` 实际拼装的输入（system + user + memory advisor）；默认关闭，不会写入 API Key。
+适合在本地确认“模型到底看到了什么”，也便于对比修改前后的契约投影。
 
 前端 `done` 卡片显示 `mode / outputChars / truncated / finishReason`，便于判断是“解析失败”还是“主题校验失败”（`errorKind`）。
