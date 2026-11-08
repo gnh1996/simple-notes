@@ -54,6 +54,11 @@ STORAGE_DB_MAX_BYTES: 20971520
 AI_BASE_URL: ""
 AI_API_KEY: ""
 AI_MODEL: ""
-AI_TIMEOUT: 90s
+AI_TIMEOUT: 300s
 AI_MAX_ROUNDS: 2
 AI_MAX_HISTORY_TURNS: 10
+# 0 = 不发送 max_tokens，使用端点默认；DeepSeek thinking 默认 64K、非 thinking 默认 8K
+AI_MAX_TOKENS: 0
+# DeepSeek: disabled 关闭 thinking；空 = 不发送；reasoning effort: none/low/high/max
+AI_THINKING: ""
+AI_REASONING_EFFORT: ""

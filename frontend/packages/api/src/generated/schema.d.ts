@@ -484,6 +484,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/themes/ai-drafts/{draftId}/preview-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["draftPreviewToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/themes/ai-chat/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["aiChatStream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/tags": {
         parameters: {
             query?: never;
@@ -1427,6 +1459,23 @@ export interface components {
             token: string;
             /** Format: int64 */
             expiresAt: number;
+        };
+        AiChatRequest: {
+            sessionId?: string;
+            themeId?: string;
+            history?: components["schemas"]["AiChatTurn"][];
+            prompt: string;
+            baseHtml?: string;
+            baseCss?: string;
+            includeStarter?: boolean;
+        };
+        AiChatTurn: {
+            role: string;
+            content: string;
+        };
+        SseEmitter: {
+            /** Format: int64 */
+            timeout?: number;
         };
         TagAssignRequest: {
             /** @enum {string} */
@@ -2893,6 +2942,52 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ThemeSummary"];
+                };
+            };
+        };
+    };
+    draftPreviewToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draftId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["PreviewTokenResponse"];
+                };
+            };
+        };
+    };
+    aiChatStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiChatRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["SseEmitter"];
                 };
             };
         };

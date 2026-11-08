@@ -66,6 +66,16 @@
 
 ## 变更记录
 
+### 2026-11-08 · 主题 AI 对话 v2.1（首轮完整 + 后续补丁，见 `docs/theme-ai.md`）
+
+- **形态**：抽屉 + `token / round / done / error`；有当前主题 / 前端 base / starter 时直接输出小 JSON 补丁 `{summary, plan, ops}`，后端应用后再校验；只有完全无参考时才生成完整 html/css
+- **会话**：`conversationId = ai-theme:{userId}:{themeId|none}:{sessionId}`；当前主题存 `AiThemeSessionStore`（Caffeine 2h），ChatMemory 只存压缩摘要，不再反复保存整篇 HTML/CSS
+- **接入**：`spring.ai.model.chat=openai` 开自动装配，其余模型类型显式 `none`；`ChatClient`（`AiConfig`，仅 memory advisor）为唯一入口；缺 key 时 `AiEnvironmentPostProcessor` 排除 OpenAI + Builder 装配，启动照常、接口 400
+- **产物**：完整模式 fenced html/css；补丁模式 JSON ops（setCssVar / appendCss / replace / replaceCss / replaceHtml），`AiThemePatchApplier` 纯函数应用
+- **调试**：`AiThemeService` 按轮输出 INFO 日志（mode / 字符数 / finishReason / reasoningChars / usage / errors / truncated），DEBUG 输出模型原始头尾；`done` 带 `mode / finishReason / truncated / outputChars / reasoningChars / usage / errorKind`
+- **截断**：`finishReason=LENGTH` 不再盲目修复；`reasoningChars>0 && outputChars==0` 提示换非推理模型/关闭 thinking，正文截断提示提高 `AI_MAX_TOKENS` 或缩小范围
+- **验证**：`AiThemePromptTest` + `AiThemePatchApplierTest` + `CaffeineChatMemoryRepositoryTest` + `AiAutoConfigTest` + `pnpm typecheck` 全绿
+
 ### 2026-11-07 · 主题 AI 对话 v1（Spring AI 2.0，见 `docs/theme-ai.md`）
 
 - **形态**：admin 端 `AI 对话` 抽屉（手写 SSE + artifact 卡片，不引入聊天 UI 依赖）；后端 `AiThemeService` 编排流式生成 + 校验修复循环（`token / round / done / error`），无服务端记忆、无 tool calling

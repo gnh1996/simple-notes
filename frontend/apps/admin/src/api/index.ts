@@ -29,7 +29,7 @@ export function clearStoredToken(): void {
  * 动态 import 规避与 store / router 的循环依赖。
  */
 let redirecting = false
-async function handleUnauthorized(): Promise<void> {
+export async function handleUnauthorized(): Promise<void> {
   if (redirecting) return
   redirecting = true
   try {

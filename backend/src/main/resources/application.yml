@@ -1,16 +1,23 @@
 spring:
   ai:
-    # 关闭全部模型自动装配：AI 模型由 AiThemeService 懒加载手工构建（key 缺失时不影响启动）。
-    # starter 自带 chat / image / embedding / audio-speech / audio-transcription / moderation 六组装配，
-    # 缺 key 时除 chat 外都会启动失败，故全部显式 none（docs/theme-ai.md §5）。
+    # 主题 AI 对话：只启用 chat；其余模型类型显式 none，避免 starter 默认装配出无用 no-auth bean。
+    # 连接信息任一为空 → AiEnvironmentPostProcessor 排除 OpenAI/ChatClient 装配，启动不受影响，AI 接口 400。
     model:
-      chat: none
-      image: none
+      chat: openai
       embedding: none
+      image: none
       moderation: none
       audio:
         speech: none
         transcription: none
+    openai:
+      # 主题 AI 连接信息，唯一来源（docs/theme-ai.md §1）。
+      base-url: "${AI_BASE_URL:}"
+      api-key: "${AI_API_KEY:}"
+      timeout: "${AI_TIMEOUT:300s}"
+      max-retries: 1
+      chat:
+        model: "${AI_MODEL:}"
   application:
     name: simple-notes-backend
   config:
@@ -88,11 +95,11 @@ simple-notes:
     # runtime 构建产物基址：生产默认 /blog（jar 内 static/blog）；开发期用 BLOG_ASSET_BASE 指向 Vite dev server
     asset-base: "${BLOG_ASSET_BASE:/blog}"
     preview-ttl: 30m
-  # 主题 AI 对话（docs/theme-ai.md）：OpenAI-compatible；key 缺失时 AI 接口 400，不影响启动
+  # 主题 AI 对话编排参数（docs/theme-ai.md）；连接信息只有 spring.ai.openai.* 一份来源
   ai:
-    base-url: "${AI_BASE_URL:}"
-    api-key: "${AI_API_KEY:}"
-    model: "${AI_MODEL:}"
-    timeout: "${AI_TIMEOUT:90s}"
+    timeout: "${AI_TIMEOUT:300s}"
     max-rounds: "${AI_MAX_ROUNDS:2}"
     max-history-turns: "${AI_MAX_HISTORY_TURNS:10}"
+    max-tokens: "${AI_MAX_TOKENS:0}"
+    thinking: "${AI_THINKING:}"
+    reasoning-effort: "${AI_REASONING_EFFORT:}"

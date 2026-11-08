@@ -1,15 +1,16 @@
 <script setup lang="ts">
 /**
- * AI 主题对话抽屉（docs/theme-ai.md §2）。
+ * AI 主题对话抽屉（docs/theme-ai.md，v2.1）。
  *
- * 无服务端记忆：history 随每轮请求发送；产物进临时草稿缓存，定版走既有 createVersion。
+ * 首轮 / 无当前主题 → 完整 html/css；已有当前主题 → 后端只接收/应用小 JSON 补丁，
+ * 当前主题与对话记忆都在服务端，前端 history 只作重启后的种子。
  * 流式协议（SSE 事件）：token / round / done / error。
  */
-import type { ThemeSummary, ThemeVersionResponse } from '@simple-notes/api'
+import type { Schema, ThemeSummary, ThemeVersionResponse } from '@simple-notes/api'
 import { ElMessage } from 'element-plus'
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
-import { getStoredToken, themeApi } from '@/api'
+import { getStoredToken, handleUnauthorized, themeApi } from '@/api'
 import { notifyError } from '@/utils/feedback'
 
 const BLOG_URL = (import.meta.env.VITE_BLOG_URL as string | undefined) ?? 'http://localhost:8080'
@@ -21,22 +22,9 @@ const BLOG_ORIGIN = (() => {
   }
 })()
 
-/**
- * TODO(pnpm gen:api)：后端 AiChatRequest 落契约后，用生成类型替换以下两处本地镜像。
- * 后端跑起来（需 DB）执行一次 `pnpm gen:api` 即可，前端无需改调用处。
- */
-interface AiChatTurn {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-interface AiChatRequest {
-  history: AiChatTurn[]
-  prompt: string
-  baseHtml?: string | null
-  baseCss?: string | null
-  includeStarter: boolean
-}
+/** 契约类型来自后端 OpenAPI（pnpm gen:api）；SSE done 载荷没有 OpenAPI 契约，见下方 AiArtifact。 */
+type AiChatRequest = Schema['AiChatRequest']
+type AiChatTurn = Schema['AiChatTurn']
 
 interface AiAttempt {
   round: number
@@ -46,6 +34,16 @@ interface AiAttempt {
 interface AiArtifact {
   html: string
   css: string
+  summary: string
+  plan: string[]
+  contract: number
+  mode: string
+  finishReason: string
+  truncated: boolean
+  outputChars: number
+  reasoningChars: number
+  errorKind: string
+  usage: Record<string, number>
   draftId: string | null
   errors: string[]
   attempts: AiAttempt[]
@@ -73,11 +71,17 @@ interface ChatMessage {
   artifact?: AiArtifact
 }
 
-/** fenced 代码块（含流式未闭合）与 <plan> 块（含流式未闭合）。 */
+/** fenced 代码块（含流式未闭合）与 <plan> 块（含流式未闭合）。产物块（html/css/json）走产物卡片，不在正文重复展示。 */
 const FENCED_BLOCK = /```[\s\S]*?(?:```|$)/g
+/** 无 fence 的裸产物 JSON（summary/plan/ops/html/css 任一开头都隐藏），正文/种子里都不保留。 */
+const BARE_JSON_TAIL = /\{\s*"(?:summary|plan|ops|html|css)"[\s\S]*$/
 const PLAN_BLOCK = /<plan>([\s\S]*?)(?:<\/plan>|$)/gi
 
-/** 从 assistant 文本提取本轮计划（后端 SYSTEM_RULES 约定先输出 <plan>，流式未闭合也解析）。 */
+function looksLikeJson(text: string): boolean {
+  return /^\s*\{\s*"/.test(text)
+}
+
+/** 从 assistant 文本提取本轮计划（完整模式约定先输出 <plan>，流式未闭合也解析；补丁模式用 done.plan）。 */
 function extractPlan(text: string): string[] {
   PLAN_BLOCK.lastIndex = 0
   const match = PLAN_BLOCK.exec(text)
@@ -90,11 +94,23 @@ function extractPlan(text: string): string[] {
     .slice(0, 8)
 }
 
-/** 展示用正文：去掉 <plan> 与 fenced 代码块（产物走产物卡片，不在这里重复展示）。 */
+/** 本轮计划：结构化 plan 优先（全 JSON 契约），旧自由文本 <plan> 只作兼容。 */
+function planOf(message: ChatMessage): string[] {
+  if (message.artifact?.plan?.length) return message.artifact.plan
+  return extractPlan(message.text)
+}
+
+/** 展示用正文：散文优先，纯 JSON 回答则用结构化 summary（流式 JSON 原文永不展示）。 */
+function mainTextOf(message: ChatMessage): string {
+  if (message.streaming && looksLikeJson(message.text)) return ''
+  return proseOf(message.text) || message.artifact?.summary || ''
+}
+/** 展示用正文：去掉 <plan> 与 fenced 代码块与裸 JSON（产物走产物卡片，不在这里重复展示）。 */
 function proseOf(text: string): string {
   return text
     .replace(/<plan>[\s\S]*?(?:<\/plan>|$)/gi, '')
     .replace(FENCED_BLOCK, '')
+    .replace(BARE_JSON_TAIL, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
@@ -162,7 +178,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  fill: [html: string, css: string]
+  fill: [html: string, css: string, contract: number]
   saved: [version: ThemeVersionResponse]
   created: [theme: ThemeSummary]
   previewDraft: [draftId: string, token: string, html: string, css: string]
@@ -174,6 +190,10 @@ const messages = ref<ChatMessage[]>([])
 const input = ref('')
 const streaming = ref(false)
 const includeStarter = ref(true)
+/** 后端 ChatMemory 会话 id：同一段对话共用；「新对话」或切换主题时重新生成。 */
+const sessionId = ref('')
+/** 记录当前会话所属主题，切换主题时清空对话，避免旧主题上下文串台。 */
+const lastThemeId = ref<string | null>(null)
 const saving = reactive<Record<string, boolean>>({})
 const creating = reactive<Record<string, boolean>>({})
 const newThemeName = ref('')
@@ -195,6 +215,41 @@ let diagPending: {
 let seq = 0
 let aborter: AbortController | null = null
 let timer: number | null = null
+
+function newSessionId(): string {
+  return typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+/** 网络层失败（Vite/后端未启动）给出可操作提示，而不是裸的 Failed to fetch。 */
+function aiErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  if (
+    error instanceof TypeError ||
+    /failed to fetch|networkerror|load failed|err_connection_refused/i.test(message)
+  ) {
+    return '无法连接后端：请确认 Spring Boot 已在 8080 启动，且 Vite 代理可用'
+  }
+  return message || 'AI 生成失败'
+}
+
+/** 开一段新对话：清空消息 / 自检 / 会话 id，后端 memory 与当前主题自然换新。 */
+function resetConversation(reason?: string): void {
+  if (streaming.value) {
+    ElMessage.warning('生成中，请先中断再开新对话')
+    return
+  }
+  messages.value = []
+  Object.keys(diags).forEach((key) => delete diags[key])
+  sessionId.value = newSessionId()
+  lastThemeId.value = props.themeId
+  includeStarter.value = true
+  input.value = ''
+  newThemeName.value = ''
+  stick.value = true
+  if (reason) ElMessage.info(reason)
+}
 
 function startTimer(): void {
   stopTimer()
@@ -232,14 +287,15 @@ function scrollBottom(): void {
 watch(messages, scrollBottom, { deep: true })
 
 function historyTextOf(message: ChatMessage): string {
-  const raw =
-    message.role === 'assistant' && message.artifact
-      ? `${message.text}\n[产物：${message.artifact.errors.length ? `校验未通过（${message.artifact.errors.join('；')}）` : '校验通过'}]`
-      : message.text
-  // 历史只留决策上下文：plan 去标签保留要点，代码块太大只留占位（省 token，长会话不丢早期版式决策见 §6 缺口 3）。
-  return raw
-    .replace(/<plan>([\s\S]*?)(?:<\/plan>|$)/gi, (_, plan: string) => `[本轮计划：${plan.trim().slice(0, 500)}]`)
-    .replace(FENCED_BLOCK, '[代码块已省略]')
+  // 结构化产物只留决策上下文（summary + plan + 状态），几十 KB 的 html/css 绝不进种子。
+  if (message.role === 'assistant' && message.artifact) {
+    const status = message.artifact.errors.length
+      ? `校验未通过（${message.artifact.errors.join('；')}）`
+      : '校验通过'
+    const plan = message.artifact.plan.length ? `[计划：${message.artifact.plan.join('；')}]` : ''
+    return `[本轮：${message.artifact.summary}]${plan}[产物：${status}]`
+  }
+  return message.text
 }
 
 function historyOf(): AiChatTurn[] {
@@ -249,6 +305,17 @@ function historyOf(): AiChatTurn[] {
     turns.push({ role: message.role, content: historyTextOf(message).slice(0, 2000) })
   }
   return turns.slice(-20)
+}
+
+/** 最近一次校验通过的 AI 产物：后端重启/新会话时作为完整生成的参考，避免丢未保存草稿。 */
+function lastValidArtifact(): AiArtifact | undefined {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const message = messages.value[i]
+    if (message.role === 'assistant' && message.artifact && message.artifact.errors.length === 0) {
+      return message.artifact
+    }
+  }
+  return undefined
 }
 
 async function send(): Promise<void> {
@@ -301,14 +368,28 @@ async function sendPrompt(prompt: string): Promise<void> {
     flushPending()
   }
 
+  const lastValid = lastValidArtifact()
+  const baseHtml = lastValid?.html ?? props.baseHtml
+  const baseCss = lastValid?.css ?? props.baseCss
   const body: AiChatRequest = {
+    sessionId: sessionId.value,
+    themeId: props.themeId ?? undefined,
     history: historyOf().slice(0, -1),
     prompt,
-    baseHtml: props.baseHtml || null,
-    baseCss: props.baseCss || null,
+    baseHtml: baseHtml || undefined,
+    baseCss: baseCss || undefined,
     includeStarter: includeStarter.value,
   }
-  includeStarter.value = false
+  console.debug('[ai-theme] request', {
+    sessionId: body.sessionId,
+    themeId: body.themeId,
+    history: body.history?.length ?? 0,
+    promptChars: prompt.length,
+    baseHtmlChars: body.baseHtml?.length ?? 0,
+    baseCssChars: body.baseCss?.length ?? 0,
+    includeStarter: body.includeStarter,
+  })
+  lastThemeId.value = props.themeId
   aborter = new AbortController()
   startTimer()
 
@@ -324,7 +405,18 @@ async function sendPrompt(prompt: string): Promise<void> {
       signal: aborter.signal,
     })
     if (!response.ok || !response.body) {
-      throw new Error(`AI 请求失败（HTTP ${response.status}）`)
+      let message = `AI 请求失败（HTTP ${response.status}）`
+      try {
+        const text = await response.text()
+        const payload = JSON.parse(text) as { message?: string }
+        if (payload?.message) message = payload.message
+      } catch {
+        // 保持 HTTP 状态兜底
+      }
+      if (response.status === 401) {
+        void handleUnauthorized()
+      }
+      throw new Error(message)
     }
     await readStream(response.body.getReader(), assistant, queueDelta, stopFlush)
   } catch (error) {
@@ -332,8 +424,9 @@ async function sendPrompt(prompt: string): Promise<void> {
       assistant.text += '\n（已中断）'
     } else if (!assistant.artifact) {
       // done 已到达后的断流（如连接复用回收）不算失败：产物卡片已展示
-      notifyError(error, 'AI 生成失败')
-      assistant.text += '\n（出错：请重试）'
+      const message = aiErrorMessage(error)
+      ElMessage.error(message)
+      assistant.text += `\n（${message}）`
     }
   } finally {
     stopFlush()
@@ -341,6 +434,10 @@ async function sendPrompt(prompt: string): Promise<void> {
     streaming.value = false
     aborter = null
     stopTimer()
+    // 只有真正产出有效主题后才不再附带 starter；失败重试仍可带默认主题。
+    if (assistant.artifact && assistant.artifact.errors.length === 0) {
+      includeStarter.value = false
+    }
   }
 }
 
@@ -398,10 +495,30 @@ function handleEvent(
     assistant.artifact = {
       html: String(payload.html ?? ''),
       css: String(payload.css ?? ''),
+      summary: String(payload.summary ?? ''),
+      plan: Array.isArray(payload.plan) ? (payload.plan as string[]) : [],
+      contract: Number(payload.contract ?? 1),
+      mode: String(payload.mode ?? 'full'),
+      finishReason: String(payload.finishReason ?? ''),
+      truncated: Boolean(payload.truncated),
+      outputChars: Number(payload.outputChars ?? 0),
+      reasoningChars: Number(payload.reasoningChars ?? 0),
+      errorKind: String(payload.errorKind ?? 'none'),
+      usage: (payload.usage as Record<string, number> | undefined) ?? {},
       draftId: (payload.draftId as string | null) ?? null,
       errors: (payload.errors as string[] | undefined) ?? [],
       attempts: (payload.attempts as AiAttempt[] | undefined) ?? [],
     }
+    console.debug('[ai-theme] done', {
+      mode: assistant.artifact.mode,
+      finishReason: assistant.artifact.finishReason,
+      truncated: assistant.artifact.truncated,
+      outputChars: assistant.artifact.outputChars,
+      reasoningChars: assistant.artifact.reasoningChars,
+      errorKind: assistant.artifact.errorKind,
+      errors: assistant.artifact.errors,
+      usage: assistant.artifact.usage,
+    })
   } else if (event === 'error') {
     assistant.text += `\n（${String(payload.message ?? '生成失败')}）`
   }
@@ -412,7 +529,7 @@ function stop(): void {
 }
 
 async function fillEditor(artifact: AiArtifact): Promise<void> {
-  emit('fill', artifact.html, artifact.css)
+  emit('fill', artifact.html, artifact.css, artifact.contract)
 }
 
 async function saveVersion(message: ChatMessage): Promise<void> {
@@ -430,7 +547,7 @@ async function saveVersion(message: ChatMessage): Promise<void> {
     const version = await themeApi.createVersion(props.themeId, {
       html: artifact.html,
       css: artifact.css,
-      contract: 1,
+      contract: artifact.contract,
     })
     ElMessage.success(`已保存为新版本 v${version.versionNo}`)
     emit('saved', version)
@@ -455,7 +572,7 @@ async function saveAsNewTheme(message: ChatMessage): Promise<void> {
     const version = await themeApi.createVersion(theme.id, {
       html: artifact.html,
       css: artifact.css,
-      contract: 1,
+      contract: artifact.contract,
     })
     ElMessage.success(`已创建主题「${name}」v${version.versionNo}`)
     emit('created', theme)
@@ -552,8 +669,11 @@ async function sendReportToAi(message: ChatMessage): Promise<void> {
   const diag = diags[message.id]
   if (diag?.status !== 'done' || !diag.report) return
   const report = diag.report
+  const patchMode = message.artifact?.mode === 'patch'
   const lines = [
-    '渲染自检发现以下问题，请输出完整修正后的 ```html / ```css（不是 diff），先输出 <plan> 说明每条怎么改：',
+    patchMode
+      ? '渲染自检发现以下问题，请输出修正后的补丁 JSON（ops，不是完整主题；除非必要才用 replaceHtml/replaceCss），plan 字段针对下面每条各写一行怎么改：'
+      : '渲染自检发现以下问题，请输出修正后的完整主题（先 <plan>，再恰好一个 ```html 与 ```css），plan 针对下面每条各写一行怎么改：',
     ...report.errors.map((item) => `- [错误] ${item}`),
     ...report.warnings.map((item) => `- [警告] ${item}`),
   ]
@@ -569,8 +689,33 @@ onMounted(() => {
   window.addEventListener('message', onDiagnoseMessage)
 })
 
+watch(
+  visible,
+  (open) => {
+    if (open && !sessionId.value) {
+      sessionId.value = newSessionId()
+      lastThemeId.value = props.themeId
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.themeId,
+  (next) => {
+    if (next === lastThemeId.value) return
+    if (messages.value.length) {
+      resetConversation('已切换主题，开启新对话')
+    } else {
+      sessionId.value = newSessionId()
+      lastThemeId.value = next
+    }
+  },
+)
+
 onBeforeUnmount(() => {
   window.removeEventListener('message', onDiagnoseMessage)
+  aborter?.abort()
 })
 </script>
 
@@ -579,7 +724,17 @@ onBeforeUnmount(() => {
     <div class="flex h-full flex-col gap-3">
       <div class="flex items-center justify-between gap-2 text-xs text-[var(--el-text-color-secondary)]">
         <span>对话直接改主题；产物先过契约校验，通过才进草稿。</span>
-        <el-checkbox v-model="includeStarter" size="small" :disabled="streaming">首轮附带默认主题</el-checkbox>
+        <div class="flex items-center gap-2">
+          <el-checkbox
+            v-model="includeStarter"
+            size="small"
+            :disabled="streaming || !!props.baseHtml"
+            :title="props.baseHtml ? '已有当前主题，无需再附默认主题' : '没有当前主题时附带默认主题作契约参考'"
+          >
+            首轮附带默认主题
+          </el-checkbox>
+          <el-button size="small" :disabled="streaming" @click="resetConversation()">新对话</el-button>
+        </div>
       </div>
 
       <div class="relative min-h-0 flex-1">
@@ -603,25 +758,25 @@ onBeforeUnmount(() => {
             <p v-if="message.role === 'user'" class="whitespace-pre-wrap break-words">{{ message.text }}</p>
             <template v-else>
               <ol
-                v-if="extractPlan(message.text).length"
+                v-if="planOf(message).length"
                 class="mb-2 space-y-1 border-l-2 border-[var(--el-color-primary)] pl-3"
               >
                 <li
-                  v-for="(step, index) in extractPlan(message.text)"
+                  v-for="(step, index) in planOf(message)"
                   :key="index"
                   class="flex gap-1.5 text-xs text-[var(--el-text-color-secondary)]"
                 >
-                  <span>{{ message.streaming && index === extractPlan(message.text).length - 1 ? '⏳' : '✓' }}</span>
+                  <span>{{ message.streaming && index === planOf(message).length - 1 ? '⏳' : '✓' }}</span>
                   <span>{{ step }}</span>
                 </li>
               </ol>
               <div
-                v-if="proseOf(message.text)"
+                v-if="mainTextOf(message)"
                 class="ai-prose break-words text-sm"
-                v-html="renderProseHtml(proseOf(message.text))"
+                v-html="renderProseHtml(mainTextOf(message))"
               />
               <p v-else class="text-sm text-[var(--el-text-color-secondary)]">
-                {{ message.streaming ? '已发送，等待模型响应…' : '…' }}
+                {{ message.streaming ? (looksLikeJson(message.text) ? '正在生成编辑指令…' : '已发送，等待模型响应…') : '…' }}
               </p>
             </template>
 
@@ -633,10 +788,18 @@ onBeforeUnmount(() => {
 
           <div v-if="message.artifact" class="mt-2 rounded-md border border-[var(--el-border-color-lighter)] p-2 text-xs">
             <p v-if="message.artifact.errors.length" class="text-[var(--el-color-danger)]">
-              校验未通过（{{ message.artifact.errors.length }}）：{{ message.artifact.errors.join('；') }}
+              {{ message.artifact.errorKind === 'parse' ? '解析失败' : message.artifact.errorKind === 'truncated' ? '输出被截断' : '校验未通过' }}（{{ message.artifact.errors.length }}）：{{ message.artifact.errors.join('；') }}
             </p>
             <p v-else class="text-[var(--el-color-success)]">
               校验通过，共 {{ message.artifact.attempts.length }} 轮，可预览或存版。
+            </p>
+            <p class="mt-1 text-[var(--el-text-color-secondary)]">
+              {{ message.artifact.mode === 'patch' ? '增量补丁' : '完整生成' }}
+              <span v-if="message.artifact.outputChars"> · 输出 {{ message.artifact.outputChars }} 字符</span>
+              <span v-if="message.artifact.reasoningChars"> · reasoning {{ message.artifact.reasoningChars }} 字符</span>
+              <span v-if="message.artifact.usage?.totalTokens"> · {{ message.artifact.usage.totalTokens }} tokens</span>
+              <span v-if="message.artifact.truncated" class="text-[var(--el-color-warning)]"> · 输出被截断</span>
+              <span v-if="message.artifact.truncated && message.artifact.finishReason">（{{ message.artifact.finishReason }}）</span>
             </p>
             <div class="mt-2 border-t border-[var(--el-border-color-lighter)] pt-2">
               <div class="flex flex-wrap items-center gap-2">

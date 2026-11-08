@@ -270,10 +270,10 @@ async function activate(version: any): Promise<void> {
 const aiVisible = ref(false)
 const htmlEditorRef = ref<InstanceType<typeof LargeTextEditor> | null>(null)
 const cssEditorRef = ref<InstanceType<typeof LargeTextEditor> | null>(null)
-const aiBaseHtml = computed(() => versions.value[0]?.html || starterThemeHtml)
-const aiBaseCss = computed(() => versions.value[0]?.css || starterThemeCss)
+const aiBaseHtml = computed(() => versions.value[0]?.html ?? '')
+const aiBaseCss = computed(() => versions.value[0]?.css ?? '')
 
-function fillFromAi(html: string, css: string): void {
+function fillFromAi(html: string, css: string, contract = starterThemeMeta.contract as number): void {
   if (!selected.value) {
     ElMessage.warning('请先选中一个主题')
     return
@@ -284,7 +284,7 @@ function fillFromAi(html: string, css: string): void {
   editor.versionNo = (versions.value[0]?.versionNo ?? 0) + 1
   editor.html = html
   editor.css = css
-  editor.contract = starterThemeMeta.contract as number
+  editor.contract = contract
   editorVisible.value = true
 }
 
