@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -373,7 +374,11 @@ public class AiThemeService {
 
     private RoundResult streamRound(ChatClient chatClient, String conversationId, String system, String userText,
             double temperature, SseEmitter emitter, int round) throws IOException {
-        var options = OpenAiChatOptions.builder().temperature(temperature);
+        var options = OpenAiChatOptions.builder()
+                .temperature(temperature)
+                // OpenCode Go 现在强制要求稳定会话头，用于路由与 prompt caching；
+                // 其他 OpenAI-compatible 端点会忽略该头。用会话哈希，避免把原始 id 发出去。
+                .customHeaders(Map.of("x-opencode-session", openCodeSessionId(conversationId)));
         if (ai.getMaxTokens() > 0) {
             // max_tokens 在 OpenAI-compatible 网关上支持面更广；max_completion_tokens 部分端点会 400。
             options.maxTokens(ai.getMaxTokens());
@@ -531,6 +536,11 @@ public class AiThemeService {
         String session = sanitize(sessionId, "default", 64);
         String theme = sanitize(themeId, "none", 36);
         return "ai-theme:" + userId + ":" + theme + ":" + session;
+    }
+
+    /** OpenCode Go 路由提示：按会话稳定、不暴露原始 id；其他 OpenAI-compatible 端点会忽略。 */
+    private static String openCodeSessionId(String conversationId) {
+        return UUID.nameUUIDFromBytes(conversationId.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     private static String sanitize(String value, String fallback, int maxLength) {

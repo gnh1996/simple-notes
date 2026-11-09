@@ -58,6 +58,8 @@ spring.ai.openai:
 推理模型（`deepseek-flash` / `deepseek-reasoner` / Qwen thinking / OpenAI o 系列等）的 reasoning token 也计入输出预算；若 `AI_THINKING=disabled` 且 `AI_MAX_TOKENS=0`，DeepSeek 非 thinking 默认只有 8K，整篇主题建议显式调大。
 DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX_TOKENS: 65536`（快、无 reasoning 预算竞争）；需要更强推理时改回 `AI_THINKING: ""` / `AI_MAX_TOKENS: 0`（thinking 默认 64K）。
 
+**OpenCode Go 兼容**：base URL 用 `https://opencode.ai/inference/go/openai/v1`，模型用 `deepseek-v4.1-flash`；该端点强制要求 `x-opencode-session`（缺失直接 400）。`AiThemeService` 会把 `conversationId` 的稳定哈希放进该头，其他 OpenAI-compatible 端点会忽略；如同时使用官方 DeepSeek，无需改回。OpenCode Go 的 DeepSeek 模型还需要在 Console → Settings → Privacy → Regions 把区域设为 `Global`。
+
 ---
 
 ## 2. 对话协议
