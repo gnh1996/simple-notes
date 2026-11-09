@@ -371,7 +371,7 @@ export function createMetaApi(client: ApiClient) {
   }
 }
 
-/** 主题管理（`/api/admin/themes`）：版本不可变，应用 / 回滚都走 activate */
+/** 主题管理（`/api/admin/themes`）：版本不可变；应用 / 回滚走 activate，删除仅限非线上主题 */
 export function createThemeApi(client: ApiClient) {
   return {
     list: () => client.get<ThemeSummary[]>('/admin/themes'),
@@ -383,6 +383,10 @@ export function createThemeApi(client: ApiClient) {
       client.post<ThemeVersionResponse>(`/admin/themes/${id}/versions`, body),
     activate: (id: string, versionId: string) =>
       client.post<ThemeSummary>(`/admin/themes/${id}/versions/${versionId}/activate`),
+    /** 切回内置默认主题（清空 site_setting.theme.id） */
+    activateDefault: () => client.post<void>('/admin/themes/default/activate'),
+    /** 删除非线上主题（软删除；版本保留） */
+    remove: (id: string) => client.delete<void>(`/admin/themes/${id}`),
     previewToken: (id: string, versionId: string) =>
       client.post<PreviewTokenResponse>(`/admin/themes/${id}/versions/${versionId}/preview-token`),
     /**

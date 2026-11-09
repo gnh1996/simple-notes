@@ -13,13 +13,16 @@ import cc.naihao.simplenotes.web.dto.ThemeVersionResponse;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -72,6 +75,22 @@ public class AdminThemeController {
         return themeService.activate(id, versionId);
     }
 
+    /** 切回内置默认主题（清空 site_setting.theme.id）；删除线上主题前的前置操作。 */
+    @PostMapping("/default/activate")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("@authz.can('admin:theme:activate')")
+    public void activateDefault() {
+        themeService.activateDefault();
+    }
+
+    /** 删除非线上主题（软删除；版本保留）。线上主题返回 409。 */
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("@authz.can('admin:theme:delete')")
+    public void delete(@PathVariable String id) {
+        themeService.delete(id);
+    }
+
     @PostMapping("/{id}/versions/{versionId}/preview-token")
     @PreAuthorize("@authz.can('admin:theme')")
     public PreviewTokenResponse previewToken(@PathVariable String id, @PathVariable String versionId) {
@@ -82,7 +101,8 @@ public class AdminThemeController {
 
     /**
      * AI 主题对话（流式，docs/theme-ai.md §2）：SSE 事件 token / round / done / error。
-     * 无服务端记忆，会话态由前端携带；产物进临时草稿缓存，定版仍走既有 createVersion。
+     * 会话记忆在服务端（ChatMemory + AiThemeSessionStore），前端 history 仅作重启种子；
+     * 产物进临时草稿缓存，定版仍走既有 createVersion。
      */
     @PostMapping(value = "/ai-chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @PreAuthorize("@authz.can('admin:theme:write')")

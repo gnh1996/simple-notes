@@ -7,8 +7,8 @@
  * 流式协议（SSE 事件）：token / round / done / error。
  */
 import type { Schema, ThemeSummary, ThemeVersionResponse } from '@simple-notes/api'
-import { ElMessage } from 'element-plus'
-import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
 import { getStoredToken, handleUnauthorized, themeApi } from '@/api'
 import { notifyError } from '@/utils/feedback'
@@ -175,6 +175,8 @@ const props = defineProps<{
   themeId: string | null
   baseHtml: string
   baseCss: string
+  /** 当前 AI 基线展示（vN / 内置默认主题）；仅用于提示模型从哪一版开始改 */
+  baseLabel?: string
 }>()
 
 const emit = defineEmits<{
@@ -182,6 +184,8 @@ const emit = defineEmits<{
   saved: [version: ThemeVersionResponse]
   created: [theme: ThemeSummary]
   previewDraft: [draftId: string, token: string, html: string, css: string]
+  /** 是否存在进行中的对话：父级据此显示「继续 AI 对话」而不是第二个新建入口 */
+  conversationState: [active: boolean]
 }>()
 
 const visible = defineModel<boolean>('visible', { default: false })
@@ -190,6 +194,11 @@ const messages = ref<ChatMessage[]>([])
 const input = ref('')
 const streaming = ref(false)
 const includeStarter = ref(true)
+/** 抽屉顶部展示的基线：已保存版本 > 默认主题 > 从零生成 */
+const baselineLabel = computed(() => {
+  if (props.baseHtml) return props.baseLabel || '已保存版本'
+  return includeStarter.value ? '内置默认主题' : '从零生成'
+})
 /** 后端 ChatMemory 会话 id：同一段对话共用；「新对话」或切换主题时重新生成。 */
 const sessionId = ref('')
 /** 记录当前会话所属主题，切换主题时清空对话，避免旧主题上下文串台。 */
@@ -234,12 +243,17 @@ function aiErrorMessage(error: unknown): string {
   return message || 'AI 生成失败'
 }
 
-/** 开一段新对话：清空消息 / 自检 / 会话 id，后端 memory 与当前主题自然换新。 */
-function resetConversation(reason?: string): void {
-  if (streaming.value) {
+/**
+ * 开一段新对话：清空消息 / 自检 / 会话 id，后端 memory 与当前主题自然换新。
+ *
+ * @param force 切换主题 / 删除主题时使用：先中断进行中的流式请求，避免旧 sessionId 挂到新 themeId
+ */
+function resetConversation(reason?: string, force = false): void {
+  if (streaming.value && !force) {
     ElMessage.warning('生成中，请先中断再开新对话')
     return
   }
+  if (streaming.value) aborter?.abort()
   messages.value = []
   Object.keys(diags).forEach((key) => delete diags[key])
   sessionId.value = newSessionId()
@@ -249,6 +263,22 @@ function resetConversation(reason?: string): void {
   newThemeName.value = ''
   stick.value = true
   if (reason) ElMessage.info(reason)
+}
+
+/** 「新对话」按钮：有会话时先确认，避免误清空未保存的产物 */
+async function confirmNewConversation(): Promise<void> {
+  if (!messages.value.length) {
+    resetConversation()
+    return
+  }
+  try {
+    await ElMessageBox.confirm('当前对话的内容不会保存，确定开始新对话？', '新对话', {
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+  resetConversation()
 }
 
 function startTimer(): void {
@@ -285,6 +315,12 @@ function scrollBottom(): void {
 }
 
 watch(messages, scrollBottom, { deep: true })
+
+watch(
+  () => messages.value.length,
+  (length) => emit('conversationState', length > 0),
+  { immediate: true },
+)
 
 function historyTextOf(message: ChatMessage): string {
   // 结构化产物只留决策上下文（summary + plan + 状态），几十 KB 的 html/css 绝不进种子。
@@ -538,6 +574,10 @@ async function saveVersion(message: ChatMessage): Promise<void> {
     ElMessage.warning('请先在主题列表选中一个主题，或使用「存为新主题」')
     return
   }
+  if (!artifact.html) {
+    ElMessage.warning('产物为空，无法保存')
+    return
+  }
   if (artifact.errors.length) {
     ElMessage.warning('校验未通过的产物不建议保存，可继续对话修复')
     return
@@ -562,21 +602,34 @@ async function saveAsNewTheme(message: ChatMessage): Promise<void> {
   const artifact = message.artifact
   const name = newThemeName.value.trim()
   if (!artifact || !name) return
+  if (!artifact.html) {
+    ElMessage.warning('产物为空，无法保存')
+    return
+  }
   if (artifact.errors.length) {
     ElMessage.warning('校验未通过的产物不建议保存，可继续对话修复')
     return
   }
   creating[message.id] = true
+  let created: ThemeSummary | null = null
   try {
-    const theme = await themeApi.create({ name })
-    const version = await themeApi.createVersion(theme.id, {
+    created = await themeApi.create({ name })
+    const version = await themeApi.createVersion(created.id, {
       html: artifact.html,
       css: artifact.css,
       contract: artifact.contract,
     })
     ElMessage.success(`已创建主题「${name}」v${version.versionNo}`)
-    emit('created', theme)
+    emit('created', created)
   } catch (error) {
+    // 建主题成功但建版本失败时清理空主题；无删除权限时静默保留，避免掩盖原始错误
+    if (created) {
+      try {
+        await themeApi.remove(created.id)
+      } catch {
+        // ignore cleanup failure
+      }
+    }
     notifyError(error, '创建失败')
   } finally {
     creating[message.id] = false
@@ -704,12 +757,7 @@ watch(
   () => props.themeId,
   (next) => {
     if (next === lastThemeId.value) return
-    if (messages.value.length) {
-      resetConversation('已切换主题，开启新对话')
-    } else {
-      sessionId.value = newSessionId()
-      lastThemeId.value = next
-    }
+    resetConversation(messages.value.length ? '已切换主题，开启新对话' : undefined, true)
   },
 )
 
@@ -722,19 +770,20 @@ onBeforeUnmount(() => {
 <template>
   <el-drawer v-model="visible" title="AI 定制主题" size="min(560px, 94vw)" destroy-on-close>
     <div class="flex h-full flex-col gap-3">
-      <div class="flex items-center justify-between gap-2 text-xs text-[var(--el-text-color-secondary)]">
-        <span>对话直接改主题；产物先过契约校验，通过才进草稿。</span>
-        <div class="flex items-center gap-2">
-          <el-checkbox
-            v-model="includeStarter"
-            size="small"
-            :disabled="streaming || !!props.baseHtml"
-            :title="props.baseHtml ? '已有当前主题，无需再附默认主题' : '没有当前主题时附带默认主题作契约参考'"
-          >
-            首轮附带默认主题
-          </el-checkbox>
-          <el-button size="small" :disabled="streaming" @click="resetConversation()">新对话</el-button>
+      <div class="space-y-1.5 text-xs text-[var(--el-text-color-secondary)]">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span>基线</span>
+            <el-tag size="small" effect="plain">{{ baselineLabel }}</el-tag>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <el-checkbox v-if="!props.baseHtml" v-model="includeStarter" size="small">
+              附带默认主题
+            </el-checkbox>
+            <el-button size="small" :disabled="streaming" @click="confirmNewConversation">新对话</el-button>
+          </div>
         </div>
+        <p>产物先过契约校验，通过才进草稿；基线决定模型从哪一版开始改。</p>
       </div>
 
       <div class="relative min-h-0 flex-1">
@@ -860,7 +909,7 @@ onBeforeUnmount(() => {
                 size="small"
                 type="primary"
                 :loading="!!saving[message.id]"
-                :disabled="!props.themeId || !message.artifact.draftId || !!message.artifact.errors.length"
+                :disabled="!props.themeId || !message.artifact.html || !!message.artifact.errors.length"
                 @click="saveVersion(message)"
               >
                 存为新版本
@@ -877,7 +926,7 @@ onBeforeUnmount(() => {
               <el-button
                 size="small"
                 :loading="!!creating[message.id]"
-                :disabled="!message.artifact.draftId || !!message.artifact.errors.length || !newThemeName.trim()"
+                :disabled="!message.artifact.html || !!message.artifact.errors.length || !newThemeName.trim()"
                 @click="saveAsNewTheme(message)"
               >
                 存为新主题

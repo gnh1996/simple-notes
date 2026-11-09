@@ -1424,11 +1424,11 @@ export interface components {
         ThemeSummary: {
             id: string;
             name: string;
-            activeVersionId: string;
+            activeVersionId?: string;
             /** Format: int32 */
-            activeVersionNo: number;
+            activeVersionNo?: number;
             /** Format: int32 */
-            contract: number;
+            contract?: number;
             isActiveSiteTheme: boolean;
             /** Format: date-time */
             updatedAt: string;

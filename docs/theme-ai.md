@@ -1,12 +1,13 @@
 # 主题 AI 对话（Theme AI Chat）
 
-> **状态：v2.1 · 2026-11-08（已实现）：Spring AI 自动装配 + ChatClient + 后端当前主题 + 首轮完整 / 后续补丁 + 虚拟线程 SSE**
+> **状态：v2.2 · 2026-11-09（已实现）：v2.1 的接入 / 线程 / 记忆 / 补丁链路不变；新增「按已保存版本选择 AI 基线」与草稿 TTL 后仍可存版**
 > 范围：admin 端对话式主题定制；关联 `docs/blog-runtime-theme.md`（§3 契约 / §7 管理端 / §8 校验）、`docs/tech-stack.md`（Spring AI 选型）。
 > 非目标：tool calling、RAG / 向量库、多 provider 路由、无头浏览器截图回灌（P3）。
 > 版本回顾：
 > - v1：手工装配 `OpenAiChatModel.builder()`，正则取 html/css fenced 块，前端持有 history，`new Thread` + 固定 SSE 超时。
 > - v2：Spring AI 自动装配 + `ChatClient` + 后端 ChatMemory + 整篇主题 JSON（`ThemeDraft`）+ provider-native `outputSchema`。
 > - v2.1：保留 v2 的接入/线程/记忆基础，**把“整篇主题 JSON”改成“首轮完整 + 后续补丁”**；当前主题单独存服务端，ChatMemory 只存摘要，避免 JSON 转义、输出截断与上下文膨胀。
+> - v2.2：管理端版本行支持「AI 迭代」，以指定已保存版本为基线开新会话并展示基线；头部只在继续会话 / 无版本时出现；草稿 TTL 到期后仍可存版；切换主题 / 删除主题时中断旧流式会话，避免 `sessionId` 串台。
 
 ## 0. 决策摘要
 
@@ -81,6 +82,8 @@ DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX
 * `baseHtml/baseCss` 只用于初始化当前主题；有 `AiThemeSessionStore` 当前主题时忽略。
 * **补丁优先级**：当前主题 → 前端 `baseHtml` → 勾选 starter 的默认主题，三者任一存在都直接进入补丁模式；只有三者都没有才完整生成。`starter` 因此是“起点主题”，不是额外附带的参考。
 * 前端 `includeStarter` 只在真正产出有效主题后才置 false；失败重试仍可带 starter。
+* **按版本迭代**：管理端主题版本行提供「AI 迭代」，把该版本的 html/css 作为 `baseHtml/baseCss`，并生成新的 `sessionId` 开启新对话（不复用旧会话的服务端当前主题）。抽屉顶部展示当前基线（`vN` / 最新版本 / 内置默认主题），用户始终知道模型从哪一版开始改。主题详情头部只在「已有未结束对话」时显示「继续 AI 对话」，无版本时显示「AI 生成第一版」，不再提供与版本行重复的新建入口。
+* 切换基线必须开新会话：同一 `sessionId` 下服务端当前主题优先于 `baseHtml`，复用会话会让新基线静默失效。
 
 ### 2.2 事件
 
@@ -155,6 +158,7 @@ DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX
 * `POST /api/admin/themes/ai-drafts/{draftId}/preview-token`（`admin:theme`）→ 复用 `PreviewTokenService` HMAC（`draft-uuid.exp`）。
 * `BlogPageController` 的 `previewDraft + token` 分支：`AiDraftCache` 命中则组装壳（`themeId=draft`，ETag 带 draftId，`no-store + noindex`）；过期返回 404 纯文本。
 * 定版：前端 `填入编辑器` 或 `存为新版本`（调 `createVersion`）→ 预览 → 人工 `apply`。版本不可变模型不变（见 `docs/blog-runtime-theme.md` §6.1）。
+* 草稿缓存只服务于**预览 / 渲染自检**，不是存版前置条件：`done.html/css` 已是完整产物，草稿 TTL（`site.preview-ttl`，默认 30m）到期后仍可直接存为新版本，服务端 `createVersion` 会重新校验。
 * A 档渲染自检（2026-11-08）：抽屉 hidden iframe 挂载草稿整页（`fixtures=1`），`ready` 后发 `blog-preview:diagnose`，
   runtime 回 `blog-preview:diagnosed{report}`——静态校验 + 活 DOM 信号（挂载、横向溢出、未解析插值、契约变量计算值、window error/rejection）。
   用户点「把渲染问题发给 AI」时按当前 `mode` 拼成完整修复或补丁修复指令；不自动回灌、不烧 token。无截图（P3 不变）。
@@ -202,6 +206,8 @@ DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX
 7. 抽屉体验（2026-11-08）：滚动改为条件吸底（用户上滑不再强制 `scrollTo`，+「回到底部」按钮）；plan 渲染为步骤时间线；
    说明文字走轻量散文渲染（先转义后套自有标签，无外部 HTML 进入）；补丁模式流式 JSON 原文不展示，只显示“正在生成编辑指令…”与最终 summary。
 8. 会话生命周期：前端「新对话」重新生成 `sessionId`；切换主题时清空当前对话（`themeId` 参与后端会话 key），避免旧主题上下文串台。
+   切换主题 / 删除主题时若仍在流式生成，先中断再重置会话，禁止带着旧 `sessionId` 改用新 `themeId`。
+9. 基线可追溯：AI 抽屉显示当前基线版本；「AI 迭代」从指定版本起新会话；已保存的新版本成为该会话后续轮次的当前主题，不再回退到旧基线。
 
 ---
 

@@ -1,6 +1,6 @@
 # 博客运行时与主题化设计（Blog Runtime & Theme）
 
-> **状态：v1.15 · 2026-10-31（列表排序上下文与创作时间：已实现；v1.14 文档对齐；v1.15 补齐主题契约保存 / 运行时校验、theme.overrides 应用与预览 fixtures / postMessage）**
+> **状态：v1.17 · 2026-11-09（主题管理主从布局与删除 / 默认主题回退：已实现；v1.15 补齐主题契约保存 / 运行时校验、theme.overrides 应用与预览 fixtures / postMessage）**
 > 范围：博客前台从 Vue SPA 改为「后端组装页面 + 固定运行时 + 数据化主题」；runtime 仍由 Vite 构建，但产物在 Maven 打包时进入后端 jar，与页面、API 同源提供；含站点配置、独立页面、主题管理与 agent 预览链路
 > 关联：`docs/content-model.md`（内容与公开读取）、`docs/tech-stack.md`（选型）、`docs/markdown-dialect.md`（方言）、`docs/auth-rbac.md`（权限码与菜单）
 > 非目标：SSR / 预渲染、评论、图片派生、RSS / sitemap、主题市场、多作者
@@ -519,7 +519,10 @@ create table site_theme_version (
 - 当前生效主题 = `site_setting` 的 `theme.id` + 该主题的 `active_version_id`。
 - 回滚 = 移动 `active_version_id`。
 - 内置默认主题不存库；表为空时使用它。
-- `theme.id` 与 `active_version_id` 必须一起变更，唯一写入点是主题管理的 `activate`；`PUT /api/admin/site/settings` 不接受 `theme.id`（400），站点设置页只读展示当前主题名称。
+- **删除主题 = 软删除 `site_theme`**（`delete_flag = 1`），`site_theme_version` 保留不动：版本是不可变审计数据，删除后不再通过管理端读取，但不会级联清理；名称因唯一索引带 `delete_flag = 0` 而可复用。
+- **线上主题禁止删除**：`site_setting.theme.id` 指向的主题必须先切换（其他主题或内置默认主题）；删除非线上主题不影响线上页面。
+- **「使用内置默认主题」是回到默认主题的唯一入口**：清空 `site_setting.theme.id`，不改动各主题自己的 `active_version_id`；权限与 `activate` 相同。该动作同时解除「唯一主题不能删除」的死锁。
+- `theme.id` 与 `active_version_id` 必须一起变更，唯一写入点是主题管理的 `activate`（或「使用内置默认主题」的清空动作）；`PUT /api/admin/site/settings` 不接受 `theme.id`（400），站点设置页只读展示当前主题名称。
 
 ### 6.2 站点配置（KV）
 
@@ -575,12 +578,17 @@ create unique index uk_site_page_slug on site_page (lower(slug)) where delete_fl
 
 ### 7.1 主题管理
 
-- 列表：主题名 / 当前版本 / 契约版本 / 是否生效 / 更新时间。
+- 布局：桌面端「左主题列表 + 右详情」，窄屏列表 / 详情二选一；左侧固定并独立滚动，右侧展示版本历史，避免选中卡片与详情被纵向拉开。
+- 列表：内置默认主题作为第一项（`?theme=default`），其余主题按创建时间排列；每项显示名称 / 版本 / 契约 / 线上标记，`⋯` 菜单承载删除（线上主题禁用）。选中项写入 `?theme=<id>`，刷新 / 分享不丢上下文。
 - 编辑：`theme.html` + `theme.css` 双编辑区（或从 agent 结果填入）。
 - 流程：保存草稿版本 → 校验 → 预览 → 应用 / 回滚。
 - **切换主题的唯一入口**：选中目标主题 → 选版本 → 「应用」。应用会同时写入 `site_theme.active_version_id` 与 `site_setting.theme.id`，两者不可分开修改。
 - 非线上主题保留自己的 `activeVersionId`（便于切回），但只有 `isActiveSiteTheme` 为真时才显示「已应用」并禁用按钮。
-- 权限：`admin:theme`（菜单 + 读 + 预览）、`admin:theme:write`、`admin:theme:activate`。
+- **删除主题**：只允许删除非线上主题；二次确认展示版本数量，软删除主题身份并保留版本。线上主题给出「先切换」提示，不执行删除；入口挂在主题列表项的 `⋯` 菜单，避免和详情区的选中对象错位。
+- **使用内置默认主题**：默认主题作为列表第一项，详情页提供回退按钮，清空 `site_setting.theme.id`；这是删除线上主题前的前置操作，也是主题试验后的恢复路径。
+- **版本列表**：桌面端表格只展示版本 / 状态（线上 / 上次应用）/ 创建时间 / 操作，契约列仅在版本与运行时不一致时出现；窄屏改为版本卡片，避免横向滚动表格把操作与时间挤掉。
+- **AI 基线**：每个版本行提供「AI 迭代」，以该版本为基线开启新对话；抽屉顶部显示当前基线版本，避免「编辑 v2、AI 却基于 v5」的上下文错位。头部只在有未完成对话时显示「继续 AI 对话」，无版本时显示「AI 生成第一版」，避免同一区域出现两个新建入口。
+- 权限：`admin:theme`（菜单 + 读 + 预览）、`admin:theme:write`、`admin:theme:activate`、`admin:theme:delete`。
 
 ### 7.2 预览协议
 
@@ -674,6 +682,8 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | `POST /api/admin/themes/{id}/versions` | `admin:theme:write` | 新增草稿版本 |
 | `POST /api/admin/themes/{id}/versions/{versionId}/preview-token` | `admin:theme` | 签发预览 token |
 | `POST /api/admin/themes/{id}/versions/{versionId}/activate` | `admin:theme:activate` | 应用 / 回滚 |
+| `POST /api/admin/themes/default/activate` | `admin:theme:activate` | 切回内置默认主题（清空 `theme.id`） |
+| `DELETE /api/admin/themes/{id}` | `admin:theme:delete` | 删除非线上主题（软删除；线上主题 409） |
 | `GET /api/admin/site/settings` | `admin:site` | 读取（含默认值与元信息） |
 | `PUT /api/admin/site/settings` | `admin:site:update` | 批量保存 |
 | `GET /api/admin/site/pages`、`POST`、`PUT`、`DELETE` | `admin:site` / `admin:site:update` | 独立页面 CRUD |
@@ -687,6 +697,7 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | `admin:theme` | MENU | 主题管理 | `entry:admin` | 75 |
 | `admin:theme:write` | ACTION | 编辑主题 | `admin:theme` | 1 |
 | `admin:theme:activate` | ACTION | 应用 / 回滚主题 | `admin:theme` | 2 |
+| `admin:theme:delete` | ACTION | 删除主题 | `admin:theme` | 3 |
 
 页面注册表新增：`admin:site` → `/site`、`admin:theme` → `/themes`。`Perms` 常量同步新增，启动对账必须通过。
 
@@ -807,3 +818,5 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 2026-10-28 | v1.13 排序上下文 | **公开列表排序上下文**：`pinnedFirst` / `direction` / `sortBy`（`displayAt` / `firstPublishedAt` / `lastPublishedAt`）；列表与归档按 URL query 取数，详情上下篇由详情接口按同一上下文计算（不再拉 100 条列表）；runtime 注入只读 `listSort` 与 `postDate(post)`，归档改为**按月查看 + 月内分页**（月份索引 + `year` / `month` + `page` / `size`），`year` / `month` 过滤跟随 `sortBy`；主题可通过 `<a href="?direction=asc">` 切换；搜索上下篇携带 `q`；数据库新增 `note.authored_at`（见 `docs/content-model.md` v1.4）；V10 已执行，契约自检 29 键通过 |
 | 2026-10-31 | v1.14 文档对齐 | 按实现补齐 `Site` / `SitePage` 数据形状；CSP 增加 `script-src 'unsafe-inline'`（壳内联启动脚本）；ETag 增加 asset-base；站点设置分组按 `SiteSettingCatalog` 收敛为品牌 / 作者 / 导航 / 首页 / 页脚 / 主题；主题版本接口参数改为 `versionId`；`/api/blog/site` 与 `/pages/{slug}` 标为已实现 |
 | 2026-10-31 | v1.15 契约与预览补全 | 后端 `ThemeTemplateValidator` 保存时扫描组件 / 指令 / 模板键并返回行号；runtime `validateTheme` 增加同口径扫描与 CSS `url()` 检查；`theme.overrides` 后端校验（白名单 + 安全值）并由 runtime 写到 `documentElement.style`；管理端预览发送 `blog-preview:validate` / `color-mode` 并展示错误；预览支持 `fixtures=1` 示例数据 |
+| 2026-11-09 | v1.16 主题删除与默认回退 | 新增 `DELETE /api/admin/themes/{id}`（`admin:theme:delete`，V19）：仅非线上主题，软删除身份、版本保留、名称可复用；新增 `POST /api/admin/themes/default/activate`（`admin:theme:activate`）清空 `site_setting.theme.id`，作为回退内置默认主题与删除线上主题的前置操作；管理端补删除入口、默认主题入口、权限按钮；修复编辑旧版本的目标版本号、主题切换竞态；`ThemeSummary` 可空字段移出 requiredProperties |
+| 2026-11-09 | v1.17 主题管理主从布局 | 桌面端改为「左主题列表 + 右详情」，左侧固定独立滚动；内置默认主题成为列表第一项，删除移入主题项 `...` 菜单；选中项写入 `?theme=`；版本表精简为版本 / 状态（线上 / 上次应用）/ 时间 / 操作，契约列仅在不匹配时出现；窄屏列表与详情二选一、版本改卡片；AI 入口收敛到版本行「AI 迭代」，头部仅在继续会话 / 无版本时出现，抽屉基线改为标签展示 |

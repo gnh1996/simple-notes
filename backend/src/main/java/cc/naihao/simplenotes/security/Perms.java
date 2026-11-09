@@ -95,6 +95,7 @@ public final class Perms {
     public static final String ADMIN_THEME = "admin:theme";
     public static final String ADMIN_THEME_WRITE = "admin:theme:write";
     public static final String ADMIN_THEME_ACTIVATE = "admin:theme:activate";
+    public static final String ADMIN_THEME_DELETE = "admin:theme:delete";
 
     // ---- desktop：同步 ----
 

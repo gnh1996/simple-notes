@@ -104,6 +104,28 @@ public class ThemeService {
         return toSummary(theme, themeId);
     }
 
+    /**
+     * 切回内置默认主题：清空 {@code site_setting.theme.id}，不改动各主题自己的
+     * {@code active_version_id}（docs/blog-runtime-theme.md §6.1 / §7.1）。
+     */
+    @Transactional
+    public void activateDefault() {
+        settingService.setActiveTheme(null);
+    }
+
+    /**
+     * 删除主题：软删除身份并保留不可变版本；线上主题禁止删除，必须先切换。
+     */
+    @Transactional
+    public void delete(String themeId) {
+        SiteTheme theme = requireTheme(themeId);
+        if (themeId.equals(settingService.activeThemeId())) {
+            throw ApiException.conflict("线上主题不能删除，请先切换到其他主题或内置默认主题");
+        }
+        theme.markDeleted(SecurityUtils.currentUserId());
+        themeRepository.save(theme);
+    }
+
     /** 页面组装用：当前生效主题版本；未配置或版本缺失时返回 null（回落内置默认主题） */
     @Transactional(readOnly = true)
     public SiteThemeVersion activeVersion() {
