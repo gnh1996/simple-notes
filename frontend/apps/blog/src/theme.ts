@@ -25,29 +25,12 @@ const COMPONENT_NAMES = new Set(Object.keys(CONTRACT_COMPONENTS))
 const DIRECTIVE_NAMES = new Set<string>(CONTRACT_DIRECTIVES)
 const EXPRESSION_GLOBALS = new Set<string>(CONTRACT_EXPRESSION.globals)
 const NATIVE_EVENTS = new Set<string>(CONTRACT_EXPRESSION.nativeEvents)
-const BUILTIN_COMPONENTS = new Set<string>(CONTRACT_EXPRESSION.builtinComponents)
-const DENIED_BUILTIN_COMPONENTS = new Set<string>(CONTRACT_EXPRESSION.deniedBuiltinComponents)
-
-function kebabCase(name: string): string {
-  return name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
-}
-
-/** 已知内置组件里，除 allow 之外一律拒绝（同时覆盖 PascalCase 与 kebab-case）。 */
-function isDeniedBuiltin(tag: string): boolean {
-  const lower = tag.toLowerCase()
-  for (const allowed of BUILTIN_COMPONENTS) {
-    if (lower === allowed.toLowerCase() || lower === kebabCase(allowed)) return false
-  }
-  for (const denied of DENIED_BUILTIN_COMPONENTS) {
-    if (lower === denied.toLowerCase() || lower === kebabCase(denied)) return true
-  }
-  return false
-}
-const EVENT_LOCAL_SHAPES: readonly string[] = CONTRACT_EXPRESSION.eventLocalShapes
 const JS_KEYWORDS = new Set([
   'true', 'false', 'null', 'undefined', 'in', 'of', 'new', 'typeof', 'instanceof',
   'void', 'delete', 'return', 'if', 'else', 'this', 'NaN', 'Infinity',
 ])
+const IDENTIFIER_HINT =
+  '（可用：数据键 / 辅助函数 / 动作 / 局部变量 / 表达式全局；表单输入请用 v-model="ui.x"）'
 
 /**
  * HTML 实体归一（docs/blog-runtime-theme.md §8）：解码回原文字符。
@@ -227,25 +210,9 @@ function slotFieldNames(pattern: string): Set<string> {
   return fields
 }
 
-/** `$event` 只允许窄形状；返回清理后的表达式与错误消息。 */
-function checkEventLocals(expression: string): { text: string; errors: string[] } {
-  const errors: string[] = []
-  for (const match of expression.matchAll(/\$event/g)) {
-    const rest = expression.slice(match.index + '$event'.length)
-    const allowed = EVENT_LOCAL_SHAPES.some((shape) => {
-      const prefix = `.${shape}`
-      if (!rest.startsWith(prefix)) return false
-      const after = rest.slice(prefix.length)
-      return !after || !/^[\w$]/.test(after)
-    })
-    if (!allowed) {
-      errors.push(
-        '不允许的 $event 用法（仅允许 $event.target.value / $event.target.checked / ' +
-          '$event.key / $event.code / $event.preventDefault() / $event.stopPropagation()）',
-      )
-    }
-  }
-  return { text: expression.replace(/\$event/g, ' '), errors }
+/** `$event` 只在事件表达式里作为局部变量；不限制成员形状。 */
+function stripEventLocals(expression: string): string {
+  return expression.replace(/\$event/g, ' ')
 }
 
 /** v-for / slot 作用域的局部变量：表达式里出现它们不算未登记标识符。 */
@@ -306,17 +273,12 @@ function scanTheme(html: string, errors: Array<{ line: number; message: string }
 
   for (const match of html.matchAll(/<\s*(blog-[a-z-]+)/g)) {
     if (!COMPONENT_NAMES.has(match[1])) {
-      errors.push({ line: lineAt(match.index), message: `使用了未登记的组件 <${match[1]}>` })
-    }
-  }
-  for (const match of html.matchAll(/<\s*([A-Za-z][A-Za-z0-9-]*)/g)) {
-    if (isDeniedBuiltin(match[1])) {
-      errors.push({ line: lineAt(match.index), message: `使用了未登记的内置组件 <${match[1]}>` })
+      errors.push({ line: lineAt(match.index), message: `使用了未登记的组件 <${match[1]}>（可用：${[...COMPONENT_NAMES].join(', ')}）` })
     }
   }
   for (const match of html.matchAll(/\s(v-[a-z-]+)/g)) {
     if (!DIRECTIVE_NAMES.has(match[1])) {
-      errors.push({ line: lineAt(match.index), message: `使用了未登记的指令 ${match[1]}` })
+      errors.push({ line: lineAt(match.index), message: `使用了未登记的指令 ${match[1]}（可用：${[...DIRECTIVE_NAMES].join(', ')}）` })
     }
   }
 
@@ -334,14 +296,14 @@ function scanTheme(html: string, errors: Array<{ line: number; message: string }
   for (const match of html.matchAll(/(?:#([\w-]+)|v-slot(?::([\w-]+))?)\s*=\s*"([^"]*)"/g)) {
     const name = match[1] ?? match[2] ?? 'default'
     if (!slotNames.has(name)) {
-      errors.push({ line: lineAt(match.index), message: `使用了未登记的 slot #${name}` })
+      errors.push({ line: lineAt(match.index), message: `使用了未登记的 slot #${name}（可用：${[...slotNames].join(', ')}）` })
       continue
     }
     for (const field of slotFieldNames(match[3])) {
       if (!slotScope.get(name)?.has(field)) {
         errors.push({
           line: lineAt(match.index),
-          message: `slot #${name} 引用了未登记的作用域字段 "${field}"`,
+          message: `slot #${name} 引用了未登记的作用域字段 "${field}"（可用：${[...(slotScope.get(name) ?? [])].join(', ')}）`,
         })
       }
     }
@@ -359,14 +321,14 @@ function scanTheme(html: string, errors: Array<{ line: number; message: string }
     for (const prop of entry.requiredProps) {
       const pattern = new RegExp(`(?<![\\w-])(?:(?::|v-bind:)${prop}(?=[\\s=/>])|${prop}\\s*=)`)
       if (!pattern.test(attrs)) {
-        errors.push({ line: lineAt(match.index), message: `<${tag}> 缺少必填 prop "${prop}"` })
+        errors.push({ line: lineAt(match.index), message: `<${tag}> 缺少必填 prop "${prop}"（必填：${entry.requiredProps.join(', ')}）` })
       }
     }
     for (const event of attrs.matchAll(/(?:^|\s)(?:@|v-on:)([A-Za-z][\w:-]*)(?:\.[\w-]+)*/g)) {
       if (!entry.events.includes(event[1]) && !NATIVE_EVENTS.has(event[1])) {
         errors.push({
           line: lineAt(match.index),
-          message: `<${tag}> 使用了未登记事件 "${event[1]}"`,
+          message: `<${tag}> 使用了未登记事件 "${event[1]}"（可用：${entry.events.join(', ') || '无自定义事件'}；原生事件见契约）`,
         })
       }
     }
@@ -387,11 +349,7 @@ function scanTheme(html: string, errors: Array<{ line: number; message: string }
   for (const expression of expressions) {
     let text = expression.text
     if (expression.event) {
-      const checked = checkEventLocals(text)
-      text = checked.text
-      for (const message of checked.errors) {
-        errors.push({ line: lineAt(expression.index), message })
-      }
+      text = stripEventLocals(text)
     } else if (text.includes('$event')) {
       errors.push({
         line: lineAt(expression.index),
@@ -408,7 +366,7 @@ function scanTheme(html: string, errors: Array<{ line: number; message: string }
       ) {
         continue
       }
-      errors.push({ line: lineAt(expression.index), message: `引用了未登记的标识符 "${name}"` })
+      errors.push({ line: lineAt(expression.index), message: `引用了未登记的标识符 "${name}"${IDENTIFIER_HINT}` })
     }
   }
 }

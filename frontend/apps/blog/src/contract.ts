@@ -60,7 +60,7 @@ export interface ComponentEntry {
   readonly parts: readonly string[]
   /** 具名 slot（公开接口，只增不改）；为空表示组件不接受覆盖 */
   readonly slots: readonly SlotEntry[]
-  /** 可选：最小用法示例；当前未使用，保留给 cookbook 扩展 */
+  /** 可选：最小用法示例；进入 AI 提示词，并由 check:contract 扫描 */
   readonly example?: string
 }
 
@@ -133,6 +133,7 @@ export const CONTRACT_EXPRESSION = {
     'Array',
     'Object',
     'JSON',
+    'Intl',
     'Date',
     'parseInt',
     'parseFloat',
@@ -143,17 +144,8 @@ export const CONTRACT_EXPRESSION = {
     'decodeURI',
     'decodeURIComponent',
   ],
-  /** 事件表达式里允许的编译器局部变量 */
+  /** 事件表达式里允许的编译器局部变量（P1 起不再限制成员形状） */
   eventLocals: ['$event'],
-  /** `$event` 允许的后缀（窄形状白名单，禁止任意成员访问） */
-  eventLocalShapes: [
-    'target.value',
-    'target.checked',
-    'key',
-    'code',
-    'preventDefault()',
-    'stopPropagation()',
-  ],
   /** 事件修饰符（不参与自由标识符扫描） */
   eventModifiers: [
     'stop',
@@ -206,10 +198,6 @@ export const CONTRACT_EXPRESSION = {
     'copy',
     'cut',
   ],
-  /** 允许的内置组件（只放行纯展示 / 分组） */
-  builtinComponents: ['Transition', 'TransitionGroup'],
-  /** 已知但未放行的内置组件（用于同时拒绝大写与 kebab 写法） */
-  deniedBuiltinComponents: ['Teleport', 'Suspense', 'KeepAlive', 'Fragment', 'component'],
 } as const
 
 export const CONTRACT_COMPONENTS = {
@@ -240,6 +228,7 @@ export const CONTRACT_COMPONENTS = {
         scope: [{ name: 'post', shape: 'PostSummary' }],
       },
     ],
+    example: '<blog-post-card v-for="item in posts" :key="item.slug" :post="item" />',
   },
   'blog-pager': {
     props: ['pager'],
@@ -258,6 +247,9 @@ export const CONTRACT_COMPONENTS = {
         ],
       },
     ],
+    example: `<blog-pager :pager="pager" v-slot:root="{ pager, go, pages }">
+  <button v-for="page in pages" :key="page" :disabled="page === pager.page" @click="go(page)">{{ page }}</button>
+</blog-pager>`,
   },
   'blog-markdown': {
     props: ['source'],
@@ -266,6 +258,7 @@ export const CONTRACT_COMPONENTS = {
     selfFetch: false,
     parts: ['bc-prose'],
     slots: [],
+    example: '<blog-markdown :source="post.content" />',
   },
   'blog-toc': {
     props: [],
@@ -284,6 +277,9 @@ export const CONTRACT_COMPONENTS = {
         ],
       },
     ],
+    example: `<blog-toc v-slot:root="{ items, activeId, scrollTo }">
+  <a v-for="item in items" :key="item.id" :href="'#' + item.id" @click.prevent="scrollTo(item.id)">{{ item.text }}</a>
+</blog-toc>`,
   },
   'blog-tag-chip': {
     props: ['tag'],
@@ -298,6 +294,7 @@ export const CONTRACT_COMPONENTS = {
         scope: [{ name: 'tag', shape: 'TagBrief' }],
       },
     ],
+    example: '<blog-tag-chip v-for="tag in post.tags" :key="tag.id" :tag="tag" />',
   },
   'blog-tag-cloud': {
     props: [],
@@ -316,6 +313,7 @@ export const CONTRACT_COMPONENTS = {
         ],
       },
     ],
+    example: '<blog-tag-cloud />',
   },
   'blog-archives': {
     props: [],
@@ -334,6 +332,7 @@ export const CONTRACT_COMPONENTS = {
         ],
       },
     ],
+    example: '<blog-archives />',
   },
   'blog-search-box': {
     props: ['value'],
@@ -351,6 +350,7 @@ export const CONTRACT_COMPONENTS = {
         ],
       },
     ],
+    example: '<blog-search-box :value="keyword" @search="search" />',
   },
   'blog-theme-toggle': {
     props: [],
@@ -369,6 +369,9 @@ export const CONTRACT_COMPONENTS = {
         ],
       },
     ],
+    example: `<blog-theme-toggle v-slot:root="{ colorMode, toggle }">
+  <button type="button" @click="toggle">{{ colorMode === 'dark' ? '浅色' : '深色' }}</button>
+</blog-theme-toggle>`,
   },
   'blog-image': {
     props: ['src', 'alt'],
@@ -387,6 +390,7 @@ export const CONTRACT_COMPONENTS = {
         ],
       },
     ],
+    example: '<blog-image :src="post.coverUrl" :alt="post.title" />',
   },
   'blog-back-to-top': {
     props: [],
@@ -404,6 +408,9 @@ export const CONTRACT_COMPONENTS = {
         ],
       },
     ],
+    example: `<blog-back-to-top v-slot:root="{ visible, scroll }">
+  <button v-if="visible" type="button" @click="scroll">回到顶部</button>
+</blog-back-to-top>`,
   },
   'blog-reading-progress': {
     props: [],
@@ -418,6 +425,9 @@ export const CONTRACT_COMPONENTS = {
         scope: [{ name: 'progress', shape: 'number' }],
       },
     ],
+    example: `<blog-reading-progress v-slot:root="{ progress }">
+  <div :style="{ transform: 'scaleX(' + progress + ')' }"></div>
+</blog-reading-progress>`,
   },
   'blog-state': {
     props: ['state', 'message'],
@@ -435,6 +445,7 @@ export const CONTRACT_COMPONENTS = {
         ],
       },
     ],
+    example: '<blog-state :state="state" :message="message" />',
   },
 } as const satisfies Record<string, ComponentEntry>
 

@@ -41,25 +41,6 @@ const CONTRACT_DIRECTIVES = new Set(contract.CONTRACT_DIRECTIVES)
 const CONTRACT_COMPONENT_NAMES = new Set(Object.keys(CONTRACT_COMPONENTS))
 const EXPRESSION_GLOBALS = new Set(CONTRACT_EXPRESSION.globals)
 const NATIVE_EVENTS = new Set(CONTRACT_EXPRESSION.nativeEvents)
-const BUILTIN_COMPONENTS = new Set(CONTRACT_EXPRESSION.builtinComponents)
-const DENIED_BUILTIN_COMPONENTS = new Set(CONTRACT_EXPRESSION.deniedBuiltinComponents)
-
-function kebabCase(name) {
-  return name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
-}
-
-/** 已知内置组件里，除 allow 之外一律拒绝（同时覆盖 PascalCase 与 kebab-case）。 */
-function isDeniedBuiltin(tag) {
-  const lower = tag.toLowerCase()
-  for (const allowed of BUILTIN_COMPONENTS) {
-    if (lower === allowed.toLowerCase() || lower === kebabCase(allowed)) return false
-  }
-  for (const denied of DENIED_BUILTIN_COMPONENTS) {
-    if (lower === denied.toLowerCase() || lower === kebabCase(denied)) return true
-  }
-  return false
-}
-const EVENT_LOCAL_SHAPES = CONTRACT_EXPRESSION.eventLocalShapes
 const TEMPLATE_KEYS = new Set([
   ...Object.keys(CONTRACT_DATA),
   ...Object.keys(CONTRACT_HELPERS),
@@ -574,6 +555,8 @@ const JS_KEYWORDS = new Set([
   'true', 'false', 'null', 'undefined', 'in', 'of', 'new', 'typeof', 'instanceof',
   'void', 'delete', 'return', 'if', 'else', 'this', 'NaN', 'Infinity',
 ])
+const IDENTIFIER_HINT =
+  '（可用：数据键 / 辅助函数 / 动作 / 局部变量 / 表达式全局；表单输入请用 v-model="ui.x"）'
 
 /** 顶层分隔（忽略字符串与括号内部），用于解构模式。 */
 function splitTopLevel(text, delimiter = ',') {
@@ -736,25 +719,9 @@ function slotFieldNames(pattern) {
   return fields
 }
 
-/** `$event` 只允许窄形状；返回清理后的表达式与错误消息。 */
-function checkEventLocals(expression) {
-  const errors = []
-  for (const match of expression.matchAll(/\$event/g)) {
-    const rest = expression.slice(match.index + '$event'.length)
-    const allowed = EVENT_LOCAL_SHAPES.some((shape) => {
-      const prefix = `.${shape}`
-      if (!rest.startsWith(prefix)) return false
-      const after = rest.slice(prefix.length)
-      return !after || !/^[\w$]/.test(after)
-    })
-    if (!allowed) {
-      errors.push(
-        '不允许的 $event 用法（仅允许 $event.target.value / $event.target.checked / ' +
-          '$event.key / $event.code / $event.preventDefault() / $event.stopPropagation()）',
-      )
-    }
-  }
-  return { text: expression.replace(/\$event/g, ' '), errors }
+/** `$event` 只在事件表达式里作为局部变量；不限制成员形状。 */
+function stripEventLocals(expression) {
+  return expression.replace(/\$event/g, ' ')
 }
 
 function collectLocals(html) {
@@ -844,12 +811,7 @@ function scanTheme(file, html, sink = errors) {
 
   for (const match of html.matchAll(/<\s*(blog-[a-z-]+)/g)) {
     if (!CONTRACT_COMPONENT_NAMES.has(match[1])) {
-      sink.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的组件 <${match[1]}>`)
-    }
-  }
-  for (const match of html.matchAll(/<\s*([A-Za-z][A-Za-z0-9-]*)/g)) {
-    if (isDeniedBuiltin(match[1])) {
-      sink.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的内置组件 <${match[1]}>`)
+      sink.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的组件 <${match[1]}>（可用：${[...CONTRACT_COMPONENT_NAMES].join(', ')}）`)
     }
   }
 
@@ -857,13 +819,13 @@ function scanTheme(file, html, sink = errors) {
   for (const match of html.matchAll(/(?:#([\w-]+)|v-slot(?::([\w-]+))?)\s*=\s*"([^"]*)"/g)) {
     const name = match[1] ?? match[2] ?? 'default'
     if (!SLOT_NAMES.has(name)) {
-      sink.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的 slot #${name}`)
+      sink.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的 slot #${name}（可用：${[...SLOT_NAMES].join(', ')}）`)
       continue
     }
     for (const field of slotFieldNames(match[3])) {
       if (!SLOT_SCOPE.get(name)?.has(field)) {
         sink.push(
-          `${rel(file)}:${lineAt(html, match.index)} slot #${name} 引用了未登记的作用域字段 "${field}"`,
+          `${rel(file)}:${lineAt(html, match.index)} slot #${name} 引用了未登记的作用域字段 "${field}"（可用：${[...(SLOT_SCOPE.get(name) ?? [])].join(', ')}）`,
         )
       }
     }
@@ -880,19 +842,19 @@ function scanTheme(file, html, sink = errors) {
     for (const prop of entry.requiredProps) {
       const pattern = new RegExp(`(?<![\\w-])(?:(?::|v-bind:)${prop}(?=[\\s=/>])|${prop}\\s*=)`)
       if (!pattern.test(attrs)) {
-        sink.push(`${rel(file)}:${lineAt(html, match.index)} <${tag}> 缺少必填 prop "${prop}"`)
+        sink.push(`${rel(file)}:${lineAt(html, match.index)} <${tag}> 缺少必填 prop "${prop}"（必填：${entry.requiredProps.join(', ')}）`)
       }
     }
     for (const event of attrs.matchAll(/(?:^|\s)(?:@|v-on:)([A-Za-z][\w:-]*)(?:\.[\w-]+)*/g)) {
       if (!entry.events.includes(event[1]) && !NATIVE_EVENTS.has(event[1])) {
-        sink.push(`${rel(file)}:${lineAt(html, match.index)} <${tag}> 使用了未登记事件 "${event[1]}"`)
+        sink.push(`${rel(file)}:${lineAt(html, match.index)} <${tag}> 使用了未登记事件 "${event[1]}"（可用：${entry.events.join(', ') || '无自定义事件'}；原生事件见契约）`)
       }
     }
   }
 
   for (const match of html.matchAll(/\s(v-[a-z-]+)/g)) {
     if (!CONTRACT_DIRECTIVES.has(match[1])) {
-      sink.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的指令 ${match[1]}`)
+      sink.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的指令 ${match[1]}（可用：${[...CONTRACT_DIRECTIVES].join(', ')}）`)
     }
   }
 
@@ -912,11 +874,7 @@ function scanTheme(file, html, sink = errors) {
   for (const expression of expressions) {
     let text = expression.text
     if (expression.event) {
-      const checked = checkEventLocals(text)
-      text = checked.text
-      for (const message of checked.errors) {
-        sink.push(`${rel(file)}:${lineAt(html, expression.index)} ${message}`)
-      }
+      text = stripEventLocals(text)
     } else if (text.includes('$event')) {
       sink.push(
         `${rel(file)}:${lineAt(html, expression.index)} $event 只能用于事件表达式（@ / v-on）`,
@@ -933,7 +891,7 @@ function scanTheme(file, html, sink = errors) {
         continue
       }
       sink.push(
-        `${rel(file)}:${lineAt(html, expression.index)} 引用了未登记的标识符 "${name}"（契约见 apps/blog/src/contract.ts）`,
+        `${rel(file)}:${lineAt(html, expression.index)} 引用了未登记的标识符 "${name}"${IDENTIFIER_HINT}`,
       )
     }
   }
@@ -1007,11 +965,161 @@ if (extraThemeIndex >= 0) {
   }
 }
 
+// canonical skeleton：完整模式注入的最小合法起点（docs/theme-contract.md §13 P1）
+const skeletonHtmlFile = path.join(fixtureRoot, 'skeleton.html')
+const skeletonCssFile = path.join(fixtureRoot, 'skeleton.css')
+const normalizeSkeleton = (text) => text.replace(/\r\n/g, '\n').trim()
+const skeletonHtml = normalizeSkeleton(await readText(skeletonHtmlFile))
+const skeletonCss = normalizeSkeleton(await readText(skeletonCssFile))
+scanTheme(skeletonHtmlFile, skeletonHtml)
+const unknownSkeletonClasses = [...cssClasses(skeletonCss)].filter((name) => !publicParts.has(name))
+if (unknownSkeletonClasses.length) {
+  errors.push(`skeleton.css 样式化了未登记的组件 class → ${unknownSkeletonClasses.join(', ')}`)
+}
+if (/@import/i.test(skeletonCss)) {
+  errors.push('skeleton.css 禁止使用 @import')
+}
+
+// 组件 example：提示词会原样输出，因此必须自己先通过同一套扫描。
+for (const [name, entry] of Object.entries(CONTRACT_COMPONENTS)) {
+  if (!entry.example) continue
+  const local = []
+  scanTheme(
+    path.join(fixtureRoot, 'examples', `${name}.html`),
+    `<div id="app">${entry.example}</div>`,
+    local,
+  )
+  if (local.length) {
+    errors.push(`组件 ${name} 的 example 未通过契约扫描：${local.join('；')}`)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 文档生成物与规范覆盖检查（P1-C）
+// ---------------------------------------------------------------------------
+
+function renderGeneratedDoc() {
+  const lines = [
+    '# 主题契约生成物',
+    '',
+    '> 自动生成，禁止手改。运行 `pnpm sync:contract`。',
+    '',
+    '<!-- contract:begin -->',
+    '',
+    '## 组件',
+    '',
+  ]
+  for (const [name, entry] of Object.entries(CONTRACT_COMPONENTS)) {
+    const props = entry.props.map((prop) =>
+      entry.requiredProps.includes(prop) ? `${prop}*` : prop,
+    )
+    const slots = entry.slots.map((slot) => {
+      const scope = slot.scope.map((field) => `${field.name}: ${field.shape}`).join('; ')
+      return `#${slot.name} { ${scope} }`
+    })
+    lines.push(`### \`<${name}>\``, '')
+    lines.push(`- props：${props.join(', ') || '-'}`)
+    lines.push(`- events：${entry.events.join(', ') || '-'}`)
+    lines.push(`- slots：${slots.join('；') || '-'}`)
+    lines.push(`- parts：${entry.parts.join(', ') || '-'}`)
+    lines.push(`- selfFetch：${entry.selfFetch ? '是' : '否'}`)
+    if (entry.example) {
+      lines.push('', '```html', entry.example, '```')
+    }
+    lines.push('')
+  }
+
+  lines.push('## 数据类型', '', '```text')
+  for (const [name, value] of Object.entries(sortedTypes)) {
+    if (typeof value === 'string') {
+      lines.push(`${name} = ${value}`)
+    } else {
+      lines.push(
+        `${name} { ${Object.entries(value)
+          .map(([key, field]) => `${key}: ${field}`)
+          .join('; ')} }`,
+      )
+    }
+  }
+  lines.push('```', '')
+
+  lines.push('## 路由', '')
+  for (const [name, route] of Object.entries(CONTRACT_ROUTES)) {
+    const query = route.query?.length ? ` query: ${route.query.join(', ')}` : ''
+    lines.push(`- \`${name}\` → \`${route.path}\`${query}`)
+  }
+  lines.push('', '## URL 形态', '')
+  for (const [name, pattern] of Object.entries(CONTRACT_URLS)) {
+    lines.push(`- \`${name}\`：\`${pattern}\``)
+  }
+  lines.push('', '## CSS 变量', '')
+  lines.push([...CONTRACT_CSS_VARS].map((item) => `\`${item}\``).join(', '))
+  lines.push('', '## 指令', '')
+  lines.push([...CONTRACT_DIRECTIVES].map((item) => `\`${item}\``).join(', '))
+  lines.push('', '## 表达式', '')
+  lines.push(`- 全局：${CONTRACT_EXPRESSION.globals.map((item) => `\`${item}\``).join(', ')}`)
+  lines.push(
+    `- 事件局部变量：${CONTRACT_EXPRESSION.eventLocals.map((item) => `\`${item}\``).join(', ')}`,
+  )
+  lines.push(
+    `- 事件修饰符：${CONTRACT_EXPRESSION.eventModifiers.map((item) => `\`${item}\``).join(', ')}`,
+  )
+  lines.push(
+    `- v-model 修饰符：${CONTRACT_EXPRESSION.modelModifiers.map((item) => `\`${item}\``).join(', ')}`,
+  )
+  lines.push(
+    `- 原生事件：${CONTRACT_EXPRESSION.nativeEvents.map((item) => `\`${item}\``).join(', ')}`,
+  )
+  lines.push('', '<!-- contract:end -->', '')
+  return lines.join('\n')
+}
+
+const generatedDocPath = path.join(repoRoot, 'docs', 'theme-contract.generated.md')
+const generatedDoc = renderGeneratedDoc()
+const normalizeDocEol = (text) => text.replace(/\r\n/g, '\n')
+if (process.argv.includes('--emit')) {
+  await writeFile(generatedDocPath, generatedDoc, 'utf8')
+} else {
+  const existingDoc = await readFile(generatedDocPath, 'utf8').catch(() => null)
+  if (existingDoc === null) {
+    errors.push(`缺少文档生成物 ${rel(generatedDocPath)}，请运行 pnpm sync:contract`)
+  } else if (normalizeDocEol(existingDoc) !== normalizeDocEol(generatedDoc)) {
+    errors.push(`文档生成物过期 ${rel(generatedDocPath)}，请运行 pnpm sync:contract`)
+  }
+}
+
+const specDocPath = path.join(repoRoot, 'docs', 'theme-contract.md')
+const specDoc = await readFile(specDocPath, 'utf8').catch(() => null)
+if (specDoc === null) {
+  errors.push(`缺少规范文档 ${rel(specDocPath)}`)
+} else {
+  const ruleIds = [...specDoc.matchAll(/^\|\s*`(TC-[A-Z]+-\d+)`/gm)].map((match) => match[1])
+  const counts = new Map()
+  for (const id of ruleIds) counts.set(id, (counts.get(id) ?? 0) + 1)
+  for (const [id, count] of counts) {
+    if (count > 1) errors.push(`规范文档规则 ID 重复：${id}`)
+  }
+  try {
+    const cases = JSON.parse(await readText(fixtureCases))
+    for (const id of Object.keys(cases)) {
+      if (!specDoc.includes(id)) {
+        errors.push(`cases.json 规则 ${id} 未出现在 ${rel(specDocPath)}`)
+      }
+    }
+  } catch {
+    // cases.json 缺失时由上面的 fixture 检查统一报错
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 输出
 // ---------------------------------------------------------------------------
 
-const emitted = { ...contract.CONTRACT, types: sortedTypes }
+const emitted = {
+  ...contract.CONTRACT,
+  types: sortedTypes,
+  skeleton: { html: skeletonHtml, css: skeletonCss },
+}
 const serialized = `${JSON.stringify(emitted, null, 2)}\n`
 const backendOutput = path.join(repoRoot, 'backend', 'src', 'main', 'resources', 'theme', 'theme-contract.json')
 

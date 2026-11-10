@@ -1,6 +1,6 @@
 # 主题契约规范（Theme Contract Spec）
 
-> **状态：v0.2（2026-11-09，P0 已实现）**。表达式面（全局 / 窄 `$event` / 解构 / slot 默认值）、原生事件白名单、内置组件白名单、组件属性 `>` 解析、规则 fixture 已落地；错误码、`check:docs` 与生成段仍待 P1。
+> **状态：v0.6（2026-11-10，P0 + P1 已实现）**。表达式面、fixture、canonical skeleton、组件 `example`、错误修复提示、`$event` / 内置组件放宽、`Intl`、生成文档与规则覆盖检查均已落地；P2 按真实证据再做。
 > **定位：规范性文档（normative）**。本文定义“什么算合法主题”“什么算契约变更”“改契约必须同步什么”。
 > **机器源**：`frontend/apps/blog/src/contract.ts`（配合 `types.ts` / `runtime.ts`）。本文与机器源冲突时视为缺陷，按 §9 修正。
 > **关系**：`docs/blog-runtime-theme.md` §3 描述契约的语义与设计；本文描述规范性规则、错误码、fixture 与变更协议；`docs/theme-contract-v2.md` 是 2A 的历史设计记录，规范内容以本文为准。
@@ -16,6 +16,7 @@
 3. **文档是投影，不是唯一真相**：能力清单以 `theme-contract.json` 为准；本文的规则表与生成段必须与它保持一致。
 4. **变更必须过 §9 四件套**：改能力、改语法、改校验策略，都要同时更新契约、fixture、规范表与测试。
 5. **默认主题不是规范**：`packages/theme-starter` 只是示例与兜底；照抄能过不代表契约完备。
+6. **优先级**：生成成功率 > 维护成本 > 一致性 > 安全护栏。校验不是安全沙箱；不要为了“看起来安全”增加生成摩擦（见 §11 威胁模型）。
 
 ---
 
@@ -171,12 +172,12 @@ CONTRACT_DATA ∪ CONTRACT_HELPERS ∪ CONTRACT_ACTIONS
 | `TC-EXPR-005` | 箭头函数参数：`(item) => ...` / `item => ...` / `({ post: p }) => ...` | ✅ | — |
 | `TC-EXPR-006` | 嵌套解构（`({ a: { b } })`）暂不承诺；需要时按 L1 追加 | 🚫 | — |
 
-### 5.3 表达式全局白名单（建议）
+### 5.3 表达式全局白名单（P0 已实现）
 
-新增 `CONTRACT_EXPRESSION.globals`，首批建议：
+`CONTRACT_EXPRESSION.globals` 首批：
 
 ```text
-Math, Number, String, Boolean, Array, Object, JSON, Date,
+Math, Number, String, Boolean, Array, Object, JSON, Intl, Date,
 parseInt, parseFloat, isNaN, isFinite,
 encodeURI, encodeURIComponent, decodeURI, decodeURIComponent
 ```
@@ -188,35 +189,21 @@ Function, globalThis, self, top, parent, frames, window, document,
 location, navigator, history, XMLHttpRequest, WebSocket, console
 ```
 
-`Intl` / `RegExp` / `Map` / `Set` / `BigInt` / `Symbol` / `Error` 暂不加入；需要时按 L1 追加（避免一开始就扩大认知面）。
+`RegExp` / `Map` / `Set` / `BigInt` / `Symbol` / `Error` 按真实使用再按 L1 追加。
 
-状态：✅ 已实现（首批 16 个；需要时按 L1 追加）。
+状态：✅ 已实现 17 个（含 `Intl`）。
 
-### 5.4 `$event` 策略（建议：窄形状白名单）
+### 5.4 `$event` 策略（已放宽）
 
-不要无条件放开 `$event`。`$event.view` / `$event.target.ownerDocument.defaultView` 可以摸到 window；现有禁用项是子串匹配，`$event.view['fe'+'tch'](...)` 可以绕过。
+P0 曾只允许 6 种形状；按 §11 威胁模型，这种形状白名单没有实际安全收益，只会增加生成摩擦。P1 已改为：
 
-但也要承认：**当前校验本来就不是安全边界**——`site.constructor.constructor('...')()` 今天就能拿到 `Function`，CSP 又允许 `unsafe-eval`。因此不要把“拒绝 `$event`”当成安全承诺。
-
-建议只允许以下**语法形状**，其余 `$event` 仍拒绝：
-
-```text
-$event.target.value
-$event.target.checked
-$event.key
-$event.code
-$event.preventDefault()
-$event.stopPropagation()
-```
-
-规则：
-
-- 仅允许出现在 `@` / `v-on:` 的表达式里；插值 / `:prop` / `v-if` 里出现 `$event` 直接拒绝。
-- 禁止 `$event` 作为裸参数传给动作（现有动作都不接受事件对象）。
+- 事件表达式（`@` / `v-on`）里把 `$event` 当作普通局部变量，`$event.target.value`、`$event.key`、`$event` 传参等都可以；
+- 不再维护 `eventLocalShapes` 白名单；
+- 保留 `window.` / `document.` / `fetch(` 等**防误用**字符串检查；
+- 插值 / `:prop` / `v-if` 里出现 `$event` 仍然拒绝（它不是这些上下文里的变量，属于真实错误）；
 - 表单输入优先引导 `v-model="ui.x"`；阻止冒泡用 `.stop` / `.prevent`。
-- 若最终选择**完全不放开**，必须在提示词和错误信息中给出上述替代写法，不能只报“未登记标识符”。
 
-状态：✅ 已实现（窄形状；`view` / `ownerDocument` 等仍拒绝）。
+状态：✅ 已实现（事件表达式放开，非事件上下文仍拒绝）。
 
 ### 5.5 修饰符
 
@@ -239,25 +226,23 @@ $event.stopPropagation()
 
 建议 **B**，并在文档中明确：组件多根时原生监听不会自动落到根元素；需要精确控制时把监听放到内部元素。状态：✅ 已实现（白名单放行）。
 
-### 5.7 内置组件
+### 5.7 内置组件（已放开）
 
-`<Transition>` / `<TransitionGroup>` / `<KeepAlive>` / `<Teleport>` / `<Suspense>` / `<component>` 目前既不在白名单、也不报错（扫描只匹配 `<blog-*>`）。需要明确：
+P0 曾只放行 `<Transition>` / `<TransitionGroup>` 并拒绝 `Teleport` 等；按 §11 威胁模型，内置组件不是安全边界，继续拒绝只会误伤正常写法。P1 已移除拒绝逻辑：
 
-- 建议首批只放行 `<Transition>` / `<TransitionGroup>`（纯展示动画）；
-- `<Teleport>` / `<Suspense>` / `<KeepAlive>` / `<Fragment>` / `<component>` 暂不放行（会扩大 DOM 控制面）；
-- 放行后加入 `CONTRACT_EXPRESSION.builtinComponents`，未放行的已知内置组件放入 `deniedBuiltinComponents`，并补 fixture。
-
-状态：✅ 已实现（已知内置组件的 PascalCase / kebab-case 写法都会检查；`<Teleport>`、`<teleport>` 等会报错，`<Transition>` / `<transition-group>` 放行）。
+- 不再拦截已知内置组件；`Transition` / `TransitionGroup` / `Teleport` / `KeepAlive` 等按 Vue 行为；
+- 仍只校验 `<blog-*>` 组件、表达式、指令、slot 等契约能力；
+- 保留 fixture，锁住放宽后不会误判。
 
 | Rule | 约束 | 状态 |
 | --- | --- | --- |
-| `TC-EXPR-009` | 已知内置组件必须在 `builtinComponents` 中；未放行清单见 `deniedBuiltinComponents` | ✅ |
+| `TC-EXPR-009` | 内置组件不拦截；只校验 `blog-*` 与表达式能力 | ✅ |
 
-> `TC-EXPR-010`（模板字面量 `${}` 内部扫描）当前为已知漏检，见 §12 D7。
+> `TC-EXPR-010`（模板字面量 `${}` 内部扫描）明确不做，保持当前宽松行为，见 §12 D7。
 
 ### 5.8 明确不承诺
 
-- 正则无法阻止 `constructor.constructor` 这类成员访问逃逸；不要把静态校验当安全沙箱。
+- 本文的校验是“防误用 + 契约可维护”，不是安全沙箱；按 §11 威胁模型，不追求 AST / 隔离执行。
 - 静态校验无法判断交互是否正确；运行时自检 `blog-preview:diagnose` 仍是必要补充。
 - 不承诺任意 Vue 语法；只承诺本文列出的子集。
 
@@ -288,7 +273,7 @@ $event.stopPropagation()
 | `CONTRACT_FIXTURE_MISSING` | `TC-DOC-004` | 补正 / 反 fixture |
 | `THEME_CONTRACT_INCOMPATIBLE` | §3 | 升级主题契约或回退默认主题 |
 
-> 当前 P0 已让三处扫描器的**消息文案**一致，并建立 fixture 同口径；结构化的 `code` 字段尚未落地（P1）。先统一错误码，再让提示词与测试引用；这是“文档约束迭代”的关键一步。
+> 当前 P0 已让三处扫描器的**消息文案**一致，并建立 fixture 同口径；结构化的 `code` 字段属于 P2，等有机器消费者 / 多语言 / 错误统计时再做。
 
 ---
 
@@ -339,26 +324,26 @@ frontend/scripts/fixtures/theme/
 
 ---
 
-## 8. 文档投影与自检（计划）
+## 8. 文档投影与自检（P1-C 已实现）
 
 ### 8.1 文档分层
 
 | 文件 | 内容 | 是否生成 |
 | --- | --- | --- |
-| 本文 | 规范、规则 ID、错误码、变更协议 | 手写（规则表可半生成） |
+| 本文 | 规范、规则 ID、变更协议、决策理由 | 手写（规则表可半生成） |
 | `docs/theme-contract.generated.md` | 组件 / 类型 / 路由 / 变量 / 指令 / 表达式白名单 | ✅ 由 `sync:contract --emit` 生成 |
 | `docs/theme-contract-rationale.md` | 为什么收窄 / 放开、被否决的方案 | 手写，不参与校验 |
 
-### 8.2 自检规则
+### 8.2 自检规则（瘦身版）
 
 | Rule | 检查 | 状态 |
 | --- | --- | --- |
 | `TC-DOC-001` | 生成物新鲜（已存在） | ✅ |
-| `TC-DOC-002` | 文档生成段与 JSON 一致：`<!-- contract:begin -->` / `<!-- contract:end -->` 区间替换后无 diff | 🔧 |
-| `TC-DOC-003` | 本文出现的组件名 / CSS 变量 / 指令 / 规则 ID 必须存在于契约；契约新增能力必须出现在规则表 | 🔧 |
-| `TC-DOC-004` | 每条规则至少有 `cases.json` 记录 | 🔧 |
-| `TC-DOC-005` | 禁止手改 `theme-contract.json` / 生成段 | ✅（人工约定，可加前缀校验） |
+| `TC-DOC-002` | 文档生成段与 JSON 一致：`<!-- contract:begin -->` / `<!-- contract:end -->` 区间替换后无 diff | ✅ |
+| `TC-DOC-003` | 规则 ID 唯一；`cases.json` 的规则 ID 必须出现在规范表中 | ✅ |
+| `TC-DOC-004` | 禁止手改 `theme-contract.json` / 生成段 | ✅（人工约定，可加前缀校验） |
 
+> 不做“扫描文档全文的组件名 / CSS 变量”这种全量比对：历史说明、示例、迁移记录多，误报成本高于收益。
 > 生成段不要包含默认主题全文，避免 starter 偏置。
 
 ---
@@ -388,8 +373,8 @@ frontend/scripts/fixtures/theme/
 
 | 要求 | 说明 |
 | --- | --- |
-| 规则 ID | 提示词包含规则 ID 与错误码，修复轮可按 ID 定位 |
-| 表达式白名单 | `CONTRACT_EXPRESSION.globals` / `eventLocals` / `modifiers` / `builtinComponents` 进入 `promptSection()` |
+| 规则 ID | 提示词包含规则 ID；结构化错误码属 P2 |
+| 表达式白名单 | `CONTRACT_EXPRESSION.globals` / `eventLocals` / `modifiers` 进入 `promptSection()`；内置组件不再拦截 |
 | 可写状态 | `CONTRACT_DATA[*].writable` 必须投影，明确只有 `ui` 可 `v-model` |
 | 路由可用性 | `CONTRACT_DATA[*].routes` 必须投影，避免在错误页面取 `posts` / `post` |
 | 最小骨架 | 完整模式注入 canonical skeleton（不是 starter 全文），与补丁模式同口径 |
@@ -398,12 +383,23 @@ frontend/scripts/fixtures/theme/
 
 ---
 
-## 11. 非目标与已知边界
+## 11. 威胁模型、非目标与已知边界
 
-- **不是安全沙箱**：`site.constructor.constructor` / `$event.view` 等路径说明正则校验挡不住有意绕过；要真边界需 AST 成员访问白名单或隔离执行。
+### 11.1 威胁模型
+
+- **主题作者是受信任的管理员 / AI**，不是匿名输入；主题编辑权限受 RBAC 约束。
+- 能编辑主题的人，本来就能编辑文章、页面、站点配置；模板沙箱阻止不了内部人。
+- 现有正则不是安全边界：`site.constructor.constructor('...')()` 今天就能到 `Function`，CSP 也为了 Vue 运行时编译允许 `unsafe-eval`。
+- AST 成员访问白名单最多增加绕过成本，不是隔离执行；成本高，收益低。
+- 真正的安全边界在 **RBAC / 审计 / 部署隔离 / CSP**，不在模板扫描器。
+- 因此：校验目标是**防误用 + 契约可维护 + 生成成功率**；明确不做 AST 成员访问白名单、模板沙箱、以及“为安全而收紧表达式子集”。
+
+### 11.2 其他边界
+
 - **不约束审美**：版式、信息架构、无障碍体验靠预览、`blog-preview:diagnose` 与评审。
 - **不保证运行时正确**：静态校验只保证“不越界”，交互正确性靠运行时诊断。
 - **不承诺完整 Vue**：只承诺本文列出的子集；Vue 新语法默认不支持，除非按 §9 追加。
+- **不把“通过校验”当安全证明**：校验只覆盖本文列出的规则，不覆盖内部人滥用或部署配置问题。
 
 ---
 
@@ -411,14 +407,14 @@ frontend/scripts/fixtures/theme/
 
 | 编号 | 议题 | 结论 |
 | --- | --- | --- |
-| D1 | `$event` | ✅ 窄形状白名单（§5.4） |
-| D2 | 表达式全局白名单首批 | ✅ 16 个纯计算全局（§5.3） |
+| D1 | `$event` | ✅ P1 已放宽：事件表达式里当普通局部变量（§5.4） |
+| D2 | 表达式全局白名单 | ✅ 17 个纯计算全局（含 `Intl`，§5.3） |
 | D3 | 组件原生事件 | ✅ 方案 B（白名单放行，§5.6） |
-| D4 | 内置组件 | ✅ 首批只放行 `Transition` / `TransitionGroup`（§5.7） |
-| D5 | 未知 props | ⚖️ 先不拒绝，记录为 L1 待办；`class` / `style` / `data-*` / `aria-*` 永远放行 |
-| D6 | slot 作用域 union → 按组件精确 | ⚖️ 先审计旧主题，按 L0 处理 |
-| D7 | 模板字面量 `${}` 扫描 | ⚖️ 先审计，按 L0 处理 |
-| D8 | 是否引入 AST 校验 | ⚖️ P2；先保证正则 + fixture 同口径 |
+| D4 | 内置组件 | ✅ P1 已移除拒绝逻辑，按 Vue 行为（§5.7） |
+| D5 | 未知 props | ⏸ 有真实误用证据再做；`class` / `style` / `data-*` / `aria-*` 永远放行 |
+| D6 | slot 作用域 union → 按组件精确 | ⏸ 有真实误用证据再做；收紧按 L0 处理 |
+| D7 | 模板字面量 `${}` 扫描 | ❌ 不做，保持宽松（收紧只增摩擦，无安全收益） |
+| D8 | AST 校验 / 模板沙箱 | ❌ 不做（威胁模型不成立；不是真隔离，成本高） |
 
 ---
 
@@ -426,25 +422,43 @@ frontend/scripts/fixtures/theme/
 
 ### P0：先对齐规范与校验（✅ 已实现）
 
-1. `contract.ts` 增加 `CONTRACT_EXPRESSION`（globals / eventLocals / modifiers / builtinComponents）。
+1. `contract.ts` 增加 `CONTRACT_EXPRESSION`（globals / eventLocals / 修饰符 / 原生事件；当时的 `builtinComponents` 白名单已在 P1-B 移除）。
 2. `sync:contract` 写入 JSON；`ThemeContract` 读取并投影到 `promptSection()`。
 3. 三处扫描器改为只读同一份表达式登记；补 `$event` / globals / 解构 / slot 默认值。
 4. 修 `TC-COMP-004`（引号内 `>` 截断）、`TC-COMP-003`（组件原生事件）。
 5. 建 `fixtures/theme/cases.json` + pass/fail；JS 与 Java 测试共用。
-6. 结构错 / fixture 消息文案统一（稳定错误码留 P1）。
+6. 结构错 / fixture 消息文案统一（稳定错误码留 P2）。
 
-### P1：文档与门禁（待做）
+### P1：生成质量优先（进行中）
 
-1. `check:docs`：生成段 + 规则 ID 覆盖。
-2. `docs/theme-contract.generated.md` 生成。
-3. 结构化错误码（`code` 字段 + 文档目录）。
-4. 完整模式注入 canonical skeleton。
+按收益排序：
 
-### P2：长期
+1. **生成质量包（✅ 已实现）**
+   - canonical skeleton：`scripts/fixtures/theme/skeleton.html` + `skeleton.css`，随 `--emit` 进入 `theme-contract.json`，完整模式注入（不是 starter 全文）；
+   - 核心组件 `example`：13 个组件已填，`check:contract` 与 Java 测试会把 example 包进 `#app` 后扫描；
+   - 错误信息带修复建议：未知标识符 / 事件 / prop / slot / 全局 / 内置组件。
+2. **契约降摩擦包（✅ 已实现）**
+   - `$event` 已放宽为事件表达式普通局部变量（移除形状白名单，§5.4）；
+   - 内置组件已移除拒绝逻辑，按 Vue 行为（§5.7）；
+   - 表达式全局已增加 `Intl`；`RegExp` / `Map` / `Set` 按真实使用再加（§5.3）。
+3. **文档维护包（瘦身，✅ 已实现）**
+   - 生成 `docs/theme-contract.generated.md`，`check:contract` 检查新鲜度；
+   - `cases.json` 规则 ID ↔ 规范表覆盖 + 规则 ID 去重。
+4. **评测（待做）**
+   - 用同一组 from-scratch 任务对比 P1 前后通过率，作为继续投入的依据。
 
-1. 评估 AST 成员访问白名单 / 隔离执行。
-2. 未知 props、`v-bind="obj"` / `v-on="{...}"` 对象语法。
-3. slot 作用域按组件精确校验。
+### P2：有真实证据再做
+
+1. 未知 props、`v-bind="obj"` / `v-on="{...}"` 对象语法。
+2. slot 作用域按组件精确化（收紧按 L0）。
+3. 结构化错误码 `code`（等机器消费者 / 多语言 / 错误统计）。
+4. URL 前缀、事件修饰符校验（先只文档化）。
+
+### 明确不做
+
+1. **AST 成员访问白名单 / 模板沙箱**：威胁模型不成立，成本高，且不是真隔离。
+2. **模板字面量 `${}` 内部扫描**：当前偏宽松，收紧只增 L0 迁移和生成摩擦。
+3. **任何“为安全而牺牲生成”的规则**。如果未来真的需要“不可信主题”，应换隔离 iframe / 独立域 / 服务端预渲染 / 白名单 DSL，而不是继续加正则或 AST。
 
 ---
 
@@ -454,3 +468,7 @@ frontend/scripts/fixtures/theme/
 | --- | --- |
 | 2026-11-09 | 初稿：规范性规则表、表达式面、错误码、fixture 规范、变更协议；记录 D1–D8 待决策项 |
 | 2026-11-09 | P0 实现：`CONTRACT_EXPRESSION`（globals / `$event` 窄形状 / 修饰符 / 原生事件 / 内置组件）；三处扫描器同口径；解构 / slot 默认值 / `>` 截断修复；`cases.json` + JS/Java 共用；提示词投影数据 routes / writable / selfFetch |
+| 2026-11-10 | 按威胁模型重排 P1/P2：新增 §11.1（管理员 / AI 受信任，不做 AST / 沙箱）；P1 改为生成质量优先（skeleton / example / 错误提示 / 降低 `$event` 与内置组件摩擦 / 瘦身文档）；D7 模板字面量扫描与 D8 AST 明确不做；错误码、未知 props、slot 精确化移到 P2 |
+| 2026-11-10 | P1-A 实现：canonical skeleton（fixture + JSON + 完整模式注入）、13 个组件 `example` 并纳入扫描、错误信息补修复建议；P1-B/P1-C 待做 |
+| 2026-11-10 | P1-B 实现：`$event` 在事件表达式里放开（删除形状白名单）、内置组件不再拦截、表达式全局增加 `Intl`；fixture 与提示词同步 |
+| 2026-11-10 | P1-C 实现：生成 `docs/theme-contract.generated.md` 并在 `check:contract` 校验新鲜度；规则 ID 去重 + `cases.json` 覆盖检查 |

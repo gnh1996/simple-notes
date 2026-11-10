@@ -1,0 +1,46 @@
+:root {
+  --blog-bg: #ffffff;
+  --blog-text: #1f2328;
+  --blog-text-muted: #6b7280;
+  --blog-accent: #b23a2f;
+  --blog-border: #e5e7eb;
+  --blog-content-width: 68rem;
+  --blog-gap: 1.5rem;
+}
+
+[data-color-mode="dark"] {
+  --blog-bg: #16181d;
+  --blog-text: #e6e6e6;
+  --blog-text-muted: #9ca3af;
+  --blog-accent: #e07a5f;
+  --blog-border: #2a2e37;
+}
+
+body {
+  margin: 0;
+  background: var(--blog-bg);
+  color: var(--blog-text);
+}
+
+.shell-head,
+.shell-main {
+  max-width: var(--blog-content-width);
+  margin: 0 auto;
+  padding: var(--blog-gap);
+}
+
+.shell-head {
+  display: flex;
+  align-items: center;
+  gap: var(--blog-gap);
+  border-bottom: 1px solid var(--blog-border);
+}
+
+.post-item {
+  padding: var(--blog-gap) 0;
+  border-bottom: 1px solid var(--blog-border);
+}
+
+.post-item time {
+  color: var(--blog-text-muted);
+}

@@ -123,7 +123,7 @@ DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX
 ### 2.3 服务端提示词（`AiThemePrompt`）
 
 * **契约投影**：组件 / props / slots / slot scope / 类型 / 路由 / URL / CSS 变量 / 指令全部来自 `theme-contract.json`（`pnpm sync:contract` 生成，`ThemeContract.promptSection()` 拼装）；本类只保留“约束”文案，不再手写清单（规范见 `docs/theme-contract.md`，历史设计见 `docs/theme-contract-v2.md`）。
-* **完整模式**（`fullSystemPrompt`）：只在“没有当前主题 / 没有 base / 没勾 starter”时使用；先输出 `<plan>`，再输出恰好一个 ````html` 与 ````css`。
+* **完整模式**（`fullSystemPrompt`）：只在“没有当前主题 / 没有 base / 没勾 starter”时使用；先输出 `<plan>`，再输出恰好一个 ````html` 与 ````css`。system prompt 会注入 canonical skeleton（`theme-contract.json.skeleton`），不是 starter 全文。
 * **补丁模式**（`patchSystemPrompt`）：有当前主题（含 starter 起点）时使用；只输出单个 JSON `{summary, plan, ops}`；当前主题放 `<reference-html>` / `<reference-css>`，每轮只注入一次。
 * 补丁操作（`ThemePatch.ThemeOp`）：
 
@@ -190,7 +190,7 @@ DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX
 ## 6. 已知缺口与后续
 
 1. ~~`AiThemePrompt.CONTRACT_RULES` 是契约的手工摘要~~：已由 `theme-contract.json` 投影解决（规范见 `docs/theme-contract.md`）；`ThemeTemplateValidator` / `AiThemePrompt` / `SiteSettingCatalog` 均只读生成物，`pnpm typecheck` 会校验生成物无漂移。
-2. **表达式面已进入契约（P0）**：`CONTRACT_EXPRESSION` 投影了表达式全局、`$event` 窄形状、原生事件与内置组件；`v-for` 解构 / slot 默认值已支持。完整模式仍未注入 canonical skeleton，从零生成的质量仍待评测。
+2. **表达式面已进入契约（P0）**：`CONTRACT_EXPRESSION` 投影了表达式全局、`$event`、原生事件与修饰符；`v-for` 解构 / slot 默认值已支持。P1 已注入 canonical skeleton 与组件 example、给错误信息补修复建议、放宽 `$event` / 内置组件并加入 `Intl`。
 3. `done.html/css` 全量下发（≤320KB），弱网下 SSE 单帧大；后续可只下发 `draftId` + 分片拉取。
 4. 会话记忆在后端（`MessageWindowChatMemory` 默认 20 条 + Caffeine 2h 过期），长会话仍可能丢早期版式决策；后续可做“首轮目标 + 最近补丁”快照压缩。
 5. 补丁能力边界：`replaceHtml` / `replaceCss` 仍是完整文件，适合整体换风格但不适合超大主题；`replace` 要求唯一片段，模型可能因片段不唯一失败；

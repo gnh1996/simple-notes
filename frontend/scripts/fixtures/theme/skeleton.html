@@ -1,0 +1,38 @@
+<div id="app" :data-blog-page="route.name" :data-state="state">
+  <header class="shell-head">
+    <a class="brand" href="/">{{ site.name }}</a>
+    <nav aria-label="主导航">
+      <a v-for="item in nav" :key="item.key" :href="item.to"
+         :aria-current="isNavActive(item.to) ? 'page' : undefined">{{ item.label }}</a>
+    </nav>
+    <blog-theme-toggle></blog-theme-toggle>
+  </header>
+
+  <main class="shell-main">
+    <template v-if="route.name === 'home'">
+      <blog-state v-if="state !== 'ready'" :state="state" :message="message"></blog-state>
+      <template v-else>
+        <article v-for="item in posts" :key="item.slug" class="post-item">
+          <h2><a :href="'/posts/' + item.slug">{{ item.title }}</a></h2>
+          <p>{{ item.summary }}</p>
+          <time :datetime="postDate(item)">{{ formatDate(postDate(item)) }}</time>
+        </article>
+        <blog-pager :pager="pager" @go="go"></blog-pager>
+      </template>
+    </template>
+
+    <template v-else-if="route.name === 'post'">
+      <blog-state v-if="state !== 'ready'" :state="state" :message="message"></blog-state>
+      <article v-else-if="post" class="post-detail">
+        <h1>{{ post.title }}</h1>
+        <p>{{ formatDate(post.displayAt) }} · {{ post.readingMinutes }} 分钟</p>
+        <blog-markdown :source="post.content"></blog-markdown>
+      </article>
+    </template>
+
+    <template v-else>
+      <h1>{{ page ? page.title : '页面不存在' }}</h1>
+      <blog-markdown v-if="page" :source="page.content"></blog-markdown>
+    </template>
+  </main>
+</div>

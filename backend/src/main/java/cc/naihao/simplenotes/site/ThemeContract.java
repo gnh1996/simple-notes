@@ -41,18 +41,20 @@ public final class ThemeContract {
     private static final JsonNode EXPRESSION = ROOT.get("expression");
     public static final Set<String> EXPRESSION_GLOBALS =
             Set.copyOf(strings(EXPRESSION == null ? null : EXPRESSION.get("globals")));
-    public static final List<String> EVENT_LOCAL_SHAPES =
-            strings(EXPRESSION == null ? null : EXPRESSION.get("eventLocalShapes"));
+    public static final Set<String> EVENT_LOCALS =
+            Set.copyOf(strings(EXPRESSION == null ? null : EXPRESSION.get("eventLocals")));
     public static final Set<String> NATIVE_EVENTS =
             Set.copyOf(strings(EXPRESSION == null ? null : EXPRESSION.get("nativeEvents")));
-    public static final Set<String> BUILTIN_COMPONENTS =
-            Set.copyOf(strings(EXPRESSION == null ? null : EXPRESSION.get("builtinComponents")));
-    public static final Set<String> DENIED_BUILTIN_COMPONENTS =
-            Set.copyOf(strings(EXPRESSION == null ? null : EXPRESSION.get("deniedBuiltinComponents")));
     public static final Set<String> EVENT_MODIFIERS =
             Set.copyOf(strings(EXPRESSION == null ? null : EXPRESSION.get("eventModifiers")));
     public static final Set<String> MODEL_MODIFIERS =
             Set.copyOf(strings(EXPRESSION == null ? null : EXPRESSION.get("modelModifiers")));
+
+    private static final JsonNode SKELETON = ROOT.get("skeleton");
+    public static final String SKELETON_HTML =
+            SKELETON == null ? "" : textOf(SKELETON.get("html"));
+    public static final String SKELETON_CSS =
+            SKELETON == null ? "" : textOf(SKELETON.get("css"));
 
     public static final Map<String, ComponentDef> COMPONENT_DEFS = componentDefs();
     public static final Set<String> PUBLIC_PARTS = publicParts();
@@ -144,23 +146,15 @@ public final class ThemeContract {
         }
         text.append("\n【表达式全局（只读；不含 DOM / 网络）】\n")
                 .append(String.join(", ", EXPRESSION_GLOBALS)).append('\n');
-        text.append("\n【$event 允许形状（仅事件表达式）】\n");
-        List<String> eventShapes = new ArrayList<>();
-        for (String shape : EVENT_LOCAL_SHAPES) {
-            eventShapes.add("$event." + shape);
-        }
-        text.append(String.join(", ", eventShapes)).append('\n');
+        text.append("\n【事件局部变量】\n")
+                .append(String.join(", ", EVENT_LOCALS))
+                .append("（只能在 @ / v-on 表达式中使用）\n");
         text.append("\n【组件上允许的原生事件】\n")
                 .append(String.join(", ", NATIVE_EVENTS)).append('\n');
         text.append("\n【事件修饰符】\n")
                 .append(String.join(", ", EVENT_MODIFIERS)).append('\n');
         text.append("\n【v-model 修饰符】\n")
                 .append(String.join(", ", MODEL_MODIFIERS)).append('\n');
-        text.append("\n【内置组件】\n允许: ")
-                .append(String.join(", ", BUILTIN_COMPONENTS))
-                .append("；禁止: ")
-                .append(String.join(", ", DENIED_BUILTIN_COMPONENTS))
-                .append('\n');
         text.append("\n【辅助函数】\n");
         ROOT.get("helpers").properties().forEach(entry ->
                 text.append(entry.getKey()).append(entry.getValue().get("signature").asString()).append('\n'));

@@ -13,7 +13,8 @@
 | `docs/markdown-dialect.md` | Markdown 内容方言规范（v2 白名单 / 边界 / 三端配置对齐） |
 | `docs/markdown-dialect-fixture.md` | 方言验收样本：新增语法必须 admin / blog / 桌面三端渲染比对 |
 | `docs/blog-runtime-theme.md` | 博客运行时与主题化设计（v1.15 已实现）：运行时/主题职责、契约表、主题版本与预览、站点配置与独立页面 |
-| `docs/theme-contract.md` | 主题契约规范（规范性文档，v0.2 P0 已实现）：能力面 + 表达式面、规则 ID / 错误码、fixture 规范、变更协议；后续迭代以本文为准 |
+| `docs/theme-contract.md` | 主题契约规范（规范性文档，v0.6 P0 + P1 已实现）：能力面 + 表达式面、skeleton / example、fixture、威胁模型、变更协议 |
+| `docs/theme-contract.generated.md` | 主题契约生成物：组件 / 类型 / 路由 / 变量 / 指令 / 表达式清单；禁止手改 |
 | `docs/theme-contract-v2.md` | 主题契约 v2（2A 增量 headless，阶段 1 已实现）：`root` slot、slot scope、类型/路由投影、校验与 AI 提示词接入；历史设计记录，规范内容以 `docs/theme-contract.md` 为准 |
 | `docs/desktop-sync.md` | 桌面端同步设计（v1 草案）：本地优先 + 懒加载 manifest、`version` 修订号与本地 hash、整篇冲突 + diff、离线新建、账号隔离 |
 | `docs/desktop-local-schema.md` | 桌面端本地库结构演进（SQLite schema 迁移，v1.1 已实现）：`user_version` 版本轴、有序迁移与老库桥接、备份与降级检测、与后端 API 契约版本的关系 |

@@ -4,7 +4,7 @@
     "fail": [{ "file": "fail/struct-no-root.html", "message": "id=\"app\"" }]
   },
   "TC-CAP-003": {
-    "pass": ["pass/expr-globals.html"],
+    "pass": ["pass/expr-globals.html", "pass/expr-intl.html"],
     "fail": [{ "file": "fail/expr-unknown-global.html", "message": "未登记的标识符" }]
   },
   "TC-EXPR-002": {
@@ -15,10 +15,12 @@
     "fail": [{ "file": "fail/slot-scope-unknown.html", "message": "未登记的作用域字段" }]
   },
   "TC-EXPR-006": {
-    "pass": ["pass/expr-event.html"],
+    "pass": [
+      "pass/expr-event.html",
+      "pass/expr-event-window.html",
+      "pass/expr-event-doc.html"
+    ],
     "fail": [
-      { "file": "fail/expr-event-window.html", "message": "不允许的 $event 用法" },
-      { "file": "fail/expr-event-doc.html", "message": "不允许的 $event 用法" },
       { "file": "fail/expr-event-interpolation.html", "message": "$event 只能用于事件表达式" },
       { "file": "fail/expr-event-bind.html", "message": "$event 只能用于事件表达式" }
     ]
@@ -31,10 +33,11 @@
     "fail": [{ "file": "fail/comp-missing-prop.html", "message": "缺少必填 prop" }]
   },
   "TC-EXPR-009": {
-    "pass": ["pass/builtin-transition.html", "pass/builtin-transition-group.html"],
-    "fail": [
-      { "file": "fail/builtin-teleport.html", "message": "未登记的内置组件" },
-      { "file": "fail/builtin-teleport-lower.html", "message": "未登记的内置组件" }
+    "pass": [
+      "pass/builtin-transition.html",
+      "pass/builtin-transition-group.html",
+      "pass/builtin-teleport.html",
+      "pass/builtin-teleport-lower.html"
     ]
   }
 }

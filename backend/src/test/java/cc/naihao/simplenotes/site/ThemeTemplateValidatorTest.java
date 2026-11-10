@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
@@ -40,7 +41,8 @@ class ThemeTemplateValidatorTest {
         assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml("<div id=\"app\" v-foo=\"x\"></div>"))
                 .hasMessageContaining("未登记的指令");
         assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml("<div id=\"app\">{{ unknownKey }}</div>"))
-                .hasMessageContaining("未登记的标识符");
+                .hasMessageContaining("未登记的标识符")
+                .hasMessageContaining("表单输入请用 v-model");
     }
 
     @Test
@@ -86,16 +88,19 @@ class ThemeTemplateValidatorTest {
     }
 
     @Test
-    @DisplayName("$event 只允许窄形状，禁止 view / ownerDocument 等逃逸")
-    void rejectsBroadEventLocals() {
-        assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
+    @DisplayName("$event 在事件表达式里放开，非事件上下文仍拒绝")
+    void eventLocalsOnlyInEventExpressions() {
+        assertThatCode(() -> ThemeTemplateValidator.validateHtml(
                 "<div id=\"app\"><button type=\"button\" @click=\"$event.view.alert(1)\">x</button></div>"))
-                .hasMessageContaining("不允许的 $event 用法");
-        assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
-                "<div id=\"app\"><button type=\"button\" @click=\"$event.target.ownerDocument\">x</button></div>"))
-                .hasMessageContaining("不允许的 $event 用法");
+                .doesNotThrowAnyException();
+        assertThatCode(() -> ThemeTemplateValidator.validateHtml(
+                "<div id=\"app\"><button type=\"button\" @click=\"$event.target.ownerDocument.defaultView\">x</button></div>"))
+                .doesNotThrowAnyException();
         assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
                 "<div id=\"app\"><p>{{ $event }}</p></div>"))
+                .hasMessageContaining("$event 只能用于事件表达式");
+        assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
+                "<div id=\"app\"><button type=\"button\" :title=\"$event.target.value\">x</button></div>"))
                 .hasMessageContaining("$event 只能用于事件表达式");
     }
 
@@ -137,13 +142,38 @@ class ThemeTemplateValidatorTest {
     }
 
     @Test
+    @DisplayName("canonical skeleton 与组件 example 通过契约扫描")
+    void skeletonAndExamplesPass() {
+        Assumptions.assumeFalse(ThemeContract.SKELETON_HTML.isBlank(), "skeleton 不在当前工作区");
+        assertThatCode(() -> ThemeTemplateValidator.validateHtml(ThemeContract.SKELETON_HTML))
+                .doesNotThrowAnyException();
+        assertThat(AiThemePrompt.validate(
+                        ThemeContract.SKELETON_HTML, ThemeContract.SKELETON_CSS, List.of()))
+                .isEmpty();
+
+        for (Map.Entry<String, ThemeContract.ComponentDef> entry
+                : ThemeContract.COMPONENT_DEFS.entrySet()) {
+            String example = entry.getValue().example();
+            if (example == null || example.isBlank()) {
+                continue;
+            }
+            String html = "<div id=\"app\">" + example + "</div>";
+            assertThatCode(() -> ThemeTemplateValidator.validateHtml(html))
+                    .as("组件 %s 的 example", entry.getKey())
+                    .doesNotThrowAnyException();
+        }
+    }
+
+
+    @Test
     @DisplayName("契约生成物包含表达式面；提示词投影数据可用页面与可写状态")
     void contractExpressionProjectionLoaded() {
-        assertThat(ThemeContract.EXPRESSION_GLOBALS).contains("Math", "Number", "Date");
-        assertThat(ThemeContract.EVENT_LOCAL_SHAPES).contains("target.value", "key");
+        assertThat(ThemeContract.EXPRESSION_GLOBALS).contains("Math", "Number", "Date", "Intl");
+        assertThat(ThemeContract.EVENT_LOCALS).contains("$event");
         assertThat(ThemeContract.NATIVE_EVENTS).contains("click", "keydown");
         String prompt = AiThemePrompt.fullSystemPrompt(null, null);
-        assertThat(prompt).contains("表达式全局", "Math", "$event.target.value", "writable", "routes:");
+        assertThat(prompt).contains("表达式全局", "Math", "$event", "writable", "routes:");
+        assertThat(prompt).contains("最小合法骨架").contains("shell-main");
     }
 
 
@@ -199,7 +229,8 @@ class ThemeTemplateValidatorTest {
 
         assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
                 "<div id=\"app\"><blog-post-card></blog-post-card></div>"))
-                .hasMessageContaining("缺少必填 prop");
+                .hasMessageContaining("缺少必填 prop")
+                .hasMessageContaining("必填：post");
 
         // v-for 的局部变量不能被误判成 prop 绑定
         assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml("""

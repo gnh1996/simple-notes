@@ -118,23 +118,16 @@ public final class ThemeTemplateValidator {
         for (Matcher matcher = COMPONENT_TAG.matcher(source); matcher.find(); ) {
             String name = matcher.group(1);
             if (!COMPONENTS.contains(name)) {
-                errors.add(lineOf(source, matcher.start()) + " 使用了未登记的组件 <" + name + ">");
-            }
-        }
-
-        for (Matcher matcher = Pattern.compile("<\\s*([A-Za-z][A-Za-z0-9-]*)").matcher(source);
-                matcher.find(); ) {
-            String name = matcher.group(1);
-            if (isDeniedBuiltin(name)) {
-                errors.add(lineOf(source, matcher.start())
-                        + " 使用了未登记的内置组件 <" + name + ">");
+                errors.add(lineOf(source, matcher.start()) + " 使用了未登记的组件 <" + name
+                        + ">（可用：" + String.join(", ", COMPONENTS) + "）");
             }
         }
 
         for (Matcher matcher = DIRECTIVE.matcher(source); matcher.find(); ) {
             String name = matcher.group(1);
             if (!DIRECTIVES.contains(name)) {
-                errors.add(lineOf(source, matcher.start()) + " 使用了未登记的指令 " + name);
+                errors.add(lineOf(source, matcher.start()) + " 使用了未登记的指令 " + name
+                        + "（可用：" + String.join(", ", DIRECTIVES) + "）");
             }
         }
 
@@ -151,7 +144,7 @@ public final class ThemeTemplateValidator {
         for (Expression expression : expressions) {
             String text = expression.text();
             if (expression.event()) {
-                text = checkEventLocals(text, source, expression.index(), errors);
+                text = text.replace("$event", " ");
             } else if (text.contains("$event")) {
                 errors.add(lineOf(source, expression.index()) + " $event 只能用于事件表达式（@ / v-on）");
                 text = text.replace("$event", " ");
@@ -162,7 +155,9 @@ public final class ThemeTemplateValidator {
                         && !TEMPLATE_KEYS.contains(name)
                         && !ThemeContract.EXPRESSION_GLOBALS.contains(name)) {
                     errors.add(lineOf(source, expression.index())
-                            + " 引用了未登记的标识符 \"" + name + "\"");
+                            + " 引用了未登记的标识符 \"" + name + "\""
+                            + "（可用：数据键 / 辅助函数 / 动作 / 局部变量 / 表达式全局；"
+                            + "表单输入请用 v-model=\"ui.x\"）");
                 }
             }
         }
@@ -226,7 +221,8 @@ public final class ThemeTemplateValidator {
                                 + Pattern.quote(prop) + "\\s*=)");
                 if (!required.matcher(attrs).find()) {
                     errors.add(lineOf(source, matcher.start()) + " <" + tag
-                            + "> 缺少必填 prop \"" + prop + "\"");
+                            + "> 缺少必填 prop \"" + prop + "\"（必填："
+                            + String.join(", ", def.requiredProps()) + "）");
                 }
             }
             Matcher events = EVENT_ATTR.matcher(attrs);
@@ -234,7 +230,11 @@ public final class ThemeTemplateValidator {
                 String event = events.group(1);
                 if (!def.events().contains(event) && !ThemeContract.NATIVE_EVENTS.contains(event)) {
                     errors.add(lineOf(source, matcher.start()) + " <" + tag
-                            + "> 使用了未登记事件 \"" + event + "\"");
+                            + "> 使用了未登记事件 \"" + event + "\"（可用："
+                            + (def.events().isEmpty()
+                                    ? "无自定义事件"
+                                    : String.join(", ", def.events()))
+                            + "；原生事件见契约）");
                 }
             }
         }
@@ -245,7 +245,8 @@ public final class ThemeTemplateValidator {
                     ? slots.group(1)
                     : (slots.group(2) != null ? slots.group(2) : "default");
             if (!ThemeContract.SLOT_NAMES.contains(name)) {
-                errors.add(lineOf(source, slots.start()) + " 使用了未登记的 slot #" + name);
+                errors.add(lineOf(source, slots.start()) + " 使用了未登记的 slot #" + name
+                        + "（可用：" + String.join(", ", ThemeContract.SLOT_NAMES) + "）");
                 continue;
             }
             String value = slots.group(3) == null ? "" : slots.group(3);
@@ -253,30 +254,11 @@ public final class ThemeTemplateValidator {
             for (String field : slotFieldNames(value)) {
                 if (!fields.contains(field)) {
                     errors.add(lineOf(source, slots.start()) + " slot #" + name
-                            + " 引用了未登记的作用域字段 \"" + field + "\"");
+                            + " 引用了未登记的作用域字段 \"" + field + "\"（可用："
+                            + String.join(", ", fields) + "）");
                 }
             }
         }
-    }
-
-    /** 已知内置组件里，除 allow 之外一律拒绝（同时覆盖 PascalCase 与 kebab-case）。 */
-    private static boolean isDeniedBuiltin(String tag) {
-        String lower = tag.toLowerCase(Locale.ROOT);
-        for (String allowed : ThemeContract.BUILTIN_COMPONENTS) {
-            if (lower.equals(allowed.toLowerCase(Locale.ROOT)) || lower.equals(kebabCase(allowed))) {
-                return false;
-            }
-        }
-        for (String denied : ThemeContract.DENIED_BUILTIN_COMPONENTS) {
-            if (lower.equals(denied.toLowerCase(Locale.ROOT)) || lower.equals(kebabCase(denied))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static String kebabCase(String name) {
-        return name.replaceAll("([a-z0-9])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT);
     }
 
     private static Set<String> collectLocals(String html) {
@@ -466,36 +448,6 @@ public final class ThemeTemplateValidator {
             }
         }
         return -1;
-    }
-
-    /** `$event` 只允许窄形状；返回清理后的表达式。 */
-    private static String checkEventLocals(
-            String text, String source, int index, List<String> errors) {
-        Matcher matcher = Pattern.compile("\\$event").matcher(text);
-        while (matcher.find()) {
-            String rest = text.substring(matcher.end());
-            boolean allowed = false;
-            for (String shape : ThemeContract.EVENT_LOCAL_SHAPES) {
-                String prefix = "." + shape;
-                if (!rest.startsWith(prefix)) {
-                    continue;
-                }
-                String after = rest.substring(prefix.length());
-                if (after.isEmpty()
-                        || !(Character.isLetterOrDigit(after.charAt(0))
-                                || after.charAt(0) == '_'
-                                || after.charAt(0) == '$')) {
-                    allowed = true;
-                    break;
-                }
-            }
-            if (!allowed) {
-                errors.add(lineOf(source, index)
-                        + " 不允许的 $event 用法（仅允许 $event.target.value / $event.target.checked / "
-                        + "$event.key / $event.code / $event.preventDefault() / $event.stopPropagation()）");
-            }
-        }
-        return text.replace("$event", " ");
     }
 
     private static List<String> freeIdentifiers(String expression) {

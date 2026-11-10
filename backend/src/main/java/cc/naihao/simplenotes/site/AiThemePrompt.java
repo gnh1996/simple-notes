@@ -96,7 +96,22 @@ public final class AiThemePrompt {
 
     /** 完整主题的 system prompt（首轮 / 无当前主题时）。 */
     public static String fullSystemPrompt(String referenceHtml, String referenceCss) {
-        return RULES + ThemeContract.promptSection() + FULL_FORMAT + referenceBlock(referenceHtml, referenceCss);
+        return RULES + ThemeContract.promptSection() + skeletonBlock()
+                + FULL_FORMAT + referenceBlock(referenceHtml, referenceCss);
+    }
+
+    /** 完整模式的最小合法骨架：给模型一个可运行的起点，避免从零发明写法。 */
+    private static String skeletonBlock() {
+        if (ThemeContract.SKELETON_HTML.isBlank()) {
+            return "";
+        }
+        StringBuilder text = new StringBuilder("\n【最小合法骨架（起点，不是默认主题）】\n");
+        text.append("```html\n").append(ThemeContract.SKELETON_HTML.strip()).append("\n```\n");
+        if (!ThemeContract.SKELETON_CSS.isBlank()) {
+            text.append("```css\n").append(ThemeContract.SKELETON_CSS.strip()).append("\n```\n");
+        }
+        text.append("在这个骨架上改设计；不要照抄默认主题，也不要引入未登记的写法。\n");
+        return text.toString();
     }
 
     /** 编辑补丁的 system prompt（已有当前主题时）。当前主题只放这里一次，不进 ChatMemory。 */
