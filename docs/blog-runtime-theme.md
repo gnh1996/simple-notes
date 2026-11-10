@@ -82,10 +82,11 @@ runtime（浏览器）
 契约是主题唯一可依赖的接口。**以下三张表（数据形状 / 配置键 / CSS 变量）在实现前冻结；组件与动作可以只增不改地扩展。**
 
 > **唯一登记处**：`frontend/apps/blog/src/contract.ts`。本文描述语义与边界，键名 / 组件 props / CSS 变量以该文件为准；两者冲突视为缺陷。
+> **规范性规则**（表达式面、规则 ID、错误码、fixture、变更协议）见 `docs/theme-contract.md`；本节只保留设计语义。两者冲突时，以机器源 `contract.ts` 为准，并按 `theme-contract.md` §9 同步。
 > `pnpm check:contract` 会在 CI / `typecheck` 中校验「runtime 实际暴露面 == 契约登记」，并扫描默认主题，防止契约悄悄漂移（§3.7）。
 > `theme-contract.json` 是构建产物（`pnpm build:blog` 生成到 `apps/blog/dist/`），供管理端文档、未来的 agent 与外部工具消费，**不手工维护**。
 >
-> **2A 已落地（阶段 1）**：`docs/theme-contract-v2.md` 的增量 headless（`root` slot + 类型/路由投影 + 后端只读 JSON）已实现。本文与草案冲突时，以本文为准；草案合并进本节后删除。
+> **2A 已落地（阶段 1）**：`docs/theme-contract-v2.md` 的增量 headless（`root` slot + 类型/路由投影 + 后端只读 JSON）已实现。本文与草案冲突时，以本文为准；规范内容见 `docs/theme-contract.md`。
 
 ### 3.1 契约版本
 
@@ -217,7 +218,7 @@ SitePage    { id, slug, title, content, visible, sort, updatedAt }   // /p/:slug
 
 > props / slots 以 `contract.ts` 的 `CONTRACT_COMPONENTS` 为准（上表与其不一致视为缺陷）。`<blog-post-list>` 尚未实现，列表请用 `v-for` + `<blog-post-card>`。
 >
-> **2A 已落地（阶段 1）**：展示型 / 数据型组件新增 `root` slot（传内容即整体接管默认 DOM/样式），`requiredProps`、slot scope 类型与路由/URL 投影见 `docs/theme-contract-v2.md` §3–§4；合并进本节时更新上表。
+> **2A 已落地（阶段 1）**：展示型 / 数据型组件新增 `root` slot（传内容即整体接管默认 DOM/样式），`requiredProps`、slot scope 类型与路由/URL 投影见 `docs/theme-contract.md` §4–§5（历史设计见 `docs/theme-contract-v2.md` §3–§4）；合并进本节时更新上表。
 >
 > **样式接口（v1.8）**：每个组件对外暴露的 class 登记在 `contract.ts` 的 `parts`，属于公开接口、只增不改；`globalParts` 记录不属于组件但由 runtime 渲染的 class（如灯箱 `bc-lightbox`）。历史遗留的非 `bc-` 前缀 class（如归档的 `archive-index`）也已登记，同样承诺稳定。主题只能通过这些 class 定制组件外观，**不承诺其他内部结构**。组件模板输出的 class 与登记不一致（多或少）时 `pnpm check:contract` 直接失败。
 
@@ -347,7 +348,7 @@ html[data-blog-navigating="1"]        路由取数中，顶部进度条可见
 
 - 主题必须提供 `<div id="app">` 根节点；模板由 runtime 编译。
 - **禁止** `<script>`、`v-html`、`window` / `fetch` / `eval` / `localStorage` 等表达式。
-- 允许：`v-if` / `v-for` / `v-show` / `v-model="ui.x"` / `:class` / `:style` / `@click`（只能调用 §3.3 的动作）、组件标签与具名 slot（`#default` 或 `v-slot`）、表达式内的方法调用（`filter` / `slice` / `sort` 等）与箭头函数。
+- 允许：`v-if` / `v-for` / `v-show` / `v-model="ui.x"` / `:class` / `:style` / `@click`（只能调用 §3.3 的动作）、组件标签与具名 slot（`#default` 或 `v-slot`）、表达式内的方法调用（`filter` / `slice` / `sort` 等）与箭头函数。精确的标识符来源、表达式全局白名单、`$event` 策略与局部绑定规则见 `docs/theme-contract.md` §5。
 - 主题可以只实现部分页面，缺失页面回落内置默认主题。
 
 ### 4.2 文件模型
@@ -653,6 +654,8 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 实体归一 | 保存时吃原文、运行时加载时吃 `app.outerHTML`（浏览器序列化把 `&&` 转写为 `&amp;&amp;`、`=>` 转写为 `=&gt;`）；三处扫描（`theme-contract.mjs` / `ThemeTemplateValidator` / runtime `validateTheme`）先按序列化逆操作解码实体再扫描，口径一致，否则合法表达式会被误判为未登记标识符导致回落默认主题 |
 
 校验失败一律拒绝保存，返回带行号的错误；运行时加载到历史 / 被篡改主题时校验失败会回落内置默认主题。
+
+> 规则 ID、稳定错误码、fixture 映射与变更协议见 `docs/theme-contract.md` §6–§9；本节只描述校验策略。
 
 ---
 

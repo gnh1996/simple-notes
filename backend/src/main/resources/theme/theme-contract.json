@@ -564,6 +564,101 @@
       ]
     }
   },
+  "expression": {
+    "globals": [
+      "Math",
+      "Number",
+      "String",
+      "Boolean",
+      "Array",
+      "Object",
+      "JSON",
+      "Date",
+      "parseInt",
+      "parseFloat",
+      "isNaN",
+      "isFinite",
+      "encodeURI",
+      "encodeURIComponent",
+      "decodeURI",
+      "decodeURIComponent"
+    ],
+    "eventLocals": [
+      "$event"
+    ],
+    "eventLocalShapes": [
+      "target.value",
+      "target.checked",
+      "key",
+      "code",
+      "preventDefault()",
+      "stopPropagation()"
+    ],
+    "eventModifiers": [
+      "stop",
+      "prevent",
+      "once",
+      "self",
+      "capture",
+      "passive",
+      "enter",
+      "tab",
+      "esc",
+      "space",
+      "up",
+      "down",
+      "left",
+      "right",
+      "delete"
+    ],
+    "modelModifiers": [
+      "lazy",
+      "number",
+      "trim"
+    ],
+    "nativeEvents": [
+      "click",
+      "dblclick",
+      "input",
+      "change",
+      "submit",
+      "reset",
+      "keydown",
+      "keyup",
+      "keypress",
+      "focus",
+      "blur",
+      "focusin",
+      "focusout",
+      "mouseenter",
+      "mouseleave",
+      "mouseover",
+      "mouseout",
+      "mousedown",
+      "mouseup",
+      "mousemove",
+      "contextmenu",
+      "wheel",
+      "scroll",
+      "touchstart",
+      "touchend",
+      "touchmove",
+      "paste",
+      "copy",
+      "cut"
+    ],
+    "builtinComponents": [
+      "Transition",
+      "TransitionGroup"
+    ],
+    "deniedBuiltinComponents": [
+      "Teleport",
+      "Suspense",
+      "KeepAlive",
+      "Fragment",
+      "component"
+    ]
+  },
   "globalParts": [
     "bc-lightbox"
   ],

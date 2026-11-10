@@ -37,7 +37,8 @@ public final class ThemeTemplateValidator {
     private static final Pattern BINDING = Pattern.compile(
             "\\s([:@][A-Za-z0-9_.:\\[\\]-]+|v-(?:bind|on|if|else-if|for|show|model|text|once)"
                     + "[A-Za-z0-9_.:\\[\\]-]*)=\"([^\"]*)\"");
-    private static final Pattern V_FOR = Pattern.compile("v-for=\"\\(?([^)\"]*?)\\)?\\s+(?:in|of)\\s+");
+    private static final Pattern V_FOR = Pattern.compile(
+            "\\bv-for=\"([\\s\\S]*?)\\s+(?:in|of)\\s+[^\"]*\"");
     private static final Pattern SLOT_SCOPE = Pattern.compile(
             "(?:#[\\w-]*|v-slot(?::[\\w-]+)?)=\"([^\"]*)\"");
     private static final Pattern ARROW_PARAMS = Pattern.compile(
@@ -47,11 +48,16 @@ public final class ThemeTemplateValidator {
     private static final Pattern FREE_IDENTIFIER = Pattern.compile(
             "(?<![\\w$.])([A-Za-z_$][\\w$]*)");
     private static final Pattern CSS_URL = Pattern.compile("url\\(([^)]*)\\)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern APP_ROOT = Pattern.compile(
+            "(?<![\\w:-])id\\s*=\\s*(?:\"app\"|'app'|app)(?=[\\s/>])", Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern COMPONENT_WITH_ATTRS = Pattern.compile("<\\s*(blog-[a-z-]+)([^>]*)>");
+    /** 引号内的 `>` 不能截断组件标签（`:post="a > b ? x : y"`）。 */
+    private static final Pattern COMPONENT_WITH_ATTRS = Pattern.compile(
+            "<\\s*(blog-[a-z-]+)((?:[^>\"']|\"[^\"]*\"|'[^']*')*)>");
     private static final Pattern SLOT_USAGE = Pattern.compile(
             "(?:#([\\w-]+)|v-slot(?::([\\w-]+))?)\\s*=\\s*\"([^\"]*)\"");
-    private static final Pattern EVENT_ATTR = Pattern.compile("(?:^|\\s)(?:@|v-on:)([\\w-]+)");
+    private static final Pattern EVENT_ATTR = Pattern.compile(
+            "(?:^|\\s)(?:@|v-on:)([A-Za-z][\\w:-]*)(?:\\.[\\w-]+)*");
     private static final Pattern CSS_CLASS = Pattern.compile("\\.(bc-[a-z0-9-]+)");
     private static final Pattern CSS_COMMENT = Pattern.compile("/\\*.*?\\*/", Pattern.DOTALL);
     private static final Pattern CSS_STRING = Pattern.compile("'(?:\\\\.|[^'\\\\])*'|\"(?:\\\\.|[^\"\\\\])*\"");
@@ -91,13 +97,18 @@ public final class ThemeTemplateValidator {
         // 归一（解码）后两处口径一致，合法的 && / < / > 不会被误判。
         String source = normalizeEntities(html);
         String lower = source.toLowerCase(Locale.ROOT);
-        if (!lower.contains("id=\"app\"") && !lower.contains("id='app'")) {
+        if (!APP_ROOT.matcher(source).find()) {
             throw ApiException.badRequest("主题必须包含 id=\"app\" 根节点");
         }
-        for (String pattern : List.of(
-                "<script", "v-html", "javascript:", "window.", "document.",
-                "localstorage", "fetch(", "eval(", "import(")) {
+        for (String pattern : List.of("<script", "v-html", "javascript:")) {
             if (lower.contains(pattern)) {
+                throw ApiException.badRequest("主题 HTML 含禁用内容：" + pattern);
+            }
+        }
+        // JS 语法大小写敏感：用精确匹配，避免 ownerDocument. 误伤 document.
+        for (String pattern : List.of(
+                "window.", "document.", "localStorage", "fetch(", "eval(", "import(")) {
+            if (source.contains(pattern)) {
                 throw ApiException.badRequest("主题 HTML 含禁用内容：" + pattern);
             }
         }
@@ -111,6 +122,15 @@ public final class ThemeTemplateValidator {
             }
         }
 
+        for (Matcher matcher = Pattern.compile("<\\s*([A-Za-z][A-Za-z0-9-]*)").matcher(source);
+                matcher.find(); ) {
+            String name = matcher.group(1);
+            if (isDeniedBuiltin(name)) {
+                errors.add(lineOf(source, matcher.start())
+                        + " 使用了未登记的内置组件 <" + name + ">");
+            }
+        }
+
         for (Matcher matcher = DIRECTIVE.matcher(source); matcher.find(); ) {
             String name = matcher.group(1);
             if (!DIRECTIVES.contains(name)) {
@@ -121,15 +141,28 @@ public final class ThemeTemplateValidator {
         Set<String> locals = collectLocals(source);
         List<Expression> expressions = new ArrayList<>();
         for (Matcher matcher = INTERPOLATION.matcher(source); matcher.find(); ) {
-            expressions.add(new Expression(matcher.group(1), matcher.start()));
+            expressions.add(new Expression(matcher.group(1), matcher.start(), false));
         }
         for (Matcher matcher = BINDING.matcher(source); matcher.find(); ) {
-            expressions.add(new Expression(matcher.group(2), matcher.start()));
+            String attr = matcher.group(1);
+            boolean event = attr.startsWith("@") || attr.equals("v-on") || attr.startsWith("v-on:");
+            expressions.add(new Expression(matcher.group(2), matcher.start(), event));
         }
         for (Expression expression : expressions) {
-            for (String name : freeIdentifiers(expression.text())) {
-                if (!JS_KEYWORDS.contains(name) && !locals.contains(name) && !TEMPLATE_KEYS.contains(name)) {
-                    errors.add(lineOf(source, expression.index()) + " 引用了未登记的标识符 \"" + name + "\"");
+            String text = expression.text();
+            if (expression.event()) {
+                text = checkEventLocals(text, source, expression.index(), errors);
+            } else if (text.contains("$event")) {
+                errors.add(lineOf(source, expression.index()) + " $event 只能用于事件表达式（@ / v-on）");
+                text = text.replace("$event", " ");
+            }
+            for (String name : freeIdentifiers(text)) {
+                if (!JS_KEYWORDS.contains(name)
+                        && !locals.contains(name)
+                        && !TEMPLATE_KEYS.contains(name)
+                        && !ThemeContract.EXPRESSION_GLOBALS.contains(name)) {
+                    errors.add(lineOf(source, expression.index())
+                            + " 引用了未登记的标识符 \"" + name + "\"");
                 }
             }
         }
@@ -196,14 +229,12 @@ public final class ThemeTemplateValidator {
                             + "> 缺少必填 prop \"" + prop + "\"");
                 }
             }
-            if (!def.events().isEmpty()) {
-                Matcher events = EVENT_ATTR.matcher(attrs);
-                while (events.find()) {
-                    String event = events.group(1);
-                    if (!def.events().contains(event)) {
-                        errors.add(lineOf(source, matcher.start()) + " <" + tag
-                                + "> 使用了未登记事件 \"" + event + "\"");
-                    }
+            Matcher events = EVENT_ATTR.matcher(attrs);
+            while (events.find()) {
+                String event = events.group(1);
+                if (!def.events().contains(event) && !ThemeContract.NATIVE_EVENTS.contains(event)) {
+                    errors.add(lineOf(source, matcher.start()) + " <" + tag
+                            + "> 使用了未登记事件 \"" + event + "\"");
                 }
             }
         }
@@ -217,13 +248,10 @@ public final class ThemeTemplateValidator {
                 errors.add(lineOf(source, slots.start()) + " 使用了未登记的 slot #" + name);
                 continue;
             }
-            String value = slots.group(3) == null ? "" : slots.group(3).trim();
-            int end = value.lastIndexOf('}');
-            String inner = value.startsWith("{") && end > 0 ? value.substring(1, end) : value;
+            String value = slots.group(3) == null ? "" : slots.group(3);
             Set<String> fields = ThemeContract.SLOT_SCOPE.getOrDefault(name, Set.of());
-            for (String part : inner.split(",")) {
-                String field = part.split(":")[0].trim().replaceFirst("^\\.\\.\\.", "");
-                if (!field.isEmpty() && field.matches("[A-Za-z_$][\\w$]*") && !fields.contains(field)) {
+            for (String field : slotFieldNames(value)) {
+                if (!fields.contains(field)) {
                     errors.add(lineOf(source, slots.start()) + " slot #" + name
                             + " 引用了未登记的作用域字段 \"" + field + "\"");
                 }
@@ -231,28 +259,243 @@ public final class ThemeTemplateValidator {
         }
     }
 
+    /** 已知内置组件里，除 allow 之外一律拒绝（同时覆盖 PascalCase 与 kebab-case）。 */
+    private static boolean isDeniedBuiltin(String tag) {
+        String lower = tag.toLowerCase(Locale.ROOT);
+        for (String allowed : ThemeContract.BUILTIN_COMPONENTS) {
+            if (lower.equals(allowed.toLowerCase(Locale.ROOT)) || lower.equals(kebabCase(allowed))) {
+                return false;
+            }
+        }
+        for (String denied : ThemeContract.DENIED_BUILTIN_COMPONENTS) {
+            if (lower.equals(denied.toLowerCase(Locale.ROOT)) || lower.equals(kebabCase(denied))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String kebabCase(String name) {
+        return name.replaceAll("([a-z0-9])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT);
+    }
+
     private static Set<String> collectLocals(String html) {
         Set<String> locals = new LinkedHashSet<>();
         for (Matcher matcher = V_FOR.matcher(html); matcher.find(); ) {
-            for (String part : matcher.group(1).split(",")) {
-                String name = part.trim();
-                if (!name.isEmpty()) {
-                    locals.add(name);
-                }
-            }
+            collectBindingNames(matcher.group(1), locals);
         }
         for (Matcher matcher = SLOT_SCOPE.matcher(html); matcher.find(); ) {
-            String value = matcher.group(1).trim();
-            String inner = value.startsWith("{") ? value.substring(1, value.lastIndexOf('}')) : value;
-            for (String part : inner.split(",")) {
-                String[] pieces = part.split(":");
-                String name = (pieces.length > 1 ? pieces[1] : pieces[0]).trim();
-                if (name.matches("[A-Za-z_$][\\w$]*")) {
-                    locals.add(name);
-                }
-            }
+            collectBindingNames(matcher.group(1), locals);
         }
         return locals;
+    }
+
+    /** 解构模式中真正被绑定的变量名（`{ title, slug: s, ...rest }` → title / s / rest）。 */
+    private static void collectBindingNames(String pattern, Set<String> names) {
+        String text = stripOuterParens(pattern);
+        if (text.isEmpty()) {
+            return;
+        }
+        List<String> topLevel = splitTopLevel(text);
+        if (topLevel.size() > 1) {
+            for (String part : topLevel) {
+                collectBindingNames(part, names);
+            }
+            return;
+        }
+        if (text.startsWith("{") && text.endsWith("}")) {
+            for (String part : splitTopLevel(text.substring(1, text.length() - 1))) {
+                String item = part.trim();
+                if (item.isEmpty()) {
+                    continue;
+                }
+                if (item.startsWith("...")) {
+                    addBindingName(item.substring(3), names);
+                    continue;
+                }
+                int colon = findTopLevel(item, ':');
+                if (colon >= 0) {
+                    collectBindingNames(item.substring(colon + 1), names);
+                    continue;
+                }
+                int equals = findTopLevel(item, '=');
+                collectBindingNames(equals >= 0 ? item.substring(0, equals) : item, names);
+            }
+            return;
+        }
+        if (text.startsWith("[") && text.endsWith("]")) {
+            for (String part : splitTopLevel(text.substring(1, text.length() - 1))) {
+                String item = part.trim();
+                if (item.isEmpty()) {
+                    continue;
+                }
+                if (item.startsWith("...")) {
+                    addBindingName(item.substring(3), names);
+                    continue;
+                }
+                int equals = findTopLevel(item, '=');
+                collectBindingNames(equals >= 0 ? item.substring(0, equals) : item, names);
+            }
+            return;
+        }
+        addBindingName(text, names);
+    }
+
+    private static void addBindingName(String name, Set<String> names) {
+        String value = name.trim();
+        if (value.matches("[A-Za-z_$][\\w$]*")) {
+            names.add(value);
+        }
+    }
+
+    /** slot 作用域声明的字段名（`{ post: p }` → post；`{ ...rest }` 不产生字段）。 */
+    private static Set<String> slotFieldNames(String pattern) {
+        Set<String> fields = new LinkedHashSet<>();
+        String text = stripOuterParens(pattern);
+        if (!text.startsWith("{") || !text.endsWith("}")) {
+            return fields;
+        }
+        for (String part : splitTopLevel(text.substring(1, text.length() - 1))) {
+            String item = part.trim();
+            if (item.isEmpty() || item.startsWith("...")) {
+                continue;
+            }
+            int colon = findTopLevel(item, ':');
+            String left = colon >= 0 ? item.substring(0, colon) : item;
+            int equals = findTopLevel(left, '=');
+            if (equals >= 0) {
+                left = left.substring(0, equals);
+            }
+            left = left.trim();
+            if (left.matches("[A-Za-z_$][\\w$]*")) {
+                fields.add(left);
+            }
+        }
+        return fields;
+    }
+
+    /** 去掉最外层包裹的圆括号（`(item, index)` → `item, index`）。 */
+    private static String stripOuterParens(String text) {
+        String value = text == null ? "" : text.trim();
+        while (value.startsWith("(") && value.endsWith(")")) {
+            int depth = 0;
+            boolean wraps = true;
+            for (int i = 0; i < value.length(); i++) {
+                char c = value.charAt(i);
+                if (c == '(') {
+                    depth++;
+                } else if (c == ')') {
+                    depth--;
+                    if (depth == 0 && i < value.length() - 1) {
+                        wraps = false;
+                        break;
+                    }
+                }
+            }
+            if (!wraps || depth != 0) {
+                break;
+            }
+            value = value.substring(1, value.length() - 1).trim();
+        }
+        return value;
+    }
+
+    /** 顶层逗号分隔（忽略字符串与括号内部）。 */
+    private static List<String> splitTopLevel(String text) {
+        List<String> parts = new ArrayList<>();
+        int start = 0;
+        int depth = 0;
+        char quote = 0;
+        boolean escape = false;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (quote != 0) {
+                if (escape) {
+                    escape = false;
+                } else if (c == '\\') {
+                    escape = true;
+                } else if (c == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (c == '\'' || c == '"' || c == '`') {
+                quote = c;
+                continue;
+            }
+            if (c == '(' || c == '[' || c == '{') {
+                depth++;
+            } else if (c == ')' || c == ']' || c == '}') {
+                depth = Math.max(0, depth - 1);
+            } else if (c == ',' && depth == 0) {
+                parts.add(text.substring(start, i));
+                start = i + 1;
+            }
+        }
+        parts.add(text.substring(start));
+        return parts;
+    }
+
+    /** 顶层目标字符（忽略字符串与括号内部）。 */
+    private static int findTopLevel(String text, char target) {
+        int depth = 0;
+        char quote = 0;
+        boolean escape = false;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (quote != 0) {
+                if (escape) {
+                    escape = false;
+                } else if (c == '\\') {
+                    escape = true;
+                } else if (c == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (c == '\'' || c == '"' || c == '`') {
+                quote = c;
+                continue;
+            }
+            if (c == '(' || c == '[' || c == '{') {
+                depth++;
+            } else if (c == ')' || c == ']' || c == '}') {
+                depth = Math.max(0, depth - 1);
+            } else if (c == target && depth == 0) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** `$event` 只允许窄形状；返回清理后的表达式。 */
+    private static String checkEventLocals(
+            String text, String source, int index, List<String> errors) {
+        Matcher matcher = Pattern.compile("\\$event").matcher(text);
+        while (matcher.find()) {
+            String rest = text.substring(matcher.end());
+            boolean allowed = false;
+            for (String shape : ThemeContract.EVENT_LOCAL_SHAPES) {
+                String prefix = "." + shape;
+                if (!rest.startsWith(prefix)) {
+                    continue;
+                }
+                String after = rest.substring(prefix.length());
+                if (after.isEmpty()
+                        || !(Character.isLetterOrDigit(after.charAt(0))
+                                || after.charAt(0) == '_'
+                                || after.charAt(0) == '$')) {
+                    allowed = true;
+                    break;
+                }
+            }
+            if (!allowed) {
+                errors.add(lineOf(source, index)
+                        + " 不允许的 $event 用法（仅允许 $event.target.value / $event.target.checked / "
+                        + "$event.key / $event.code / $event.preventDefault() / $event.stopPropagation()）");
+            }
+        }
+        return text.replace("$event", " ");
     }
 
     private static List<String> freeIdentifiers(String expression) {
@@ -330,6 +573,6 @@ public final class ThemeTemplateValidator {
         return "第 " + line + " 行";
     }
 
-    private record Expression(String text, int index) {
+    private record Expression(String text, int index, boolean event) {
     }
 }

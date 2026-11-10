@@ -117,6 +117,101 @@ export const CONTRACT_ACTIONS = {
   openLightbox: { signature: '(src: string, alt?: string): void' },
 } as const satisfies Record<string, FunctionEntry>
 
+/**
+ * 模板表达式的“语言层”契约（docs/theme-contract.md §5）。
+ *
+ * 这里只登记纯数据；构建期 / 运行时 / 后端三处扫描器共用同一份。
+ * 目的：把“Vue 模板里允许写什么”从扫描器实现提升为可投影、可测试的契约。
+ */
+export const CONTRACT_EXPRESSION = {
+  /** Vue 模板可用的纯计算全局；不含 DOM / 网络 / 函数构造入口 */
+  globals: [
+    'Math',
+    'Number',
+    'String',
+    'Boolean',
+    'Array',
+    'Object',
+    'JSON',
+    'Date',
+    'parseInt',
+    'parseFloat',
+    'isNaN',
+    'isFinite',
+    'encodeURI',
+    'encodeURIComponent',
+    'decodeURI',
+    'decodeURIComponent',
+  ],
+  /** 事件表达式里允许的编译器局部变量 */
+  eventLocals: ['$event'],
+  /** `$event` 允许的后缀（窄形状白名单，禁止任意成员访问） */
+  eventLocalShapes: [
+    'target.value',
+    'target.checked',
+    'key',
+    'code',
+    'preventDefault()',
+    'stopPropagation()',
+  ],
+  /** 事件修饰符（不参与自由标识符扫描） */
+  eventModifiers: [
+    'stop',
+    'prevent',
+    'once',
+    'self',
+    'capture',
+    'passive',
+    'enter',
+    'tab',
+    'esc',
+    'space',
+    'up',
+    'down',
+    'left',
+    'right',
+    'delete',
+  ],
+  /** v-model 修饰符 */
+  modelModifiers: ['lazy', 'number', 'trim'],
+  /** 组件上允许透传的原生 DOM 事件 */
+  nativeEvents: [
+    'click',
+    'dblclick',
+    'input',
+    'change',
+    'submit',
+    'reset',
+    'keydown',
+    'keyup',
+    'keypress',
+    'focus',
+    'blur',
+    'focusin',
+    'focusout',
+    'mouseenter',
+    'mouseleave',
+    'mouseover',
+    'mouseout',
+    'mousedown',
+    'mouseup',
+    'mousemove',
+    'contextmenu',
+    'wheel',
+    'scroll',
+    'touchstart',
+    'touchend',
+    'touchmove',
+    'paste',
+    'copy',
+    'cut',
+  ],
+  /** 允许的内置组件（只放行纯展示 / 分组） */
+  builtinComponents: ['Transition', 'TransitionGroup'],
+  /** 已知但未放行的内置组件（用于同时拒绝大写与 kebab 写法） */
+  deniedBuiltinComponents: ['Teleport', 'Suspense', 'KeepAlive', 'Fragment', 'component'],
+} as const
+
 export const CONTRACT_COMPONENTS = {
   'blog-post-card': {
     props: ['post'],
@@ -415,6 +510,7 @@ export const CONTRACT = {
   helpers: CONTRACT_HELPERS,
   actions: CONTRACT_ACTIONS,
   components: CONTRACT_COMPONENTS,
+  expression: CONTRACT_EXPRESSION,
   globalParts: CONTRACT_GLOBAL_PARTS,
   cssVars: CONTRACT_CSS_VARS,
   directives: CONTRACT_DIRECTIVES,

@@ -1,0 +1,4 @@
+<div id="app">
+  <input type="search" :value="keyword" @input="keyword = $event.target.value" />
+  <button type="button" @click="$event.stopPropagation()">x</button>
+</div>

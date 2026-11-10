@@ -46,7 +46,7 @@ public final class AiThemePrompt {
             1. HTML 必须包含 id="app" 根节点；禁止 <script>、v-html、javascript:、window.、document.、localStorage、fetch(、eval(、import(。
             2. 组件标签、props、events、slots、slot 作用域字段、parts 只能使用下面【组件】列出的内容。
                root slot 传内容即整体接管默认结构；default / 具名 slot 只替换内部内容。
-            3. 模板指令、数据键、辅助函数、动作只能使用下面列出的内容；引用其他标识符会被拒绝（v-for 局部变量与 slot 作用域除外）。
+            3. 模板指令、数据键、辅助函数、动作、表达式全局与局部变量只能使用下面列出的内容；引用其他标识符会被拒绝（v-for / v-slot 局部变量与表达式全局除外）。$event 只允许下面列出的窄形状，表单输入优先用 v-model="ui.x"。
             4. 页面分支（route.name）至少完整实现 home 与 post；缺失的分支运行时回落默认主题。
             5. Markdown 必须用 <blog-markdown :source="..."> 渲染，不得自行解析；列表用 v-for + blog-post-card；分页用 blog-pager。
             6. CSS 禁止 @import；url() 只允许 /api/media/ 与 data:；主题 CSS 只能覆盖下面列出的 .bc-* parts；体积 HTML ≤ 64KB、CSS ≤ 256KB。

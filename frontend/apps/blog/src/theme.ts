@@ -1,7 +1,7 @@
 import starterCss from '@simple-notes/theme-starter/theme.css?raw'
 import starterHtml from '@simple-notes/theme-starter/theme.html?raw'
 
-import { CONTRACT_ACTIONS, CONTRACT_COMPONENTS, CONTRACT_CSS_VARS, CONTRACT_DATA, CONTRACT_DIRECTIVES, CONTRACT_HELPERS } from './contract'
+import { CONTRACT_ACTIONS, CONTRACT_COMPONENTS, CONTRACT_CSS_VARS, CONTRACT_DATA, CONTRACT_DIRECTIVES, CONTRACT_EXPRESSION, CONTRACT_HELPERS } from './contract'
 import type { ThemePayload, ThemeValidationResult } from './types'
 
 /** 内置默认主题：runtime 兜底 + 主题契约不兼容时的回退（随构建发布）。 */
@@ -23,6 +23,27 @@ const TEMPLATE_KEYS = new Set([
 ])
 const COMPONENT_NAMES = new Set(Object.keys(CONTRACT_COMPONENTS))
 const DIRECTIVE_NAMES = new Set<string>(CONTRACT_DIRECTIVES)
+const EXPRESSION_GLOBALS = new Set<string>(CONTRACT_EXPRESSION.globals)
+const NATIVE_EVENTS = new Set<string>(CONTRACT_EXPRESSION.nativeEvents)
+const BUILTIN_COMPONENTS = new Set<string>(CONTRACT_EXPRESSION.builtinComponents)
+const DENIED_BUILTIN_COMPONENTS = new Set<string>(CONTRACT_EXPRESSION.deniedBuiltinComponents)
+
+function kebabCase(name: string): string {
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
+}
+
+/** 已知内置组件里，除 allow 之外一律拒绝（同时覆盖 PascalCase 与 kebab-case）。 */
+function isDeniedBuiltin(tag: string): boolean {
+  const lower = tag.toLowerCase()
+  for (const allowed of BUILTIN_COMPONENTS) {
+    if (lower === allowed.toLowerCase() || lower === kebabCase(allowed)) return false
+  }
+  for (const denied of DENIED_BUILTIN_COMPONENTS) {
+    if (lower === denied.toLowerCase() || lower === kebabCase(denied)) return true
+  }
+  return false
+}
+const EVENT_LOCAL_SHAPES: readonly string[] = CONTRACT_EXPRESSION.eventLocalShapes
 const JS_KEYWORDS = new Set([
   'true', 'false', 'null', 'undefined', 'in', 'of', 'new', 'typeof', 'instanceof',
   'void', 'delete', 'return', 'if', 'else', 'this', 'NaN', 'Infinity',
@@ -48,23 +69,193 @@ function normalizeEntities(source: string): string {
     .replace(/&amp;/gi, '&')
 }
 
+/** 顶层分隔（忽略字符串与括号内部），用于解构模式。 */
+function splitTopLevel(text: string, delimiter = ','): string[] {
+  const parts: string[] = []
+  let start = 0
+  let depth = 0
+  let quote: string | null = null
+  let escape = false
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (quote) {
+      if (escape) {
+        escape = false
+      } else if (char === '\\') {
+        escape = true
+      } else if (char === quote) {
+        quote = null
+      }
+      continue
+    }
+    if (char === "'" || char === '"' || char === '`') {
+      quote = char
+      continue
+    }
+    if (char === '(' || char === '[' || char === '{') {
+      depth += 1
+    } else if (char === ')' || char === ']' || char === '}') {
+      depth = Math.max(0, depth - 1)
+    } else if (char === delimiter && depth === 0) {
+      parts.push(text.slice(start, index))
+      start = index + 1
+    }
+  }
+  parts.push(text.slice(start))
+  return parts.filter((part) => part.trim())
+}
+
+/** 找到顶层目标字符（忽略字符串与括号内部）。 */
+function findTopLevel(text: string, target: string): number {
+  let depth = 0
+  let quote: string | null = null
+  let escape = false
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (quote) {
+      if (escape) {
+        escape = false
+      } else if (char === '\\') {
+        escape = true
+      } else if (char === quote) {
+        quote = null
+      }
+      continue
+    }
+    if (char === "'" || char === '"' || char === '`') {
+      quote = char
+      continue
+    }
+    if (char === '(' || char === '[' || char === '{') {
+      depth += 1
+    } else if (char === ')' || char === ']' || char === '}') {
+      depth = Math.max(0, depth - 1)
+    } else if (char === target && depth === 0) {
+      return index
+    }
+  }
+  return -1
+}
+
+/** 去掉最外层包裹的圆括号（`(item, index)` → `item, index`）。 */
+function stripOuterParens(text: string): string {
+  let value = text.trim()
+  while (value.startsWith('(') && value.endsWith(')')) {
+    let depth = 0
+    let wraps = true
+    for (let index = 0; index < value.length; index += 1) {
+      const char = value[index]
+      if (char === '(') depth += 1
+      else if (char === ')') {
+        depth -= 1
+        if (depth === 0 && index < value.length - 1) {
+          wraps = false
+          break
+        }
+      }
+    }
+    if (!wraps || depth !== 0) break
+    value = value.slice(1, -1).trim()
+  }
+  return value
+}
+
+function addBindingName(name: string, names: Set<string>): void {
+  const value = name.trim()
+  if (/^[A-Za-z_$][\w$]*$/.test(value)) names.add(value)
+}
+
+/** 解构模式中真正被绑定的变量名（`{ title, slug: s, ...rest }` → title / s / rest）。 */
+function collectBindingNames(pattern: string, names = new Set<string>()): Set<string> {
+  const text = stripOuterParens(pattern)
+  if (!text) return names
+  const topLevel = splitTopLevel(text)
+  if (topLevel.length > 1) {
+    for (const part of topLevel) collectBindingNames(part, names)
+    return names
+  }
+  if (text.startsWith('{') && text.endsWith('}')) {
+    for (const part of splitTopLevel(text.slice(1, -1))) {
+      const item = part.trim()
+      if (!item) continue
+      if (item.startsWith('...')) {
+        addBindingName(item.slice(3), names)
+        continue
+      }
+      const colon = findTopLevel(item, ':')
+      if (colon >= 0) {
+        collectBindingNames(item.slice(colon + 1), names)
+        continue
+      }
+      const equals = findTopLevel(item, '=')
+      collectBindingNames(equals >= 0 ? item.slice(0, equals) : item, names)
+    }
+    return names
+  }
+  if (text.startsWith('[') && text.endsWith(']')) {
+    for (const part of splitTopLevel(text.slice(1, -1))) {
+      const item = part.trim()
+      if (!item) continue
+      if (item.startsWith('...')) {
+        addBindingName(item.slice(3), names)
+        continue
+      }
+      const equals = findTopLevel(item, '=')
+      collectBindingNames(equals >= 0 ? item.slice(0, equals) : item, names)
+    }
+    return names
+  }
+  addBindingName(text, names)
+  return names
+}
+
+/** slot 作用域声明的字段名（`{ post: p }` → post；`{ ...rest }` 不产生字段）。 */
+function slotFieldNames(pattern: string): Set<string> {
+  const fields = new Set<string>()
+  const text = stripOuterParens(pattern)
+  if (!text.startsWith('{') || !text.endsWith('}')) return fields
+  for (const part of splitTopLevel(text.slice(1, -1))) {
+    const item = part.trim()
+    if (!item || item.startsWith('...')) continue
+    const colon = findTopLevel(item, ':')
+    let left = colon >= 0 ? item.slice(0, colon) : item
+    const equals = findTopLevel(left, '=')
+    if (equals >= 0) left = left.slice(0, equals)
+    left = left.trim()
+    if (/^[A-Za-z_$][\w$]*$/.test(left)) fields.add(left)
+  }
+  return fields
+}
+
+/** `$event` 只允许窄形状；返回清理后的表达式与错误消息。 */
+function checkEventLocals(expression: string): { text: string; errors: string[] } {
+  const errors: string[] = []
+  for (const match of expression.matchAll(/\$event/g)) {
+    const rest = expression.slice(match.index + '$event'.length)
+    const allowed = EVENT_LOCAL_SHAPES.some((shape) => {
+      const prefix = `.${shape}`
+      if (!rest.startsWith(prefix)) return false
+      const after = rest.slice(prefix.length)
+      return !after || !/^[\w$]/.test(after)
+    })
+    if (!allowed) {
+      errors.push(
+        '不允许的 $event 用法（仅允许 $event.target.value / $event.target.checked / ' +
+          '$event.key / $event.code / $event.preventDefault() / $event.stopPropagation()）',
+      )
+    }
+  }
+  return { text: expression.replace(/\$event/g, ' '), errors }
+}
+
 /** v-for / slot 作用域的局部变量：表达式里出现它们不算未登记标识符。 */
 function collectLocals(html: string): Set<string> {
   const locals = new Set<string>()
-  for (const match of html.matchAll(/v-for="\(?([^)"]*?)\)?\s+(?:in|of)\s+/g)) {
-    for (const part of match[1].split(',')) {
-      const name = part.trim()
-      if (name) locals.add(name)
-    }
+  for (const match of html.matchAll(/\bv-for="([\s\S]*?)\s+(?:in|of)\s+[^"]*"/g)) {
+    collectBindingNames(match[1], locals)
   }
   for (const match of html.matchAll(/(?:#[\w-]*|v-slot(?::[\w-]+)?)="([^"]*)"/g)) {
-    const value = match[1].trim()
-    const inner = value.startsWith('{') ? value.slice(1, value.lastIndexOf('}')) : value
-    for (const part of inner.split(',')) {
-      const pieces = part.split(':')
-      const name = (pieces.length > 1 ? pieces[1] : pieces[0]).trim()
-      if (/^[A-Za-z_$][\w$]*$/.test(name)) locals.add(name)
-    }
+    collectBindingNames(match[1], locals)
   }
   return locals
 }
@@ -118,23 +309,106 @@ function scanTheme(html: string, errors: Array<{ line: number; message: string }
       errors.push({ line: lineAt(match.index), message: `使用了未登记的组件 <${match[1]}>` })
     }
   }
+  for (const match of html.matchAll(/<\s*([A-Za-z][A-Za-z0-9-]*)/g)) {
+    if (isDeniedBuiltin(match[1])) {
+      errors.push({ line: lineAt(match.index), message: `使用了未登记的内置组件 <${match[1]}>` })
+    }
+  }
   for (const match of html.matchAll(/\s(v-[a-z-]+)/g)) {
     if (!DIRECTIVE_NAMES.has(match[1])) {
       errors.push({ line: lineAt(match.index), message: `使用了未登记的指令 ${match[1]}` })
     }
   }
 
-  const expressions: Array<{ text: string; index: number }> = []
+  // slot 名与作用域字段（union 口径：不区分具体组件，与后端同口径）
+  const slotNames = new Set<string>(
+    Object.values(CONTRACT_COMPONENTS).flatMap((entry) => entry.slots.map((slot) => slot.name)),
+  )
+  const slotScope = new Map<string, Set<string>>()
+  for (const entry of Object.values(CONTRACT_COMPONENTS)) {
+    for (const slot of entry.slots) {
+      if (!slotScope.has(slot.name)) slotScope.set(slot.name, new Set())
+      slot.provides.forEach((field) => slotScope.get(slot.name)!.add(field))
+    }
+  }
+  for (const match of html.matchAll(/(?:#([\w-]+)|v-slot(?::([\w-]+))?)\s*=\s*"([^"]*)"/g)) {
+    const name = match[1] ?? match[2] ?? 'default'
+    if (!slotNames.has(name)) {
+      errors.push({ line: lineAt(match.index), message: `使用了未登记的 slot #${name}` })
+      continue
+    }
+    for (const field of slotFieldNames(match[3])) {
+      if (!slotScope.get(name)?.has(field)) {
+        errors.push({
+          line: lineAt(match.index),
+          message: `slot #${name} 引用了未登记的作用域字段 "${field}"`,
+        })
+      }
+    }
+  }
+
+  // 必填 props 与组件事件；引号内的 `>` 不能截断标签
+  for (const match of html.matchAll(/<\s*(blog-[a-z-]+)((?:[^>"']|"[^"]*"|'[^']*')*)>/g)) {
+    const tag = match[1]
+    const attrs = match[2]
+    const entry = (CONTRACT_COMPONENTS as Record<string, {
+      requiredProps: readonly string[]
+      events: readonly string[]
+    }>)[tag]
+    if (!entry) continue
+    for (const prop of entry.requiredProps) {
+      const pattern = new RegExp(`(?<![\\w-])(?:(?::|v-bind:)${prop}(?=[\\s=/>])|${prop}\\s*=)`)
+      if (!pattern.test(attrs)) {
+        errors.push({ line: lineAt(match.index), message: `<${tag}> 缺少必填 prop "${prop}"` })
+      }
+    }
+    for (const event of attrs.matchAll(/(?:^|\s)(?:@|v-on:)([A-Za-z][\w:-]*)(?:\.[\w-]+)*/g)) {
+      if (!entry.events.includes(event[1]) && !NATIVE_EVENTS.has(event[1])) {
+        errors.push({
+          line: lineAt(match.index),
+          message: `<${tag}> 使用了未登记事件 "${event[1]}"`,
+        })
+      }
+    }
+  }
+
+  const expressions: Array<{ text: string; index: number; event: boolean }> = []
   for (const match of html.matchAll(/{{([\s\S]*?)}}/g)) {
-    expressions.push({ text: match[1], index: match.index })
+    expressions.push({ text: match[1], index: match.index, event: false })
   }
   for (const match of html.matchAll(/\s([:@][A-Za-z0-9_.:[\]-]+|v-(?:bind|on|if|else-if|for|show|model|text|once)[A-Za-z0-9_.:[\]-]*)="([^"]*)"/g)) {
-    expressions.push({ text: match[2], index: match.index })
+    const attr = match[1]
+    expressions.push({
+      text: match[2],
+      index: match.index,
+      event: attr.startsWith('@') || attr === 'v-on' || attr.startsWith('v-on:'),
+    })
   }
-  for (const { text, index } of expressions) {
+  for (const expression of expressions) {
+    let text = expression.text
+    if (expression.event) {
+      const checked = checkEventLocals(text)
+      text = checked.text
+      for (const message of checked.errors) {
+        errors.push({ line: lineAt(expression.index), message })
+      }
+    } else if (text.includes('$event')) {
+      errors.push({
+        line: lineAt(expression.index),
+        message: '$event 只能用于事件表达式（@ / v-on）',
+      })
+      text = text.replace(/\$event/g, ' ')
+    }
     for (const name of freeIdentifiers(text)) {
-      if (JS_KEYWORDS.has(name) || locals.has(name) || TEMPLATE_KEYS.has(name)) continue
-      errors.push({ line: lineAt(index), message: `引用了未登记的标识符 "${name}"` })
+      if (
+        JS_KEYWORDS.has(name) ||
+        locals.has(name) ||
+        TEMPLATE_KEYS.has(name) ||
+        EXPRESSION_GLOBALS.has(name)
+      ) {
+        continue
+      }
+      errors.push({ line: lineAt(expression.index), message: `引用了未登记的标识符 "${name}"` })
     }
   }
 }
@@ -149,13 +423,16 @@ function scanCssUrls(css: string, errors: Array<{ line: number; message: string 
   }
 }
 
-const FORBIDDEN: ReadonlyArray<readonly [string, string]> = [
+const FORBIDDEN_LOWER: ReadonlyArray<readonly [string, string]> = [
   ['<script', '禁止 <script>'],
   ['v-html', '禁止 v-html'],
   ['javascript:', '禁止 javascript: 协议'],
+]
+/** JS 语法大小写敏感：用精确匹配，避免 ownerDocument. 误伤 document. */
+const FORBIDDEN_EXACT: ReadonlyArray<readonly [string, string]> = [
   ['window.', '禁止访问 window'],
   ['document.', '禁止访问 document'],
-  ['localstorage', '禁止访问 localStorage'],
+  ['localStorage', '禁止访问 localStorage'],
   ['fetch(', '禁止调用 fetch'],
   ['eval(', '禁止调用 eval'],
   ['import(', '禁止动态 import'],
@@ -177,12 +454,18 @@ export function validateTheme(html: string, css: string): ThemeValidationResult 
     return index < 0 ? 0 : source.slice(0, index).split('\n').length
   }
 
-  if (!lower.includes('id="app"') && !lower.includes("id='app'")) {
+  if (!/(?<![\w:-])id\s*=\s*(?:"app"|'app'|app)(?=[\s/>])/i.test(source)) {
     errors.push({ line: 0, message: '缺少 id="app" 根节点' })
   }
 
-  for (const [pattern, message] of FORBIDDEN) {
+  for (const [pattern, message] of FORBIDDEN_LOWER) {
     const index = lower.indexOf(pattern)
+    if (index >= 0) {
+      errors.push({ line: lineOf(index), message })
+    }
+  }
+  for (const [pattern, message] of FORBIDDEN_EXACT) {
+    const index = source.indexOf(pattern)
     if (index >= 0) {
       errors.push({ line: lineOf(index), message })
     }

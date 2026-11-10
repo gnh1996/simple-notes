@@ -13,7 +13,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 主题契约的运行时投影（docs/theme-contract-v2.md，2A）。
+ * 主题契约的运行时投影（docs/theme-contract.md 规范 / docs/theme-contract-v2.md 2A 设计）。
  *
  * <p>唯一来源是前端 {@code apps/blog/src/contract.ts} + {@code types.ts} + {@code runtime.ts}；
  * {@code pnpm sync:contract} 生成 {@code classpath:theme/theme-contract.json}，本类只读该文件。
@@ -37,6 +37,22 @@ public final class ThemeContract {
     public static final Set<String> DIRECTIVES = Set.copyOf(strings(ROOT.get("directives")));
     public static final Set<String> CSS_VARS = Set.copyOf(strings(ROOT.get("cssVars")));
     public static final Set<String> GLOBAL_PARTS = Set.copyOf(strings(ROOT.get("globalParts")));
+
+    private static final JsonNode EXPRESSION = ROOT.get("expression");
+    public static final Set<String> EXPRESSION_GLOBALS =
+            Set.copyOf(strings(EXPRESSION == null ? null : EXPRESSION.get("globals")));
+    public static final List<String> EVENT_LOCAL_SHAPES =
+            strings(EXPRESSION == null ? null : EXPRESSION.get("eventLocalShapes"));
+    public static final Set<String> NATIVE_EVENTS =
+            Set.copyOf(strings(EXPRESSION == null ? null : EXPRESSION.get("nativeEvents")));
+    public static final Set<String> BUILTIN_COMPONENTS =
+            Set.copyOf(strings(EXPRESSION == null ? null : EXPRESSION.get("builtinComponents")));
+    public static final Set<String> DENIED_BUILTIN_COMPONENTS =
+            Set.copyOf(strings(EXPRESSION == null ? null : EXPRESSION.get("deniedBuiltinComponents")));
+    public static final Set<String> EVENT_MODIFIERS =
+            Set.copyOf(strings(EXPRESSION == null ? null : EXPRESSION.get("eventModifiers")));
+    public static final Set<String> MODEL_MODIFIERS =
+            Set.copyOf(strings(EXPRESSION == null ? null : EXPRESSION.get("modelModifiers")));
 
     public static final Map<String, ComponentDef> COMPONENT_DEFS = componentDefs();
     public static final Set<String> PUBLIC_PARTS = publicParts();
@@ -80,6 +96,10 @@ public final class ThemeContract {
             }
             text.append("\n  parts: ")
                     .append(def.parts().isEmpty() ? "-" : String.join(", ", def.parts()));
+            text.append("\n  selfFetch: ").append(def.selfFetch() ? "是（放上去即请求）" : "否");
+            if (def.example() != null && !def.example().isBlank()) {
+                text.append("\n  example: ").append(def.example());
+            }
             text.append('\n');
         }
 
@@ -108,7 +128,39 @@ public final class ThemeContract {
 
         text.append("\n【CSS 变量】\n").append(String.join(", ", CSS_VARS)).append('\n');
         text.append("\n【模板指令】\n").append(String.join(", ", DIRECTIVES)).append('\n');
-        text.append("\n【数据键】\n").append(String.join(", ", DATA_KEYS)).append('\n');
+        text.append("\n【数据键（routes = 出现页面；writable = 可 v-model）】\n");
+        JsonNode data = ROOT.get("data");
+        if (data != null && data.isObject()) {
+            for (Map.Entry<String, JsonNode> entry : data.properties()) {
+                JsonNode value = entry.getValue();
+                text.append(entry.getKey())
+                        .append(" → routes: ")
+                        .append(dataRoutes(value))
+                        .append(value.get("writable") != null && value.get("writable").asBoolean()
+                                ? "，writable"
+                                : "")
+                        .append('\n');
+            }
+        }
+        text.append("\n【表达式全局（只读；不含 DOM / 网络）】\n")
+                .append(String.join(", ", EXPRESSION_GLOBALS)).append('\n');
+        text.append("\n【$event 允许形状（仅事件表达式）】\n");
+        List<String> eventShapes = new ArrayList<>();
+        for (String shape : EVENT_LOCAL_SHAPES) {
+            eventShapes.add("$event." + shape);
+        }
+        text.append(String.join(", ", eventShapes)).append('\n');
+        text.append("\n【组件上允许的原生事件】\n")
+                .append(String.join(", ", NATIVE_EVENTS)).append('\n');
+        text.append("\n【事件修饰符】\n")
+                .append(String.join(", ", EVENT_MODIFIERS)).append('\n');
+        text.append("\n【v-model 修饰符】\n")
+                .append(String.join(", ", MODEL_MODIFIERS)).append('\n');
+        text.append("\n【内置组件】\n允许: ")
+                .append(String.join(", ", BUILTIN_COMPONENTS))
+                .append("；禁止: ")
+                .append(String.join(", ", DENIED_BUILTIN_COMPONENTS))
+                .append('\n');
         text.append("\n【辅助函数】\n");
         ROOT.get("helpers").properties().forEach(entry ->
                 text.append(entry.getKey()).append(entry.getValue().get("signature").asString()).append('\n'));
@@ -116,6 +168,21 @@ public final class ThemeContract {
         ROOT.get("actions").properties().forEach(entry ->
                 text.append(entry.getKey()).append(entry.getValue().get("signature").asString()).append('\n'));
         return text.toString();
+    }
+
+    /** 数据键的可用页面：`all` 或 JSON 数组。 */
+    private static String dataRoutes(JsonNode entry) {
+        if (entry == null) {
+            return "all";
+        }
+        JsonNode routes = entry.get("routes");
+        if (routes == null || routes.isNull()) {
+            return "all";
+        }
+        if (routes.isString()) {
+            return routes.asString();
+        }
+        return routes.toString();
     }
 
     private static JsonNode load() {
@@ -168,7 +235,9 @@ public final class ThemeContract {
                     Set.copyOf(strings(node.get("requiredProps"))),
                     Set.copyOf(strings(node.get("events"))),
                     strings(node.get("parts")),
-                    slots(node.get("slots"))));
+                    slots(node.get("slots")),
+                    node.get("selfFetch") != null && node.get("selfFetch").asBoolean(),
+                    node.get("example") == null ? "" : node.get("example").asString()));
         }
         return Map.copyOf(defs);
     }
@@ -263,7 +332,9 @@ public final class ThemeContract {
             Set<String> requiredProps,
             Set<String> events,
             List<String> parts,
-            List<SlotDef> slots) {
+            List<SlotDef> slots,
+            boolean selfFetch,
+            String example) {
     }
 
     public record SlotDef(String name, Set<String> provides, List<String> scope) {

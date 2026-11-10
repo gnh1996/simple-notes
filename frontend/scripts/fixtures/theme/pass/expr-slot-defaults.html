@@ -1,0 +1,5 @@
+<div id="app">
+  <blog-pager :pager="pager" v-slot:root="{ pages = [], ...rest }">
+    {{ pages.length }} / {{ rest }}
+  </blog-pager>
+</div>

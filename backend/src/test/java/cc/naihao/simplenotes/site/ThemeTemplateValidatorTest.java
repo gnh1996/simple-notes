@@ -10,6 +10,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** 主题模板 / theme.overrides 保存期校验（docs/blog-runtime-theme.md §3.6 / §8）。 */
 class ThemeTemplateValidatorTest {
@@ -54,6 +56,96 @@ class ThemeTemplateValidatorTest {
                 """;
         assertThatCode(() -> ThemeTemplateValidator.validateHtml(html)).doesNotThrowAnyException();
     }
+
+    @Test
+    @DisplayName("允许表达式全局 / 解构 / slot 默认值与窄 $event")
+    void allowsExpressionSurface() {
+        String html = """
+                <div id="app">
+                  <p v-for="({ title, slug }, index) in posts" :key="slug">
+                    {{ Math.ceil(pager.total / pager.size) }} {{ index }} {{ title }}
+                  </p>
+                  <blog-pager :pager="pager" v-slot:root="{ pages = [], ...rest }">
+                    {{ pages.length }} / {{ rest }}
+                  </blog-pager>
+                  <input type="search" :value="keyword" @input="keyword = $event.target.value" />
+                </div>
+                """;
+        assertThatCode(() -> ThemeTemplateValidator.validateHtml(html)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("组件原生事件按白名单放行，未知事件仍拒绝")
+    void allowsNativeEventsOnComponents() {
+        assertThatCode(() -> ThemeTemplateValidator.validateHtml(
+                "<div id=\"app\"><blog-pager :pager=\"pager\" @click=\"scrollToTop\"></blog-pager></div>"))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
+                "<div id=\"app\"><blog-pager :pager=\"pager\" @ready=\"go\"></blog-pager></div>"))
+                .hasMessageContaining("未登记事件");
+    }
+
+    @Test
+    @DisplayName("$event 只允许窄形状，禁止 view / ownerDocument 等逃逸")
+    void rejectsBroadEventLocals() {
+        assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
+                "<div id=\"app\"><button type=\"button\" @click=\"$event.view.alert(1)\">x</button></div>"))
+                .hasMessageContaining("不允许的 $event 用法");
+        assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
+                "<div id=\"app\"><button type=\"button\" @click=\"$event.target.ownerDocument\">x</button></div>"))
+                .hasMessageContaining("不允许的 $event 用法");
+        assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
+                "<div id=\"app\"><p>{{ $event }}</p></div>"))
+                .hasMessageContaining("$event 只能用于事件表达式");
+    }
+
+    @Test
+    @DisplayName("规则 fixture：Node 与 Java 使用同一份 cases.json")
+    void ruleFixtures() throws Exception {
+        Path casesFile = Path.of("..", "frontend", "scripts", "fixtures", "theme", "cases.json");
+        Assumptions.assumeTrue(Files.exists(casesFile), "规则 fixture 不在当前工作区");
+        JsonNode cases = new ObjectMapper().readTree(Files.readString(casesFile));
+        Path fixtureRoot = casesFile.getParent();
+        for (Map.Entry<String, JsonNode> entry : cases.properties()) {
+            JsonNode group = entry.getValue();
+            JsonNode pass = group.get("pass");
+            if (pass != null) {
+                for (JsonNode file : pass) {
+                    String html = Files.readString(fixtureRoot.resolve(file.asString()));
+                    assertThatCode(() -> ThemeTemplateValidator.validateHtml(html))
+                            .as(entry.getKey() + " " + file.asString())
+                            .doesNotThrowAnyException();
+                }
+            }
+            JsonNode fail = group.get("fail");
+            if (fail != null) {
+                for (JsonNode item : fail) {
+                    String relative = item.get("file").asString();
+                    String html = Files.readString(fixtureRoot.resolve(relative));
+                    String expected = item.get("message") == null
+                            ? ""
+                            : item.get("message").asString();
+                    var thrown = assertThatThrownBy(
+                                    () -> ThemeTemplateValidator.validateHtml(html))
+                            .as(entry.getKey() + " " + relative);
+                    if (!expected.isEmpty()) {
+                        thrown.hasMessageContaining(expected);
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("契约生成物包含表达式面；提示词投影数据可用页面与可写状态")
+    void contractExpressionProjectionLoaded() {
+        assertThat(ThemeContract.EXPRESSION_GLOBALS).contains("Math", "Number", "Date");
+        assertThat(ThemeContract.EVENT_LOCAL_SHAPES).contains("target.value", "key");
+        assertThat(ThemeContract.NATIVE_EVENTS).contains("click", "keydown");
+        String prompt = AiThemePrompt.fullSystemPrompt(null, null);
+        assertThat(prompt).contains("表达式全局", "Math", "$event.target.value", "writable", "routes:");
+    }
+
 
     @Test
     @DisplayName("实体编码的操作符不误判：outerHTML 把 && / < / > 转写为实体，校验前已归一")
@@ -117,7 +209,7 @@ class ThemeTemplateValidatorTest {
                 """)).hasMessageContaining("缺少必填 prop");
 
         assertThatThrownBy(() -> ThemeTemplateValidator.validateHtml(
-                "<div id=\"app\"><blog-pager :pager=\"pager\" @change=\"go\"></blog-pager></div>"))
+                "<div id=\"app\"><blog-pager :pager=\"pager\" @ready=\"go\"></blog-pager></div>"))
                 .hasMessageContaining("未登记事件");
     }
 

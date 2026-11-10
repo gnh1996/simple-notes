@@ -13,7 +13,8 @@
 | `docs/markdown-dialect.md` | Markdown 内容方言规范（v2 白名单 / 边界 / 三端配置对齐） |
 | `docs/markdown-dialect-fixture.md` | 方言验收样本：新增语法必须 admin / blog / 桌面三端渲染比对 |
 | `docs/blog-runtime-theme.md` | 博客运行时与主题化设计（v1.15 已实现）：运行时/主题职责、契约表、主题版本与预览、站点配置与独立页面 |
-| `docs/theme-contract-v2.md` | 主题契约 v2（2A 增量 headless，阶段 1 已实现）：`root` slot、slot scope、类型/路由投影、校验与 AI 提示词接入；合并进 `blog-runtime-theme.md` §3 后删除 |
+| `docs/theme-contract.md` | 主题契约规范（规范性文档，v0.2 P0 已实现）：能力面 + 表达式面、规则 ID / 错误码、fixture 规范、变更协议；后续迭代以本文为准 |
+| `docs/theme-contract-v2.md` | 主题契约 v2（2A 增量 headless，阶段 1 已实现）：`root` slot、slot scope、类型/路由投影、校验与 AI 提示词接入；历史设计记录，规范内容以 `docs/theme-contract.md` 为准 |
 | `docs/desktop-sync.md` | 桌面端同步设计（v1 草案）：本地优先 + 懒加载 manifest、`version` 修订号与本地 hash、整篇冲突 + diff、离线新建、账号隔离 |
 | `docs/desktop-local-schema.md` | 桌面端本地库结构演进（SQLite schema 迁移，v1.1 已实现）：`user_version` 版本轴、有序迁移与老库桥接、备份与降级检测、与后端 API 契约版本的关系 |
 | `docs/desktop-local-file.md` | 桌面端本地 Markdown（v1.1 已实现 / v1.2 多标签已实现，Windows）：打开文件=临时编辑、免登录本地笔记、最近打开、纳入管理（内置「本地文件」分组 / 服务端同步）、导出 Markdown；多标签 / 独立未保存 / 标签恢复 |
@@ -53,6 +54,7 @@
 - **API 契约**：后端 OpenAPI 为单一来源，Web / 桌面端一律使用生成类型，禁止手写接口类型；桌面端经 Go binding 转发（WebView 不直连后端）
 - **数据**：后端 PostgreSQL + Flyway（迁移只追加、不改历史；已在任一环境执行过的脚本不可修改 / 删除，回退只能新增更高版本补偿）；桌面端本地优先（离线可用 + 后台同步）
 - **内容模型**：随手记与博客文章共用 `note` 表（`kind` 区分）；只有 `POST` 可发布，公开博客只读发布快照（`note_revision`），编辑后必须“更新发布”；不支持文章转回笔记（见 `docs/content-model.md`）
+- **主题契约**：规范性规则见 `docs/theme-contract.md`，机器源是 `frontend/apps/blog/src/contract.ts`；主题只能使用登记过的能力与表达式子集，未登记即非法；新增 / 变更能力必须走四件套（契约 + fixture + 规范表 + `sync:contract` / 测试），默认主题不是规范
 - **权限**：权限码是前后端唯一纽带——目录在 `sys_menu`（迁移只 INSERT、启动对账 fail-fast）、代码引用 `Perms` 常量；前端按服务端菜单列表注册路由、仅做显隐，接口权限后端终审（见 `docs/auth-rbac.md`）
 
 ## 常用命令速查

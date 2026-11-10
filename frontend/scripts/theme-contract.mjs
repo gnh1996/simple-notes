@@ -32,12 +32,34 @@ const {
   CONTRACT_HELPERS,
   CONTRACT_ACTIONS,
   CONTRACT_COMPONENTS,
+  CONTRACT_EXPRESSION,
   CONTRACT_ROUTES,
   CONTRACT_URLS,
 } = contract
 const CONTRACT_CSS_VARS = new Set(contract.CONTRACT_CSS_VARS)
 const CONTRACT_DIRECTIVES = new Set(contract.CONTRACT_DIRECTIVES)
 const CONTRACT_COMPONENT_NAMES = new Set(Object.keys(CONTRACT_COMPONENTS))
+const EXPRESSION_GLOBALS = new Set(CONTRACT_EXPRESSION.globals)
+const NATIVE_EVENTS = new Set(CONTRACT_EXPRESSION.nativeEvents)
+const BUILTIN_COMPONENTS = new Set(CONTRACT_EXPRESSION.builtinComponents)
+const DENIED_BUILTIN_COMPONENTS = new Set(CONTRACT_EXPRESSION.deniedBuiltinComponents)
+
+function kebabCase(name) {
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
+}
+
+/** 已知内置组件里，除 allow 之外一律拒绝（同时覆盖 PascalCase 与 kebab-case）。 */
+function isDeniedBuiltin(tag) {
+  const lower = tag.toLowerCase()
+  for (const allowed of BUILTIN_COMPONENTS) {
+    if (lower === allowed.toLowerCase() || lower === kebabCase(allowed)) return false
+  }
+  for (const denied of DENIED_BUILTIN_COMPONENTS) {
+    if (lower === denied.toLowerCase() || lower === kebabCase(denied)) return true
+  }
+  return false
+}
+const EVENT_LOCAL_SHAPES = CONTRACT_EXPRESSION.eventLocalShapes
 const TEMPLATE_KEYS = new Set([
   ...Object.keys(CONTRACT_DATA),
   ...Object.keys(CONTRACT_HELPERS),
@@ -553,27 +575,196 @@ const JS_KEYWORDS = new Set([
   'void', 'delete', 'return', 'if', 'else', 'this', 'NaN', 'Infinity',
 ])
 
-function collectLocals(html) {
-  const locals = new Set()
-  for (const match of html.matchAll(/v-for="\(?([^)"]*?)\)?\s+(?:in|of)\s+/g)) {
-    for (const part of match[1].split(',')) {
-      const name = part.trim()
-      if (name) {
-        locals.add(name)
+/** 顶层分隔（忽略字符串与括号内部），用于解构模式。 */
+function splitTopLevel(text, delimiter = ',') {
+  const parts = []
+  let start = 0
+  let depth = 0
+  let quote = null
+  let escape = false
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (quote) {
+      if (escape) {
+        escape = false
+      } else if (char === '\\') {
+        escape = true
+      } else if (char === quote) {
+        quote = null
+      }
+      continue
+    }
+    if (char === "'" || char === '"' || char === '`') {
+      quote = char
+      continue
+    }
+    if (char === '(' || char === '[' || char === '{') {
+      depth += 1
+    } else if (char === ')' || char === ']' || char === '}') {
+      depth = Math.max(0, depth - 1)
+    } else if (char === delimiter && depth === 0) {
+      parts.push(text.slice(start, index))
+      start = index + 1
+    }
+  }
+  parts.push(text.slice(start))
+  return parts.filter((part) => part.trim())
+}
+
+/** 找到顶层目标字符（忽略字符串与括号内部）。 */
+function findTopLevel(text, target) {
+  let depth = 0
+  let quote = null
+  let escape = false
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (quote) {
+      if (escape) {
+        escape = false
+      } else if (char === '\\') {
+        escape = true
+      } else if (char === quote) {
+        quote = null
+      }
+      continue
+    }
+    if (char === "'" || char === '"' || char === '`') {
+      quote = char
+      continue
+    }
+    if (char === '(' || char === '[' || char === '{') {
+      depth += 1
+    } else if (char === ')' || char === ']' || char === '}') {
+      depth = Math.max(0, depth - 1)
+    } else if (char === target && depth === 0) {
+      return index
+    }
+  }
+  return -1
+}
+
+/** 去掉最外层包裹的圆括号（`(item, index)` → `item, index`）。 */
+function stripOuterParens(text) {
+  let value = text.trim()
+  while (value.startsWith('(') && value.endsWith(')')) {
+    let depth = 0
+    let wraps = true
+    for (let index = 0; index < value.length; index += 1) {
+      const char = value[index]
+      if (char === '(') depth += 1
+      else if (char === ')') {
+        depth -= 1
+        if (depth === 0 && index < value.length - 1) {
+          wraps = false
+          break
+        }
       }
     }
+    if (!wraps || depth !== 0) break
+    value = value.slice(1, -1).trim()
+  }
+  return value
+}
+
+function addBindingName(name, names) {
+  const value = name.trim()
+  if (/^[A-Za-z_$][\w$]*$/.test(value)) names.add(value)
+}
+
+/**
+ * 解构模式中真正被绑定的变量名（`{ title, slug: s, ...rest }` → title / s / rest）。
+ * 属性键（`slug`）不算变量；默认值表达式不展开；支持一层以上的嵌套。
+ */
+function collectBindingNames(pattern, names = new Set()) {
+  const text = stripOuterParens(pattern)
+  if (!text) return names
+  const topLevel = splitTopLevel(text)
+  if (topLevel.length > 1) {
+    for (const part of topLevel) collectBindingNames(part, names)
+    return names
+  }
+  if (text.startsWith('{') && text.endsWith('}')) {
+    for (const part of splitTopLevel(text.slice(1, -1))) {
+      const item = part.trim()
+      if (!item) continue
+      if (item.startsWith('...')) {
+        addBindingName(item.slice(3), names)
+        continue
+      }
+      const colon = findTopLevel(item, ':')
+      if (colon >= 0) {
+        collectBindingNames(item.slice(colon + 1), names)
+        continue
+      }
+      const equals = findTopLevel(item, '=')
+      collectBindingNames(equals >= 0 ? item.slice(0, equals) : item, names)
+    }
+    return names
+  }
+  if (text.startsWith('[') && text.endsWith(']')) {
+    for (const part of splitTopLevel(text.slice(1, -1))) {
+      const item = part.trim()
+      if (!item) continue
+      if (item.startsWith('...')) {
+        addBindingName(item.slice(3), names)
+        continue
+      }
+      const equals = findTopLevel(item, '=')
+      collectBindingNames(equals >= 0 ? item.slice(0, equals) : item, names)
+    }
+    return names
+  }
+  addBindingName(text, names)
+  return names
+}
+
+/** slot 作用域声明的字段名（`{ post: p }` → post；`{ ...rest }` 不产生字段）。 */
+function slotFieldNames(pattern) {
+  const fields = new Set()
+  const text = stripOuterParens(pattern)
+  if (!text.startsWith('{') || !text.endsWith('}')) return fields
+  for (const part of splitTopLevel(text.slice(1, -1))) {
+    const item = part.trim()
+    if (!item || item.startsWith('...')) continue
+    const colon = findTopLevel(item, ':')
+    let left = colon >= 0 ? item.slice(0, colon) : item
+    const equals = findTopLevel(left, '=')
+    if (equals >= 0) left = left.slice(0, equals)
+    left = left.trim()
+    if (/^[A-Za-z_$][\w$]*$/.test(left)) fields.add(left)
+  }
+  return fields
+}
+
+/** `$event` 只允许窄形状；返回清理后的表达式与错误消息。 */
+function checkEventLocals(expression) {
+  const errors = []
+  for (const match of expression.matchAll(/\$event/g)) {
+    const rest = expression.slice(match.index + '$event'.length)
+    const allowed = EVENT_LOCAL_SHAPES.some((shape) => {
+      const prefix = `.${shape}`
+      if (!rest.startsWith(prefix)) return false
+      const after = rest.slice(prefix.length)
+      return !after || !/^[\w$]/.test(after)
+    })
+    if (!allowed) {
+      errors.push(
+        '不允许的 $event 用法（仅允许 $event.target.value / $event.target.checked / ' +
+          '$event.key / $event.code / $event.preventDefault() / $event.stopPropagation()）',
+      )
+    }
+  }
+  return { text: expression.replace(/\$event/g, ' '), errors }
+}
+
+function collectLocals(html) {
+  const locals = new Set()
+  for (const match of html.matchAll(/\bv-for="([\s\S]*?)\s+(?:in|of)\s+[^"]*"/g)) {
+    collectBindingNames(match[1], locals)
   }
   // slot 作用域（`#default="{ post }"` / `v-slot:default="{ post: p }"`）同样算局部变量
   for (const match of html.matchAll(/(?:#[\w-]*|v-slot(?::[\w-]+)?)="([^"]*)"/g)) {
-    const value = match[1].trim()
-    const inner = value.startsWith('{') ? value.slice(1, value.lastIndexOf('}')) : value
-    for (const part of inner.split(',')) {
-      const pieces = part.split(':')
-      const name = (pieces.length > 1 ? pieces[1] : pieces[0]).trim()
-      if (/^[A-Za-z_$][\w$]*$/.test(name)) {
-        locals.add(name)
-      }
-    }
+    collectBindingNames(match[1], locals)
   }
   return locals
 }
@@ -644,12 +835,21 @@ for (const entry of Object.values(CONTRACT_COMPONENTS)) {
   }
 }
 
-function scanTheme(file, html) {
+function scanTheme(file, html, sink = errors) {
+  if (!/(?<![\w:-])id\s*=\s*(?:"app"|'app'|app)(?=[\s/>])/i.test(html)) {
+    sink.push(`${rel(file)}:0 缺少 id="app" 根节点`)
+  }
+
   const locals = collectLocals(html)
 
   for (const match of html.matchAll(/<\s*(blog-[a-z-]+)/g)) {
     if (!CONTRACT_COMPONENT_NAMES.has(match[1])) {
-      errors.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的组件 <${match[1]}>`)
+      sink.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的组件 <${match[1]}>`)
+    }
+  }
+  for (const match of html.matchAll(/<\s*([A-Za-z][A-Za-z0-9-]*)/g)) {
+    if (isDeniedBuiltin(match[1])) {
+      sink.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的内置组件 <${match[1]}>`)
     }
   }
 
@@ -657,23 +857,20 @@ function scanTheme(file, html) {
   for (const match of html.matchAll(/(?:#([\w-]+)|v-slot(?::([\w-]+))?)\s*=\s*"([^"]*)"/g)) {
     const name = match[1] ?? match[2] ?? 'default'
     if (!SLOT_NAMES.has(name)) {
-      errors.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的 slot #${name}`)
+      sink.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的 slot #${name}`)
       continue
     }
-    const value = match[3].trim()
-    const inner = value.startsWith('{') ? value.slice(1, value.lastIndexOf('}')) : value
-    for (const part of inner.split(',')) {
-      const field = part.split(':')[0].trim().replace(/^\.\.\./, '')
-      if (field && /^[A-Za-z_$][\w$]*$/.test(field) && !SLOT_SCOPE.get(name)?.has(field)) {
-        errors.push(
+    for (const field of slotFieldNames(match[3])) {
+      if (!SLOT_SCOPE.get(name)?.has(field)) {
+        sink.push(
           `${rel(file)}:${lineAt(html, match.index)} slot #${name} 引用了未登记的作用域字段 "${field}"`,
         )
       }
     }
   }
 
-  // 必填 props 与组件事件
-  for (const match of html.matchAll(/<\s*(blog-[a-z-]+)([^>]*)>/g)) {
+  // 必填 props 与组件事件；引号内的 `>` 不能截断标签
+  for (const match of html.matchAll(/<\s*(blog-[a-z-]+)((?:[^>"']|"[^"]*"|'[^']*')*)>/g)) {
     const tag = match[1]
     const attrs = match[2]
     const entry = CONTRACT_COMPONENTS[tag]
@@ -683,39 +880,60 @@ function scanTheme(file, html) {
     for (const prop of entry.requiredProps) {
       const pattern = new RegExp(`(?<![\\w-])(?:(?::|v-bind:)${prop}(?=[\\s=/>])|${prop}\\s*=)`)
       if (!pattern.test(attrs)) {
-        errors.push(`${rel(file)}:${lineAt(html, match.index)} <${tag}> 缺少必填 prop "${prop}"`)
+        sink.push(`${rel(file)}:${lineAt(html, match.index)} <${tag}> 缺少必填 prop "${prop}"`)
       }
     }
-    if (entry.events.length) {
-      for (const event of attrs.matchAll(/(?:^|\s)(?:@|v-on:)([\w-]+)/g)) {
-        if (!entry.events.includes(event[1])) {
-          errors.push(`${rel(file)}:${lineAt(html, match.index)} <${tag}> 使用了未登记事件 "${event[1]}"`)
-        }
+    for (const event of attrs.matchAll(/(?:^|\s)(?:@|v-on:)([A-Za-z][\w:-]*)(?:\.[\w-]+)*/g)) {
+      if (!entry.events.includes(event[1]) && !NATIVE_EVENTS.has(event[1])) {
+        sink.push(`${rel(file)}:${lineAt(html, match.index)} <${tag}> 使用了未登记事件 "${event[1]}"`)
       }
     }
   }
 
   for (const match of html.matchAll(/\s(v-[a-z-]+)/g)) {
     if (!CONTRACT_DIRECTIVES.has(match[1])) {
-      errors.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的指令 ${match[1]}`)
+      sink.push(`${rel(file)}:${lineAt(html, match.index)} 使用了未登记的指令 ${match[1]}`)
     }
   }
 
   const expressions = []
   for (const match of html.matchAll(/{{([\s\S]*?)}}/g)) {
-    expressions.push({ text: match[1], index: match.index })
+    expressions.push({ text: match[1], index: match.index, event: false })
   }
   for (const match of html.matchAll(/\s([:@][A-Za-z0-9_.:[\]-]+|v-(?:bind|on|if|else-if|for|show|model|text|once)[A-Za-z0-9_.:[\]-]*)="([^"]*)"/g)) {
-    expressions.push({ text: match[2], index: match.index })
+    const attr = match[1]
+    expressions.push({
+      text: match[2],
+      index: match.index,
+      event: attr.startsWith('@') || attr === 'v-on' || attr.startsWith('v-on:'),
+    })
   }
 
-  for (const { text, index } of expressions) {
+  for (const expression of expressions) {
+    let text = expression.text
+    if (expression.event) {
+      const checked = checkEventLocals(text)
+      text = checked.text
+      for (const message of checked.errors) {
+        sink.push(`${rel(file)}:${lineAt(html, expression.index)} ${message}`)
+      }
+    } else if (text.includes('$event')) {
+      sink.push(
+        `${rel(file)}:${lineAt(html, expression.index)} $event 只能用于事件表达式（@ / v-on）`,
+      )
+      text = text.replace(/\$event/g, ' ')
+    }
     for (const name of freeIdentifiers(text)) {
-      if (JS_KEYWORDS.has(name) || locals.has(name) || TEMPLATE_KEYS.has(name)) {
+      if (
+        JS_KEYWORDS.has(name) ||
+        locals.has(name) ||
+        TEMPLATE_KEYS.has(name) ||
+        EXPRESSION_GLOBALS.has(name)
+      ) {
         continue
       }
-      errors.push(
-        `${rel(file)}:${lineAt(html, index)} 引用了未登记的标识符 "${name}"（契约见 apps/blog/src/contract.ts）`,
+      sink.push(
+        `${rel(file)}:${lineAt(html, expression.index)} 引用了未登记的标识符 "${name}"（契约见 apps/blog/src/contract.ts）`,
       )
     }
   }
@@ -738,6 +956,45 @@ scanTheme(capabilitiesFixture, await readText(capabilitiesFixture))
 // headless fixture：锁住 root slot 的使用方式（2A）
 const headlessFixture = path.join(root, 'scripts/fixtures/theme-headless.html')
 scanTheme(headlessFixture, await readText(headlessFixture))
+
+// 规则 fixture：cases.json 同时被 Node 与 Java 测试读取，保证三处扫描器同口径。
+const fixtureRoot = path.join(root, 'scripts/fixtures/theme')
+const fixtureCases = path.join(fixtureRoot, 'cases.json')
+try {
+  const cases = JSON.parse(await readText(fixtureCases))
+  for (const [rule, group] of Object.entries(cases)) {
+    for (const relative of group.pass ?? []) {
+      const file = path.join(fixtureRoot, relative)
+      const local = []
+      scanTheme(file, await readText(file), local)
+      if (local.length) {
+        errors.push(
+          `fixture ${rule} ${rel(file)} 应通过但报错：${local.join('；')}`,
+        )
+      }
+    }
+    for (const item of group.fail ?? []) {
+      const relative = typeof item === 'string' ? item : item.file
+      const expected = typeof item === 'string' ? '' : item.message ?? ''
+      const file = path.join(fixtureRoot, relative)
+      const local = []
+      scanTheme(file, await readText(file), local)
+      if (!local.length) {
+        errors.push(`fixture ${rule} ${rel(file)} 应失败但通过`)
+      } else if (expected && !local.some((message) => message.includes(expected))) {
+        errors.push(
+          `fixture ${rule} ${rel(file)} 期望错误包含 "${expected}"，实际：${local.join('；')}`,
+        )
+      }
+    }
+  }
+} catch (error) {
+  if (error?.code === 'ENOENT') {
+    errors.push(`缺少规则 fixture：${rel(fixtureCases)}`)
+  } else {
+    throw error
+  }
+}
 
 const extraThemeIndex = process.argv.indexOf('--theme')
 if (extraThemeIndex >= 0) {

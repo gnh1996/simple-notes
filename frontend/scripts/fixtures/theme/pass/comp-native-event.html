@@ -1,0 +1,4 @@
+<div id="app">
+  <blog-pager :pager="pager" @click="scrollToTop"></blog-pager>
+  <blog-post-card :class="pager.total > 0 ? 'a' : 'b'" :post="posts[0]"></blog-post-card>
+</div>
