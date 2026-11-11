@@ -605,11 +605,17 @@ func safeJoin(root, rel string) (string, error) {
 		strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
 		return "", errors.New("非法路径")
 	}
-	target, err := filepath.EvalSymlinks(filepath.Join(root, clean))
+	// root 也可能是符号链接 / 8.3 短路径（如 Windows CI 的 C:\Users\RUNNER~1\...），
+	// 先解析 root 再拼接，保证与解析后的 target 处于同一路径形态，避免误判越界。
+	resolvedRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return "", err
 	}
-	within, err := filepath.Rel(root, target)
+	target, err := filepath.EvalSymlinks(filepath.Join(resolvedRoot, clean))
+	if err != nil {
+		return "", err
+	}
+	within, err := filepath.Rel(resolvedRoot, target)
 	if err != nil || within == ".." || strings.HasPrefix(within, ".."+string(os.PathSeparator)) {
 		return "", errors.New("路径越界")
 	}
