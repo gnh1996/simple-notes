@@ -59,6 +59,7 @@ node scripts/build-backend.mjs --skip-tests   # 可加 --dry-run 只打印命令
 # 产物：backend/target/simple-notes-0.2.0.jar
 
 # 3b. Docker 镜像（3 容器：app + web；db 用官方 postgres 镜像）
+# 推 tag 后 .github/workflows/images.yml 会自动构建并推送 GHCR；下面为本地 / 离线构建
 docker build --target app -t simple-notes-app:0.2.0 \
   --build-arg RELEASE_VERSION=0.2.0 -f docker/Dockerfile .
 docker build --target web -t simple-notes-web:0.2.0 \

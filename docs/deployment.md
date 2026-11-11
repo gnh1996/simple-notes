@@ -16,6 +16,8 @@ docker compose up -d --build
 
 首次登录后请在个人中心修改 root 口令；`.env` 里的初始口令只在 root 仍是迁移默认口令时生效。
 
+> **fail-fast**：root 仍是迁移里的默认口令（`admin@123456`）而 `ROOT_INITIAL_PASSWORD` 为空时，`app` 会拒绝启动并在日志里给出提示。改密之后该变量可以留空（但 `scripts/init-env.sh` 会一直保留它，留着也无害）。
+
 受限网络 / HTTP 代理：
 
 ```bash
@@ -146,6 +148,26 @@ bash scripts/docker-build.sh all
 docker compose up -d --no-build
 docker compose logs -f app
 ```
+
+### 6.1 使用预构建镜像（GHCR）
+
+打 `v*` tag 后，GitHub Actions 会把镜像推到 `ghcr.io/<owner>/simple-notes-{app,web}:<version>`（同时更新 `latest`）。
+服务器不必构建，只拉镜像：
+
+```dotenv
+# .env
+APP_IMAGE=ghcr.io/<owner>/simple-notes-app:0.2.0
+WEB_IMAGE=ghcr.io/<owner>/simple-notes-web:0.2.0
+```
+
+```bash
+docker compose pull app web
+docker compose up -d --no-build
+```
+
+- 包默认继承仓库可见性；通过网页把 package 设为 public，或 `docker login ghcr.io` 后再拉；
+- 目前只构建 `linux/amd64`，arm64 见 `.github/workflows/images.yml` 顶部说明；
+- 镜像里的 `RELEASE_VERSION` 取自 tag，`/api/version` 可直接核对。
 
 ## 7. 边界与注意
 

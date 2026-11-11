@@ -66,6 +66,13 @@
 
 ## 变更记录
 
+### 2026-11-11 · 开源准备（MIT / CI / 初始口令 fail-fast）
+
+- **许可**：新增 `LICENSE`（MIT）与 `SECURITY.md`；README 标注预发布状态与品牌资源边界
+- **安全**：`RootPasswordInitializer` 在 root 仍为迁移默认口令且未配置 `ROOT_INITIAL_PASSWORD` 时**启动失败**（原为静默跳过）；用户改密后该变量可留空
+- **CI**：`.github/workflows/ci.yml`（frontend typecheck + build / backend Testcontainers / desktop `go test` / compose 与 nginx 配置校验）；`.github/workflows/images.yml` 在 `v*` tag 构建并推送 GHCR 镜像
+- **镜像来源**：`compose.yaml` 的 `APP_IMAGE` / `WEB_IMAGE` 可指向 GHCR 预构建镜像，服务器无需本地构建
+
 ### 2026-11-11 · 部署形态定为 3 容器（db + app + web）
 
 - **形态**：`compose.yaml` = db（官方 `postgres:17`）+ app（Spring Boot jar，8081，默认回环发布）+ web（nginx，8080，admin 静态 + `/api` `/blog` `/` 反代）

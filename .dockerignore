@@ -1,6 +1,7 @@
 # 构建上下文只保留服务端镜像需要的内容
 .git
 .gitignore
+.github
 .idea
 .opencode
 .run

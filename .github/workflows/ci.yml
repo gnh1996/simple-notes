@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: frontend（typecheck + build）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm build:admin
+      - run: pnpm build:blog
+
+  backend:
+    name: backend（Testcontainers）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - name: mvn test
+        working-directory: backend
+        run: ./mvnw -B -ntp test
+
+  desktop:
+    name: desktop（Go，Windows）
+    # Wails 的 Linux 路径需要 GTK4 / WebKitGTK 6.0 + CGO；Windows 路径无 CGO 依赖，
+    # 且与当前实际验证的平台一致。Linux 构建验证后续再单独加 job。
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+      - run: go vet ./...
+      - run: go test ./...
+
+  deploy:
+    name: deploy（compose / 脚本 / nginx）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell 语法
+        run: |
+          for f in scripts/*.sh docker/app-entrypoint.sh; do
+            bash -n "$f"
+          done
+      - name: compose 配置
+        env:
+          POSTGRES_PASSWORD: ci-only-password
+          JWT_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
+          ROOT_INITIAL_PASSWORD: ci-only-root-password
+        run: docker compose config --quiet
+      - name: nginx 站点示例
+        run: |
+          docker run --rm \
+            -v "$PWD/deploy/nginx/site.conf.example:/etc/nginx/conf.d/simple-notes.conf:ro" \
+            nginx:1.27-alpine nginx -t
