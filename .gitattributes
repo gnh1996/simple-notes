@@ -1,0 +1,4 @@
+# 容器 / 部署脚本必须保持 LF（Windows 检出时不能被 core.autocrlf 改成 CRLF）
+*.sh text eol=lf
+docker/** text eol=lf
+deploy/**/*.example text eol=lf

@@ -23,6 +23,8 @@
 | `docs/desktop-layout.md` | 桌面端布局与文档工作台（v1.1 已实现，Windows）：默认全宽编辑 + 可收起推挤式资料库、统一文档多标签、`Ctrl+K` 快速打开、启动恢复与本地优先 |
 | `docs/desktop-diagnostics.md` | 桌面端错误处理与运行日志（v1 已实现）：错误分层、网络失败降级、详情弹层、结构化日志 / 轮转 / 脱敏、诊断入口 |
 | `docs/tech-eval-vditor-wails.md` | 可行性评估与落地记录：Wails v3 已采纳；admin/blog/desktop 均已切换 Vditor + Lute（v2） |
+| `docs/deployment.md` | 部署（Docker 一键 / 拆分）：单镜像组成、数据目录、备份恢复、外部数据库、TLS 与边界 |
+| `docs/release.md` | 发版与版本确定：git tag 唯一来源、构建注入、发版流程与校验 |
 | 各端 `README.md` | 目录结构、命令与端内细节 |
 | 各端 `AGENTS.md` | 端内专属规则（探索到对应目录时自动加载） |
 
@@ -76,6 +78,11 @@ go test ./...
 # 后端（backend/ 下执行；打包前先 pnpm build:blog，产物会进 jar）
 ./mvnw test
 ./mvnw spring-boot:run   # 默认 dev profile：asset-base → Vite 5174（HMR）
+
+# Docker（仓库根：3 容器 db + app + web）
+bash scripts/init-env.sh
+bash scripts/docker-build.sh all   # 受限网络自动处理代理
+docker compose up -d --no-build
 ```
 
 ## 禁则（Guardrails）

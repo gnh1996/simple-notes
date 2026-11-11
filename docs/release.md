@@ -53,10 +53,18 @@ node scripts/release-version.mjs v0.2.0 --apply
 git add -A && git commit -m "chore(release): v0.2.0 元数据"
 git tag -a v0.2.0 -m "v0.2.0"
 
-# 3. 后端（含管理端 / 博客 runtime；前端构建不需要版本环境变量）
+# 3. 后端 jar（含博客 runtime；管理端由 web 镜像构建，前端构建不需要版本环境变量）
 cd frontend && pnpm install && pnpm build:admin && pnpm build:blog && cd ..
 node scripts/build-backend.mjs --skip-tests   # 可加 --dry-run 只打印命令
 # 产物：backend/target/simple-notes-0.2.0.jar
+
+# 3b. Docker 镜像（3 容器：app + web；db 用官方 postgres 镜像）
+docker build --target app -t simple-notes-app:0.2.0 \
+  --build-arg RELEASE_VERSION=0.2.0 -f docker/Dockerfile .
+docker build --target web -t simple-notes-web:0.2.0 \
+  --build-arg RELEASE_VERSION=0.2.0 -f docker/Dockerfile .
+# 受限网络 / HTTP 代理：bash scripts/docker-build.sh all
+# 部署 / 备份 / 外部数据库 / 裸机 nginx 见 docs/deployment.md
 
 # 4. 桌面端（三平台各自构建，无交叉编译；在各平台本机执行同一条命令）
 node scripts/build-desktop.mjs --package      # 可加 --dry-run 只打印命令

@@ -22,7 +22,8 @@ limit_req_zone $binary_remote_addr zone=simple_notes_media_rl:10m rate=20r/s;
 limit_conn_zone $binary_remote_addr zone=simple_notes_media_conn:10m;
 
 upstream simple_notes_backend {
-    server 127.0.0.1:8080;
+    # 裸机 app 默认 127.0.0.1:8081；Docker compose 网络内改成 app:8081
+    server 127.0.0.1:8081;
     keepalive 16;
 }
 

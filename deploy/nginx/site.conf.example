@@ -1,0 +1,108 @@
+# Simple Notes · 裸机 nginx 站点示例（admin 静态 + 反代 app）
+#
+# 前提：
+#   - admin 已构建（VITE_ADMIN_BASE=/admin/ pnpm build:admin），产物放到 /var/www/simple-notes/admin
+#   - app 监听 127.0.0.1:8081（compose 默认只绑定回环；远程 app 改成 APP_BIND=0.0.0.0）
+#   - app 的 ADMIN_ORIGIN 设为本站点 origin，例如 https://notes.example.com
+#
+# 注意：blog 不是纯静态 SPA，/blog/** 和页面壳 /** 必须反代到 app，不能只靠 nginx。
+
+upstream app {
+    server 127.0.0.1:8081;
+    keepalive 16;
+}
+
+limit_req_zone $binary_remote_addr zone=login_rl:10m rate=10r/m;
+limit_req_status 429;
+
+server {
+    listen 80;
+    server_name notes.example.com;
+
+    root /var/www/simple-notes;
+    index index.html;
+    client_max_body_size 25m;
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml application/json application/javascript application/xml image/svg+xml;
+
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+    }
+
+    location = /admin {
+        return 301 /admin/;
+    }
+
+    location /admin/assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+    }
+
+    location /admin/ {
+        try_files $uri $uri/ /admin/index.html;
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+    }
+
+    location = /api/auth/login {
+        limit_req zone=login_rl burst=20 nodelay;
+        proxy_pass http://app;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 660s;
+    }
+
+    location /api/ {
+        proxy_pass http://app;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        # 主题 AI 使用 SSE（SseEmitter 超时约 630s）
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 660s;
+        proxy_send_timeout 660s;
+    }
+
+    # blog runtime 与静态资源在 app jar 内
+    location /blog/ {
+        proxy_pass http://app;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_read_timeout 660s;
+    }
+
+    # 博客页面壳 / history fallback，必须到 app
+    location / {
+        proxy_pass http://app;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_read_timeout 660s;
+    }
+}

@@ -1,0 +1,29 @@
+# 构建上下文只保留服务端镜像需要的内容
+.git
+.gitignore
+.idea
+.opencode
+.run
+.ruff_cache
+opencode.json
+logs
+data
+backup
+docs/*
+!docs/theme-contract.md
+!docs/theme-contract.generated.md
+assets
+
+**/node_modules
+**/dist
+
+# 本地机密 / 环境文件绝不能进镜像
+backend/src/main/resources/application-local.yml
+**/.env
+**/.env.*
+frontend/apps/*/public/vditor
+backend/target
+desktop/bin
+desktop/web/dist
+
+**/AGENTS.md

@@ -24,6 +24,8 @@ function appVersion(): string {
 }
 
 export default defineConfig({
+  // 容器部署时 admin 挂在同源 /admin/ 下（docker 内 nginx 托管）；本地开发保持 /
+  base: process.env.VITE_ADMIN_BASE ?? '/',
   plugins: [vue(), tailwindcss()],
   define: {
     __APP_VERSION__: JSON.stringify(appVersion()),

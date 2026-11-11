@@ -14,3 +14,8 @@ opencode.json
 Thumbs.db
 
 logs
+
+# 容器运行数据与本地备份
+/data/
+/backup/
+.env
