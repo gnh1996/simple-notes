@@ -118,6 +118,7 @@
 
 - **root 用户**（应用拥有者，唯一预置用户）：
   - 初始化：由**初始迁移直接 INSERT**（固定 UUID）；密码哈希 = 固定初始密码 `admin@123456` 的 bcrypt 值（写死在迁移里）；启动不参与创建（`ROOT_USERNAME` / `ROOT_PASSWORD` 配置**取消**）
+  - 部署替换：`RootPasswordInitializer` 在启动时若发现 root hash 仍对应默认口令，则用 `ROOT_INITIAL_PASSWORD` 覆盖；**该值为空且口令仍是默认值时启动失败（fail-fast）**，避免公开口令被带到公网。用户改密后该变量可留空
   - 提示：初始密码公开写在迁移与本文档中，仅作首启使用——**首次登录后应立即在个人中心改密**（v1 不做强制首登改密，见 §12）
   - 约束：不可删除 / 禁用（用户名 v1 全量不可改）；可修改密码与昵称
 - **`SUPER_ADMIN` 角色**：与 root 用户、绑定关系（`sys_user_role` 行）一并由初始迁移预置（固定 UUID）；`builtin=1`

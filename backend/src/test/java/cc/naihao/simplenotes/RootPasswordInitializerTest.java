@@ -1,6 +1,8 @@
 package cc.naihao.simplenotes;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,17 +26,22 @@ class RootPasswordInitializerTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
-    @Test
-    void replacesDefaultPasswordOnlyOnce() {
+    private static SysUser root(String hash) {
         SysUser root = new SysUser();
         root.setUsername("root");
-        root.setPasswordHash("default-hash");
+        root.setPasswordHash(hash);
+        return root;
+    }
+
+    @Test
+    void replacesDefaultPasswordOnlyOnce() {
+        SysUser root = root("default-hash");
         when(userRepository.findByUsername("root")).thenReturn(Optional.of(root));
         when(passwordEncoder.matches(RootPasswordInitializer.DEFAULT_ROOT_PASSWORD, "default-hash"))
                 .thenReturn(true);
         when(passwordEncoder.encode("random-initial")).thenReturn("new-hash");
 
-        new RootPasswordInitializer(userRepository, passwordEncoder, "random-initial").run(null);
+        new RootPasswordInitializer(userRepository, passwordEncoder, "random-initial").applyInitialPassword();
 
         assertThat(root.getPasswordHash()).isEqualTo("new-hash");
         verify(userRepository).save(root);
@@ -42,23 +49,51 @@ class RootPasswordInitializerTest {
 
     @Test
     void keepsUserChangedPassword() {
-        SysUser root = new SysUser();
-        root.setUsername("root");
-        root.setPasswordHash("user-changed-hash");
+        SysUser root = root("user-changed-hash");
         when(userRepository.findByUsername("root")).thenReturn(Optional.of(root));
         when(passwordEncoder.matches(RootPasswordInitializer.DEFAULT_ROOT_PASSWORD, "user-changed-hash"))
                 .thenReturn(false);
 
-        new RootPasswordInitializer(userRepository, passwordEncoder, "random-initial").run(null);
+        new RootPasswordInitializer(userRepository, passwordEncoder, "random-initial").applyInitialPassword();
 
         assertThat(root.getPasswordHash()).isEqualTo("user-changed-hash");
         verify(userRepository, never()).save(root);
     }
 
     @Test
-    void skipsWhenNotConfigured() {
-        new RootPasswordInitializer(userRepository, passwordEncoder, " ").run(null);
+    void allowsStartupWithoutInitialPasswordAfterUserChangedIt() {
+        SysUser root = root("user-changed-hash");
+        when(userRepository.findByUsername("root")).thenReturn(Optional.of(root));
+        when(passwordEncoder.matches(RootPasswordInitializer.DEFAULT_ROOT_PASSWORD, "user-changed-hash"))
+                .thenReturn(false);
 
-        verify(userRepository, never()).findByUsername("root");
+        new RootPasswordInitializer(userRepository, passwordEncoder, " ").applyInitialPassword();
+
+        assertThat(root.getPasswordHash()).isEqualTo("user-changed-hash");
+        verify(userRepository, never()).save(root);
+    }
+
+    @Test
+    void failsFastWhenDefaultPasswordStillActiveWithoutOverride() {
+        SysUser root = root("default-hash");
+        when(userRepository.findByUsername("root")).thenReturn(Optional.of(root));
+        when(passwordEncoder.matches(RootPasswordInitializer.DEFAULT_ROOT_PASSWORD, "default-hash"))
+                .thenReturn(true);
+
+        RootPasswordInitializer initializer = new RootPasswordInitializer(userRepository, passwordEncoder, "");
+
+        assertThatThrownBy(() -> initializer.applyInitialPassword())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ROOT_INITIAL_PASSWORD");
+        verify(userRepository, never()).save(root);
+    }
+
+    @Test
+    void ignoresMissingRootUser() {
+        when(userRepository.findByUsername("root")).thenReturn(Optional.empty());
+
+        new RootPasswordInitializer(userRepository, passwordEncoder, "random-initial").applyInitialPassword();
+
+        verify(userRepository, never()).save(any());
     }
 }

@@ -65,8 +65,9 @@ simple-notes:
     # JWT 签名密钥（HS256，32+ 字节随机值，值来源：本地 application-local.yml / 部署环境变量）。
     # 无默认值：缺失或不满足长度时由 AuthProperties 校验在启动时失败（fail-fast，见 docs/auth-rbac.md §9）
     jwt-secret: "${JWT_SECRET}"
-    # 一键容器部署：首次启动若 root 仍是迁移里的默认口令，则替换为该值；改密后不再覆盖。
-    # 不配置（默认空）时完全跳过；值不落日志。
+    # 首次启动若 root 仍是迁移里的默认口令，则替换为该值；改密后不再覆盖。
+    # root 仍是默认口令且该值为空 → 启动失败（fail-fast，避免公开口令上线）。
+    # 值不落日志。
     root-initial-password: "${ROOT_INITIAL_PASSWORD:}"
   # 附件存储（docs/attachment-storage.md）：
   # mode 是 site_setting.storage.mode 缺失时的兜底；运行时切换走 /api/admin/media/storage。

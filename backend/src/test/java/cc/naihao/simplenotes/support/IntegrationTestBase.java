@@ -31,7 +31,10 @@ import tools.jackson.databind.ObjectMapper;
  * Flyway V1 初始化；测试数据一律用唯一名，互不干扰。
  */
 @SpringBootTest(properties = {
-        "simple-notes.auth.jwt-secret=integration-test-secret-0123456789abcdef0123456789abcdef"
+        "simple-notes.auth.jwt-secret=integration-test-secret-0123456789abcdef0123456789abcdef",
+        // 迁移预置口令与 ROOT_PASSWORD 相同：初始化器会重写同值 hash，登录不受影响；
+        // 缺这个属性会触发 RootPasswordInitializer 的 fail-fast，整个上下文起不来
+        "simple-notes.auth.root-initial-password=admin@123456"
 })
 @AutoConfigureMockMvc
 @Import(TestcontainersConfig.class)
