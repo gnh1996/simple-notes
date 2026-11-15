@@ -14,7 +14,7 @@
     !define INFO_PRODUCTNAME "Simple Notes"
 !endif
 !ifndef INFO_PRODUCTVERSION
-    !define INFO_PRODUCTVERSION "0.1.0-rc.1"
+    !define INFO_PRODUCTVERSION "0.1.0-rc.2"
 !endif
 !ifndef INFO_COPYRIGHT
     !define INFO_COPYRIGHT "(c) 2026 naihao.cc"

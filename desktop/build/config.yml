@@ -9,7 +9,7 @@ info:
   description: '随手记与博客写作桌面端'
   copyright: '(c) 2026 naihao.cc'
   comments: 'Wails v3 desktop client'
-  version: '0.1.0-rc.1'
+  version: '0.1.0-rc.2'
 dev_mode:
   root_path: .
   log_level: warn
