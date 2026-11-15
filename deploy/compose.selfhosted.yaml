@@ -13,6 +13,9 @@ services:
   app:
     mem_limit: 832m
     environment:
+      # 构建信息（GET /api/version）：commit 只从运行时注入，镜像内不烘焙
+      APP_COMMIT: ${APP_COMMIT:-}
+      APP_BUILD_TIME: ${APP_BUILD_TIME:-}
       # JVM 会读取 JAVA_TOOL_OPTIONS；显式 -Xmx 优先于入口脚本的 MaxRAMPercentage。
       # SerialGC 在小堆、低并发的个人实例上开销更小。
       JAVA_TOOL_OPTIONS: >-

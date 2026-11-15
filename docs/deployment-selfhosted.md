@@ -111,6 +111,8 @@ ADMIN_ORIGIN=https://<ADMIN_HOST>
 APP_BIND=<VPN_APP_IP>          # 只让 VPN 访问 8081
 APP_PORT=8081
 APP_IMAGE=<APP_IMAGE>
+APP_COMMIT=<tag 的短 commit>
+APP_BUILD_TIME=<tag 的提交时间，ISO8601>
 
 # 其余保留 init-env.sh 生成值：POSTGRES_PASSWORD / JWT_SECRET / ADMIN_INITIAL_PASSWORD
 # SIMPLE_NOTES_PORT / WEB_IMAGE 在本拓扑不使用
@@ -207,6 +209,16 @@ docker compose -f compose.yaml -f deploy/compose.selfhosted.yaml pull app
 docker compose -f compose.yaml -f deploy/compose.selfhosted.yaml up -d app
 docker compose -f compose.yaml -f deploy/compose.selfhosted.yaml logs --tail=100 app
 ```
+
+国内直连 GHCR 可能很慢（实测 2026-11-15 腾讯云拉取超时）。可改用 NJU 镜像后重新打官方 tag：
+
+```bash
+docker pull ghcr.nju.edu.cn/<owner>/simple-notes-app:<version>
+docker tag ghcr.nju.edu.cn/<owner>/simple-notes-app:<version> \
+           ghcr.io/<owner>/simple-notes-app:<version>
+```
+
+镜像内容一致（digest 应相同）；`docker compose up` 发现本地已有同 tag 镜像时不会重复拉取。
 
 - Flyway 在 app 启动时自动迁移；只能前进，升级前必须备份。
 - 不要 `docker compose down -v`，会删除数据库卷。
