@@ -74,8 +74,15 @@ const edits = [
   },
   {
     file: 'desktop/build/windows/wails.exe.manifest',
-    apply: (s) => s.replace(/version="[^"]*"/, `version="${win4}"`),
-    expect: new RegExp(`version="${win4.replace(/\./g, '\\.')}"`),
+    // 只改 assemblyIdentity 的版本；不能碰 XML 声明里的 version="1.0"
+    apply: (s) =>
+      s.replace(
+        /(<assemblyIdentity\b[^>]*\bname="cc\.naihao\.simplenotes"[^>]*\bversion=")[^"]*(")/,
+        `$1${win4}$2`,
+      ),
+    expect: new RegExp(
+      `^<\\?xml version="1\\.0"[\\s\\S]*name="cc\\.naihao\\.simplenotes" version="${win4.replace(/\./g, '\\.')}"`,
+    ),
   },
   {
     file: 'desktop/build/windows/nsis/wails_tools.nsh',
