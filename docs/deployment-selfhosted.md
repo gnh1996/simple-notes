@@ -161,6 +161,7 @@ $env:VITE_ADMIN_BASE='/'; $env:VITE_BLOG_URL='https://<BLOG_HOST>'; $env:RELEASE
 ```bash
 ssh root@<HK_HOST> "rm -rf /var/www/simple-notes/admin && mkdir -p /var/www/simple-notes/admin"
 scp -r frontend/apps/admin/dist/* root@<HK_HOST>:/var/www/simple-notes/admin/
+ssh root@<HK_HOST> "find /var/www/simple-notes/admin -type d -exec chmod 755 {} +; find /var/www/simple-notes/admin -type f -exec chmod 644 {} +"
 ```
 
 安装 nginx 配置：以 `deploy/nginx/subdomains.conf.example` 为模板，替换占位符后放到 `/etc/nginx/conf.d/simple-notes.conf`：
@@ -204,11 +205,15 @@ git push origin main --tags
 cd /opt/simple-notes
 bash scripts/docker-backup.sh /opt/simple-notes/backup/$(date +%Y%m%d-%H%M%S)
 
-# 修改 .env 的 APP_IMAGE 为新版本
+# 修改 .env 的 APP_IMAGE / APP_COMMIT / APP_BUILD_TIME 为新版本
+#   APP_COMMIT=$(git rev-parse --short <tag>)
+#   APP_BUILD_TIME=$(git log -1 --format=%cI <tag>)
 docker compose -f compose.yaml -f deploy/compose.selfhosted.yaml pull app
 docker compose -f compose.yaml -f deploy/compose.selfhosted.yaml up -d app
 docker compose -f compose.yaml -f deploy/compose.selfhosted.yaml logs --tail=100 app
 ```
+
+等待 `docker compose ps` 显示 `healthy`，再继续下一步。
 
 国内直连 GHCR 可能很慢（实测 2026-11-15 腾讯云拉取超时）。可改用 NJU 镜像后重新打官方 tag：
 
