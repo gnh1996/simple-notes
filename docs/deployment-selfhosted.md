@@ -76,24 +76,8 @@ docker compose version
 docker info | grep -A3 "Registry Mirrors"
 ```
 
-说明：腾讯云直连 Docker Hub 会超时，必须用腾讯云内网镜像；GHCR 可直连。
+说明：腾讯云直连 Docker Hub 会超时，必须用腾讯云内网镜像；GHCR 视网络情况可能较慢，备用方案见 4.3。
 镜像加速只影响 Docker Hub（`postgres`）；app 镜像从 GHCR 拉取。
-
-如果服务器上已有本机 HTTP 代理（例如 xray 的 HTTP inbound `127.0.0.1:1081`），可给 Docker 守护进程配置代理，显著加快 GHCR 拉取：
-
-```bash
-mkdir -p /etc/systemd/system/docker.service.d
-cat > /etc/systemd/system/docker.service.d/http-proxy.conf <<'EOF'
-[Service]
-Environment="HTTP_PROXY=http://127.0.0.1:1081"
-Environment="HTTPS_PROXY=http://127.0.0.1:1081"
-Environment="NO_PROXY=localhost,127.0.0.1,10.8.0.0/24,mirror.ccs.tencentyun.com,.tencentyun.com"
-EOF
-systemctl daemon-reload
-systemctl restart docker
-```
-
-`NO_PROXY` 保留腾讯镜像与 VPN；`restart docker` 会让容器短暂重启（`restart: unless-stopped` 会自动拉起）。实测配置后拉取 GHCR web 镜像约 11 秒。
 
 ### 3.4 目录与文件
 
@@ -231,7 +215,7 @@ docker compose -f compose.yaml -f deploy/compose.selfhosted.yaml logs --tail=100
 
 等待 `docker compose ps` 显示 `healthy`，再继续下一步。
 
-国内直连 GHCR 可能很慢；优先按 3.3 给 Docker 守护进程配本机代理（实测约 11 秒拉完 web 镜像）。未配代理时可改用 NJU 镜像后重新打官方 tag：
+国内直连 GHCR 可能很慢。可改用 NJU 镜像后重新打官方 tag：
 
 ```bash
 docker pull ghcr.nju.edu.cn/<owner>/simple-notes-app:<version>
