@@ -3,6 +3,7 @@ package cc.naihao.simplenotes;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -43,6 +44,17 @@ class BlogShellRouteIntegrationTest extends IntegrationTestBase {
                 .andExpect(content().string(containsString("window.__BLOG_BOOT__")))
                 .andExpect(content().string(containsString("data-blog-boot")))
                 .andExpect(content().string(containsString("data-blog-progress")));
+    }
+
+    @Test
+    @DisplayName("HEAD 与 GET 同权：公开只读资源放行，管理接口仍要求会话")
+    void headMatchesGetForPublicReads() throws Exception {
+        mockMvc.perform(head("/")).andExpect(status().isOk());
+        mockMvc.perform(head("/api/version")).andExpect(status().isOk());
+        mockMvc.perform(head("/api/blog/posts").param("page", "1")).andExpect(status().isOk());
+        mockMvc.perform(head("/api/media/00000000-0000-0000-0000-000000000000"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(head("/api/admin/users")).andExpect(status().isUnauthorized());
     }
 
     @Test

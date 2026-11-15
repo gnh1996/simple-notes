@@ -89,14 +89,18 @@ public class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         // OpenAPI 契约（docs/tech-stack.md：契约单一来源，前端 / 桌面端生成客户端用）
                         .requestMatchers(HttpMethod.GET, "/v3/api-docs", "/v3/api-docs/**").permitAll()
+                        .requestMatchers(HttpMethod.HEAD, "/v3/api-docs", "/v3/api-docs/**").permitAll()
                         // 版本自证（docs/release.md §2）：公开，不含敏感信息
                         .requestMatchers(HttpMethod.GET, "/api/version").permitAll()
+                        .requestMatchers(HttpMethod.HEAD, "/api/version").permitAll()
                         // 登录匿名可访问；其余认证接口（logout / me / password / profile）要求会话
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                         // blog 公开读接口匿名可访问；写操作要求会话（blog:* 权限码随 blog 功能设计补充）
                         .requestMatchers(HttpMethod.GET, "/api/blog/**").permitAll()
+                        .requestMatchers(HttpMethod.HEAD, "/api/blog/**").permitAll()
                         // 稳定媒体 URL 匿名可读（正文 / 封面引用）
                         .requestMatchers(HttpMethod.GET, "/api/media/**").permitAll()
+                        .requestMatchers(HttpMethod.HEAD, "/api/media/**").permitAll()
                         // Nginx auth_request 内部签名接口：控制器内校验共享令牌，不暴露给浏览器
                         .requestMatchers("/api/internal/**").permitAll()
                         // 三端接口域：要求已认证会话（client 一致性 + 权限码由过滤器 / 方法级校验）
@@ -105,6 +109,8 @@ public class SecurityConfig {
                         // 路由本身归 runtime，因此不再逐个登记页面路径，只保留一条"非 API 的 GET 公开"。
                         // 必须排在 /api/** 之后，否则 GET /api/admin/** 会被这条放行。
                         .requestMatchers(HttpMethod.GET, "/**").permitAll()
+                        // 监控 / 爬虫的 HEAD 探测与 GET 同权；仍排在 /api/** 之后，管理接口 HEAD 不放行
+                        .requestMatchers(HttpMethod.HEAD, "/**").permitAll()
                         // 默认拒绝：非 API 的写请求与其余未声明路径一律拒绝
                         .anyRequest().denyAll())
                 .exceptionHandling(exception -> exception
