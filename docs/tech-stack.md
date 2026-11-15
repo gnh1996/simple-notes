@@ -66,6 +66,12 @@
 
 ## 变更记录
 
+### 2026-11-15 · 首个测试版本前命名收口（超管 root → admin）
+
+- **登录名**：预置超管 `root` → `admin`（新增 `V20__rename_root_user_to_admin.sql`；固定 UUID / 密码哈希 / `SUPER_ADMIN` 角色与绑定关系不变，V1 历史脚本不动）
+- **配置**：`ROOT_INITIAL_PASSWORD` → `ADMIN_INITIAL_PASSWORD`，配置键 `simple-notes.auth.root-initial-password` → `simple-notes.auth.admin-initial-password`；初始化器 `RootPasswordInitializer` → `AdminPasswordInitializer`（部署 `.env` / compose / CI 同步）
+- **Flyway**：评估后不合并迁移历史（开发库已执行 V1–V19 且有内容），首个测试版本继续按增量脚本发布
+
 ### 2026-11-11 · 开源准备（MIT / CI / 初始口令 fail-fast）
 
 - **许可**：新增 `LICENSE`（MIT）与 `SECURITY.md`；README 标注预发布状态与品牌资源边界

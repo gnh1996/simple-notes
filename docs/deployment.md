@@ -6,17 +6,20 @@
 ## 1. 快速开始
 
 ```bash
-bash scripts/init-env.sh          # 生成 .env（随机 DB 口令 / JWT / root 初始口令）
+bash scripts/init-env.sh          # 生成 .env（随机 DB 口令 / JWT / admin 初始口令）
 docker compose up -d --build
 ```
 
 - 管理端：`http://<host>:8080/admin/`
 - 博客：`http://<host>:8080/`
-- 初始口令：`grep ROOT_INITIAL_PASSWORD .env`
+- 初始账号：`admin`
+- 初始口令：`grep ADMIN_INITIAL_PASSWORD .env`
 
-首次登录后请在个人中心修改 root 口令；`.env` 里的初始口令只在 root 仍是迁移默认口令时生效。
+首次登录后请在个人中心修改 admin 口令；`.env` 里的初始口令只在 admin 仍是迁移默认口令时生效。
 
-> **fail-fast**：root 仍是迁移里的默认口令（`admin@123456`）而 `ROOT_INITIAL_PASSWORD` 为空时，`app` 会拒绝启动并在日志里给出提示。改密之后该变量可以留空（但 `scripts/init-env.sh` 会一直保留它，留着也无害）。
+> **fail-fast**：admin 仍是迁移里的默认口令（`admin@123456`）而 `ADMIN_INITIAL_PASSWORD` 为空时，`app` 会拒绝启动并在日志里给出提示。改密之后该变量可以留空（但 `scripts/init-env.sh` 会一直保留它，留着也无害）。
+
+> **从 2026-11-15 之前的版本升级**：启动时 `V20__rename_root_user_to_admin.sql` 会把预置超管登录名从 `root` 改为 `admin`；旧 `.env` / 本地运行配置里的 `ROOT_INITIAL_PASSWORD` 需要改名为 `ADMIN_INITIAL_PASSWORD`（配置键为 `simple-notes.auth.admin-initial-password`）。
 
 受限网络 / HTTP 代理：
 
@@ -52,7 +55,7 @@ app (8081) ────── db:5432（或外部 PostgreSQL）
 | `/data/media` | `./data/media` | LOCAL 存储的上传文件 |
 | `/data/logs` | `./data/logs` | 应用日志（10MB × 30 天） |
 
-`.env` 含数据库口令 / JWT / root 初始口令，权限 `600`，**不要提交**。
+`.env` 含数据库口令 / JWT / admin 初始口令，权限 `600`，**不要提交**。
 
 ## 3. 直连已有数据库（外部库）
 

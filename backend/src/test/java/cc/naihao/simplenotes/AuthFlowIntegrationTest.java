@@ -35,7 +35,7 @@ class AuthFlowIntegrationTest extends IntegrationTestBase {
     @Test
     @DisplayName("凭据错误 → 401 LOGIN_CREDENTIALS_INVALID；账号不存在同样处理（不泄露用户存在性）")
     void wrongPasswordReturnsCredentialsInvalid() throws Exception {
-        login(ROOT_USERNAME, "wrong-password", "ADMIN")
+        login(ADMIN_USERNAME, "wrong-password", "ADMIN")
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("LOGIN_CREDENTIALS_INVALID"));
         login(uniqueUsername("ghost"), "whatever", "ADMIN")
@@ -58,13 +58,13 @@ class AuthFlowIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    @DisplayName("root 登录（迁移内置初始密码）→ me 返回 root=true 与全量菜单（不做过滤）")
+    @DisplayName("admin 登录（迁移内置初始密码）→ me 返回 root=true 与全量菜单（不做过滤）")
     void rootLoginAndMe() throws Exception {
         String token = rootToken();
         authedGet("/api/auth/me", token)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.root").value(true))
-                .andExpect(jsonPath("$.user.username").value(ROOT_USERNAME))
+                .andExpect(jsonPath("$.user.username").value(ADMIN_USERNAME))
                 // 超管能力不落在权限码集合里：codes / entries 均为空
                 .andExpect(jsonPath("$.codes").isEmpty())
                 .andExpect(jsonPath("$.entries").isEmpty())
@@ -182,7 +182,7 @@ class AuthFlowIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    @DisplayName("root 用户不可被删除 / 禁用 / 改角色集合 / 重置密码（接口拒绝）")
+    @DisplayName("admin 用户不可被删除 / 禁用 / 改角色集合 / 重置密码（接口拒绝）")
     void superAdminHolderIsProtected() throws Exception {
         String root = rootToken();
         String rootUserId = meUserId(root);

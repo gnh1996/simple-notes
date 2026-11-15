@@ -32,17 +32,17 @@ import tools.jackson.databind.ObjectMapper;
  */
 @SpringBootTest(properties = {
         "simple-notes.auth.jwt-secret=integration-test-secret-0123456789abcdef0123456789abcdef",
-        // 迁移预置口令与 ROOT_PASSWORD 相同：初始化器会重写同值 hash，登录不受影响；
-        // 缺这个属性会触发 RootPasswordInitializer 的 fail-fast，整个上下文起不来
-        "simple-notes.auth.root-initial-password=admin@123456"
+        // 迁移预置口令与 ADMIN_PASSWORD 相同：初始化器会重写同值 hash，登录不受影响；
+        // 缺这个属性会触发 AdminPasswordInitializer 的 fail-fast，整个上下文起不来
+        "simple-notes.auth.admin-initial-password=admin@123456"
 })
 @AutoConfigureMockMvc
 @Import(TestcontainersConfig.class)
 public abstract class IntegrationTestBase {
 
-    protected static final String ROOT_USERNAME = "root";
+    protected static final String ADMIN_USERNAME = "admin";
     /** 迁移内置的固定初始密码（docs/auth-rbac.md §4） */
-    protected static final String ROOT_PASSWORD = "admin@123456";
+    protected static final String ADMIN_PASSWORD = "admin@123456";
     protected static final String DEFAULT_PASSWORD = "Passw0rd!";
 
     @Autowired
@@ -116,7 +116,7 @@ public abstract class IntegrationTestBase {
     }
 
     protected String rootToken() throws Exception {
-        return loginAndGetToken(ROOT_USERNAME, ROOT_PASSWORD, "ADMIN");
+        return loginAndGetToken(ADMIN_USERNAME, ADMIN_PASSWORD, "ADMIN");
     }
 
     protected String meUserId(String token) throws Exception {

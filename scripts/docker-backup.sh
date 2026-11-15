@@ -33,4 +33,4 @@ echo
 echo "完成：$OUT"
 echo "- db.dump   PostgreSQL 自定义格式"
 echo "- media.tgz 上传文件"
-echo "- .env      JWT / DB / root 初始口令"
+echo "- .env      JWT / DB / admin 初始口令"

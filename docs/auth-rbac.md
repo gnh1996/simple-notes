@@ -116,12 +116,12 @@
 
 ## 4. 预置用户与角色（超管）
 
-- **root 用户**（应用拥有者，唯一预置用户）：
-  - 初始化：由**初始迁移直接 INSERT**（固定 UUID）；密码哈希 = 固定初始密码 `admin@123456` 的 bcrypt 值（写死在迁移里）；启动不参与创建（`ROOT_USERNAME` / `ROOT_PASSWORD` 配置**取消**）
-  - 部署替换：`RootPasswordInitializer` 在启动时若发现 root hash 仍对应默认口令，则用 `ROOT_INITIAL_PASSWORD` 覆盖；**该值为空且口令仍是默认值时启动失败（fail-fast）**，避免公开口令被带到公网。用户改密后该变量可留空
+- **admin 用户**（应用拥有者，唯一预置用户）：
+  - 初始化：由**初始迁移直接 INSERT**（固定 UUID；V1 预置登录名 `root`，`V20__rename_root_user_to_admin.sql` 起统一为 `admin`）；密码哈希 = 固定初始密码 `admin@123456` 的 bcrypt 值（写死在迁移里）；启动不参与创建（`ROOT_USERNAME` / `ROOT_PASSWORD` 配置**取消**）
+  - 部署替换：`AdminPasswordInitializer` 在启动时若发现 admin hash 仍对应默认口令，则用 `ADMIN_INITIAL_PASSWORD` 覆盖；**该值为空且口令仍是默认值时启动失败（fail-fast）**，避免公开口令被带到公网。用户改密后该变量可留空
   - 提示：初始密码公开写在迁移与本文档中，仅作首启使用——**首次登录后应立即在个人中心改密**（v1 不做强制首登改密，见 §12）
-  - 约束：不可删除 / 禁用（用户名 v1 全量不可改）；可修改密码与昵称
-- **`SUPER_ADMIN` 角色**：与 root 用户、绑定关系（`sys_user_role` 行）一并由初始迁移预置（固定 UUID）；`builtin=1`
+  - 约束：不可删除 / 禁用（用户名 v1 全量不可改；预置账号的改名由迁移完成）；可修改密码与昵称
+- **`SUPER_ADMIN` 角色**：与 admin 用户、绑定关系（`sys_user_role` 行）一并由初始迁移预置（固定 UUID）；`builtin=1`
   - **判定唯一依据**：授权短路 = 用户是否持有超管角色（授权快照的 `root` 标记即此判定；取消 `sys_user.builtin` 列，避免双源）
   - 持有超管角色的用户：不受任何权限检查、三端入口全开；管理接口整体设防——不可删除 / 禁用 / 改角色集合 / 重置密码（接口拒绝）
   - 不可编辑、不可删除、不可分配给其他用户（不出现在"可分配角色"接口中）
@@ -245,7 +245,7 @@
 | --- | --- |
 | id | `varchar(36)` PK |
 | username | `varchar(32)` NOT NULL；小写存储；`[a-z0-9][a-z0-9_-]{2,31}`；唯一（部分索引） |
-| password_hash | `varchar(100)` NOT NULL；`{bcrypt}$2a$...`（DelegatingPasswordEncoder 格式，留换算法余地）；root 行由迁移写入固定初始密码的哈希（§4） |
+| password_hash | `varchar(100)` NOT NULL；`{bcrypt}$2a$...`（DelegatingPasswordEncoder 格式，留换算法余地）；预置超管行由迁移写入固定初始密码的哈希（§4；V20 将登录名 root 改为 admin） |
 | nickname | `varchar(32)` NOT NULL 显示名 |
 | email | `varchar(128)` NULL，可选 |
 | status | `smallint` 1 启用 / 0 禁用 |
@@ -303,7 +303,7 @@
 
 ### 7.6 迁移
 
-- `V1__init_auth_rbac.sql`：**建齐六张表与索引 + 初始权限节点 INSERT（§3.6）+ 预置数据**（root 用户 / `SUPER_ADMIN` 角色 / 绑定关系，固定 UUID；root 密码哈希为固定初始密码，见 §4）—— 对账 fail-fast 要求首启前节点已存在，故初始节点必须随 V1 落库
+- `V1__init_auth_rbac.sql`：**建齐六张表与索引 + 初始权限节点 INSERT（§3.6）+ 预置数据**（root 用户 / `SUPER_ADMIN` 角色 / 绑定关系，固定 UUID；root 密码哈希为固定初始密码，见 §4）—— 对账 fail-fast 要求首启前节点已存在，故初始节点必须随 V1 落库；`V20__rename_root_user_to_admin.sql` 只把预置账号登录名改为 `admin`（固定 UUID / 角色 / 绑定不变）
 - 之后新增权限节点走独立 INSERT 迁移（如 `V<N>__add_<feature>_permissions.sql`），只插入行、不改已有行（§3.4）
 - 实体基类（审计字段 / UUID 生成 / 软删过滤）随数据层设计定稿——RBAC 六表为首批实体，实现前先落定该约定（见 §10）
 
@@ -347,7 +347,7 @@
 
 ## 9. 安全要点
 
-- 密码：BCrypt（Spring Security 内置，无需额外依赖；cost 采用默认）；策略 ≥ 8 位（自用场景不求复杂度）；全链路不落日志；root 初始密码为固定值（迁移内置，首启后应立即改密，§4）
+- 密码：BCrypt（Spring Security 内置，无需额外依赖；cost 采用默认）；策略 ≥ 8 位（自用场景不求复杂度）；全链路不落日志；超管初始密码为固定值（迁移内置，首启后应立即改密，§4）
 - 认证链：登录凭据校验走 Spring Security 标准链（`DbUserDetailsService` + `DaoAuthenticationProvider`，§5.1）——账号禁用检查先于密码比对、用户名不存在与密码错误同码不泄露存在性（含对不存在用户的等价比对缓解时序探测）；应用无任何默认 / 内置账号（默认内存用户自动配置已被自定义 `UserDetailsService` 顶替，启动不再输出随机密码）
 - JWT：HS256，密钥 `simple-notes.auth.jwt-secret: "${JWT_SECRET:}"`（32+ 字节随机；无默认、缺失启动失败）；claims 最小化（不嵌权限 / 角色）；JWT 明文不落库不落日志
 - 凭证持有：三端统一 Bearer，不再使用 Cookie（无 CSRF 面，登录请求同样无需反 CSRF token）；Web 端 token 存 localStorage——**XSS 暴露面为已接受代价**（缓解：严格 CSP / 无第三方脚本 / 服务端可撤销 + 会话绝对上限）
@@ -384,7 +384,7 @@ v1.1 评审修订同步：`docs/tech-stack.md`（待定 #3 注记改写 + 变更
 7. 用户名是否允许修改：v1 不允许
 8. JWT 密钥轮换流程：v1 单一密钥、不轮换
 9. 多实例部署时的授权缓存版本共享（v1 单实例部署，进程内版本足够；多实例需共享版本机制，否则仅剩 TTL 兜底）
-10. 超管转让 / 多超管：v1 唯一预置（root 持有超管角色），转让只能人工 SQL；如需多超管再评估
+10. 超管转让 / 多超管：v1 唯一预置（admin 持有超管角色），转让只能人工 SQL；如需多超管再评估
 
 ## 13. 变更记录
 
@@ -423,3 +423,4 @@ v1.1 评审修订同步：`docs/tech-stack.md`（待定 #3 注记改写 + 变更
   - **布局**：vben 风格（可折叠侧边栏 + 面包屑 + 多标签页 + 用户下拉）；暗色主题跟随系统并可手动覆盖（localStorage `sn.admin.theme`）；移动端以抽屉承载侧边栏（`useBreakpoint` 单一断点来源）
   - **验证**：类型检查 / 构建通过；浏览器端到端走查通过（含受限角色视角：菜单过滤、按钮隐藏、未注册路由 404、403 自动刷新）
 - **2026-10-31** 文档对齐：预留命名空间由 `admin:settings:*` 更正为已落地的 `admin:site:*` / `admin:theme:*`；用户列表补 `keyword` 参数；站点 / 主题权限明细指向 `docs/blog-runtime-theme.md` §9.1
+- **2026-11-15** 首个测试版本前命名收口：预置超管登录名 `root` → `admin`（`V20__rename_root_user_to_admin.sql`，固定 UUID / 密码哈希 / `SUPER_ADMIN` 角色与绑定关系不变）；初始化器改名 `AdminPasswordInitializer`，部署变量 `ROOT_INITIAL_PASSWORD` → `ADMIN_INITIAL_PASSWORD`（配置键 `simple-notes.auth.admin-initial-password`）。已执行 V1 的库按"只追加"纪律走 V20，不修改 V1 历史脚本

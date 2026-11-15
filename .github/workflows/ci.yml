@@ -77,7 +77,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: ci-only-password
           JWT_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
-          ROOT_INITIAL_PASSWORD: ci-only-root-password
+          ADMIN_INITIAL_PASSWORD: ci-only-admin-password
         run: docker compose config --quiet
       - name: nginx 站点示例
         run: |

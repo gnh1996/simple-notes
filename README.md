@@ -45,7 +45,7 @@
 前提：Docker Engine 24+ / Compose v2+（Windows 建议在 WSL2 内运行）。
 
 ```bash
-bash scripts/init-env.sh          # 生成 .env（随机 DB 口令 / JWT / root 初始口令）
+bash scripts/init-env.sh          # 生成 .env（随机 DB 口令 / JWT / admin 初始口令）
 docker compose up -d --build
 
 # 受限网络 / 代理
@@ -58,13 +58,13 @@ docker compose up -d --build
 - 管理端：<http://localhost:8080/admin/>
 - 博客：<http://localhost:8080/>
 
-初始口令：
+初始账号 `admin`，初始口令：
 
 ```bash
-grep ROOT_INITIAL_PASSWORD .env
+grep ADMIN_INITIAL_PASSWORD .env
 ```
 
-root 仍是迁移默认口令时该变量必填（缺失会拒绝启动），首次登录后请在个人中心改密。
+admin 仍是迁移默认口令时该变量必填（缺失会拒绝启动），首次登录后请在个人中心改密。
 
 数据：`./data/media`（上传文件）、`./data/logs`、named volume `simple-notes-pg`（PostgreSQL）。
 备份与恢复：

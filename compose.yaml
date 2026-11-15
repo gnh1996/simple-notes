@@ -30,7 +30,7 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
       ADMIN_ORIGIN: ${ADMIN_ORIGIN:-http://localhost:8080}
       JWT_SECRET: ${JWT_SECRET:?请先运行 bash scripts/init-env.sh}
-      ROOT_INITIAL_PASSWORD: ${ROOT_INITIAL_PASSWORD:-}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
       # 外部数据库：在 .env 设置 DB_URL / DB_USERNAME / DB_PASSWORD
       DB_URL: ${DB_URL:-jdbc:postgresql://db:5432/simple_notes}
       DB_USERNAME: ${DB_USERNAME:-simple_notes}
