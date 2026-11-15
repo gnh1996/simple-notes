@@ -2,6 +2,7 @@
 
 > 状态：v0.2 · 2026-11-11（3 容器架构：db + app + web）
 > 关联：`docs/release.md`、`desktop/README.md`、`docs/attachment-storage.md`
+> 自用双机部署（香港 nginx 静态 + 反代 / 云服务器 app+db / WireGuard）见 `docs/deployment-selfhosted.md`。
 
 ## 1. 快速开始
 

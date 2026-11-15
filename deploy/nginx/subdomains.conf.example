@@ -1,0 +1,150 @@
+# 自用双机部署 nginx 示例（docs/deployment-selfhosted.md）
+#
+# 香港服务器：admin 静态 + 两个子域反代；app 在腾讯云，经 WireGuard 访问。
+# 使用前替换：
+#   __ADMIN_HOST__      simple-notes.example.com
+#   __BLOG_HOST__       blog.example.com
+#   __BLOG_ORIGIN__     https://blog.example.com（CSP frame-src 用）
+#   __APP_UPSTREAM__    10.8.0.2:8081（WireGuard 对端 app）
+#   __CERT_FILE__       /root/cert/cloudflare/example.com.pem
+#   __KEY_FILE__        /root/cert/cloudflare/example.com.key
+#
+# 放入 /etc/nginx/conf.d/simple-notes.conf，然后 nginx -t && systemctl reload nginx。
+# 前提：cloudflare-realip.conf 已启用（$remote_addr = 真实访客 IP）；
+#       app 端口只对 VPN 开放，nginx 覆盖写入 X-Forwarded-For。
+
+upstream simple_notes_app {
+    server __APP_UPSTREAM__;
+    keepalive 16;
+}
+
+limit_req_zone $binary_remote_addr zone=sn_login:10m rate=10r/m;
+limit_req_status 429;
+
+# ---------------------------------------------------------------------------
+# admin：静态文件在根路径，/api 反代
+# ---------------------------------------------------------------------------
+server {
+    listen 80;
+    server_name __ADMIN_HOST__;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name __ADMIN_HOST__;
+
+    ssl_certificate     __CERT_FILE__;
+    ssl_certificate_key __KEY_FILE__;
+
+    root /var/www/simple-notes/admin;
+    index index.html;
+    client_max_body_size 25m;
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml application/json application/javascript application/xml image/svg+xml;
+
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+    }
+
+    # Vite 产物：文件名带 hash，长缓存
+    location /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' __BLOG_ORIGIN__; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+    }
+
+    # 登录：nginx 层限流（应用侧另有用户名 + IP 锁定，靠 X-Forwarded-For 取真实 IP）
+    location = /api/auth/login {
+        limit_req zone=sn_login burst=20 nodelay;
+        proxy_pass http://simple_notes_app;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 660s;
+    }
+
+    location /api/ {
+        proxy_pass http://simple_notes_app;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        # 主题 AI 使用 SSE；上传走流式，避免整块缓冲
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 660s;
+        proxy_send_timeout 660s;
+    }
+
+    # SPA history fallback
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' __BLOG_ORIGIN__; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+    }
+}
+
+# ---------------------------------------------------------------------------
+# blog：整站反代到 app（页面壳 / blog runtime / /api 都由 app 提供）
+# 注意：不要加 X-Frame-Options，博客壳需要被 admin 预览 iframe 嵌入；
+#       app 自己返回 frame-ancestors 'self' https://<admin-origin>。
+# ---------------------------------------------------------------------------
+server {
+    listen 80;
+    server_name __BLOG_HOST__;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name __BLOG_HOST__;
+
+    ssl_certificate     __CERT_FILE__;
+    ssl_certificate_key __KEY_FILE__;
+
+    client_max_body_size 25m;
+
+    location /api/ {
+        proxy_pass http://simple_notes_app;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 660s;
+        proxy_send_timeout 660s;
+    }
+
+    location / {
+        proxy_pass http://simple_notes_app;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_read_timeout 660s;
+        proxy_send_timeout 660s;
+    }
+}

@@ -68,8 +68,9 @@ public class AuthController {
     }
 
     /**
-     * 限流计数的来源标识。服务直连时取 remoteAddr；经反向代理部署（目前仅在本地开发，
-     * 无代理）不信任 X-Forwarded-For，接入代理时再按部署形态补充可信转发处理。
+     * 限流计数的来源标识。直连时取 remoteAddr；反向代理部署（docs/deployment-selfhosted.md）时由
+     * {@code server.forward-headers-strategy=framework} 从 X-Forwarded-For 还原真实客户端
+     * （nginx 覆盖写入，不信任客户端自带的头；app 端口只对 VPN 开放）。
      */
     private String clientIp(HttpServletRequest request) {
         String remoteAddr = request.getRemoteAddr();

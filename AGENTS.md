@@ -24,6 +24,7 @@
 | `docs/desktop-diagnostics.md` | 桌面端错误处理与运行日志（v1 已实现）：错误分层、网络失败降级、详情弹层、结构化日志 / 轮转 / 脱敏、诊断入口 |
 | `docs/tech-eval-vditor-wails.md` | 可行性评估与落地记录：Wails v3 已采纳；admin/blog/desktop 均已切换 Vditor + Lute（v2） |
 | `docs/deployment.md` | 部署（Docker 一键 / 拆分）：单镜像组成、数据目录、备份恢复、外部数据库、TLS 与边界 |
+| `docs/deployment-selfhosted.md` | 自用双机部署（香港 nginx 静态 + 反代 / 腾讯云 app+db / WireGuard）：首次初始化、发布迭代、备份回滚与资源预算 |
 | `docs/release.md` | 发版与版本确定：git tag 唯一来源、构建注入、发版流程与校验 |
 | 各端 `README.md` | 目录结构、命令与端内细节 |
 | 各端 `AGENTS.md` | 端内专属规则（探索到对应目录时自动加载） |

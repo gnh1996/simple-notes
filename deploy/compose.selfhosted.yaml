@@ -1,0 +1,36 @@
+# 自用双机部署覆盖层（docs/deployment-selfhosted.md）
+#
+# 拓扑：香港 nginx（admin 静态 + 反代）→ WireGuard → 腾讯云 app + db。
+# 腾讯云只启动 db + app，不启动 web：
+#   docker compose -f compose.yaml -f deploy/compose.selfhosted.yaml up -d db app
+#
+# 适用前提：4 GiB 内存的个人服务器，宿主机还跑着其他服务。
+# 内存预算：app 832m + db 320m ≈ 1.15 GiB；JVM 堆固定 448m，避免
+# app-entrypoint.sh 的 -XX:MaxRAMPercentage=75 按宿主机内存算成 2.7G。
+# 如果宿主机内存更宽裕，可上调 mem_limit / -Xmx，并同步更新文档。
+
+services:
+  app:
+    mem_limit: 832m
+    environment:
+      # JVM 会读取 JAVA_TOOL_OPTIONS；显式 -Xmx 优先于入口脚本的 MaxRAMPercentage。
+      # SerialGC 在小堆、低并发的个人实例上开销更小。
+      JAVA_TOOL_OPTIONS: >-
+        -Xms256m -Xmx448m -Xss512k
+        -XX:MaxMetaspaceSize=192m -XX:MaxDirectMemorySize=64m
+        -XX:+UseSerialGC
+
+  db:
+    mem_limit: 320m
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=256MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=30

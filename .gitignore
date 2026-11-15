@@ -4,6 +4,9 @@
 /.mvn
 *.iml
 
+# 本地运维记录（服务器信息 / 部署笔记，禁止提交）
+/.local/
+
 # Maven / IDE 构建产物
 /target/
 

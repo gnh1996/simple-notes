@@ -1,3 +1,10 @@
+server:
+  # 反向代理部署（香港 nginx → WireGuard → app）：
+  # 由框架级 ForwardedHeaderFilter 从 X-Forwarded-For 还原真实客户端，
+  # request.getRemoteAddr() 不再是代理地址（登录限流按客户端 IP 计数）。
+  # 只允许受信代理访问 app 端口（腾讯云绑定 10.8.0.2），见 docs/deployment-selfhosted.md。
+  forward-headers-strategy: framework
+
 spring:
   ai:
     # 主题 AI 对话：只启用 chat；其余模型类型显式 none，避免 starter 默认装配出无用 no-auth bean。

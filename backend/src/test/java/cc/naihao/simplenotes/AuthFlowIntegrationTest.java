@@ -1,6 +1,7 @@
 package cc.naihao.simplenotes;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -9,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.ResultActions;
 
 /**
  * 认证主链路集成测试（docs/auth-rbac.md §5）：
@@ -55,6 +58,28 @@ class AuthFlowIntegrationTest extends IntegrationTestBase {
         login(victim, "wrong-again", "ADMIN")
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.code").value("LOGIN_RATE_LIMITED"));
+    }
+
+    @Test
+    @DisplayName("登录限流按 X-Forwarded-For 客户端区分（反向代理部署）")
+    void loginRateLimitUsesForwardedClientIp() throws Exception {
+        String victim = uniqueUsername("xfflimit");
+        for (int i = 0; i < 5; i++) {
+            loginFrom(victim, "wrong-" + i, "203.0.113.10")
+                    .andExpect(status().isUnauthorized());
+        }
+        loginFrom(victim, "wrong-again", "203.0.113.10")
+                .andExpect(status().isTooManyRequests());
+        // 换一个转发来源（另一台客户端）不应继承上一个 IP 的锁定
+        loginFrom(victim, "wrong-again", "203.0.113.11")
+                .andExpect(status().isUnauthorized());
+    }
+
+    private ResultActions loginFrom(String username, String password, String clientIp) throws Exception {
+        return mockMvc.perform(post("/api/auth/login")
+                .header("X-Forwarded-For", clientIp)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of("username", username, "password", password, "client", "ADMIN"))));
     }
 
     @Test
