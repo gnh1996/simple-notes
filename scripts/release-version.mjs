@@ -131,6 +131,11 @@ for (const e of edits) {
   }
   const next = e.apply(src)
   if (next === src) {
+    // 同一 patch 的多个 rc（如 rc.1 → rc.2）四段版本不变：已是目标值属正常
+    if (e.expect.test(src)) {
+      console.log(`  已是目标值：${e.file}`)
+      continue
+    }
     console.error(`  未匹配到版本号行：${e.file}`)
     failed += 1
     continue
