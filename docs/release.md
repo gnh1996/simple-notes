@@ -71,6 +71,9 @@ docker build --target web -t simple-notes-web:0.2.0 \
 node scripts/build-desktop.mjs --package      # 可加 --dry-run 只打印命令
 ```
 
+推送 tag 后 `.github/workflows/desktop.yml` 会自动构建 **Windows 便携包**（exe + zip + `SHA256SUMS.txt`）并上传 GitHub Release；
+本机命令仍用于三平台实机验收 / 离线构建。macOS / Linux 尚未实机验收，暂未加入自动构建。
+
 部署 jar 时设置运行时环境（commit 只从这里来，不进 build-info）：
 `APP_COMMIT=<shortsha>`（`APP_BUILD_TIME` 可选，缺省用烘焙值）。
 `--apply` 更新的文件（版本号去掉 `v`，Windows manifest 补 `.0` 四段）：
