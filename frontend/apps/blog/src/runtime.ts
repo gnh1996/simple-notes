@@ -153,7 +153,7 @@ function prepareTheme(boot: Boot): void {
 
 const Blank = { render: () => null }
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(window.__BLOG_BOOT__?.basePath || '/'),
   routes: [
     { path: '/', name: 'home', component: Blank },
     { path: '/posts/:slug', name: 'post', component: Blank },
@@ -835,53 +835,55 @@ async function main(): Promise<void> {
     }
   })
 
-  const adminOrigin = boot.adminOrigin || '*'
   window.BlogRuntime = { contract: RUNTIME_CONTRACT, validateTheme }
 
-  function reply(payload: Record<string, unknown>): void {
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(payload, adminOrigin)
-    }
-  }
-
-  window.addEventListener('message', (event) => {
-    if (adminOrigin !== '*' && event.origin !== adminOrigin) {
-      return
-    }
-    const data = event.data as Record<string, unknown> | null
-    if (!data || typeof data !== 'object') {
-      return
-    }
-    if (data.type === 'blog-preview:color-mode' && typeof data.mode === 'string') {
-      setColorMode(data.mode as 'light' | 'dark' | 'system')
-    } else if (data.type === 'blog-preview:scroll-to' && typeof data.selector === 'string') {
-      const target = document.querySelector(data.selector)
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  // 预览 iframe 与 admin 同源（admin 域 /__preview）；普通博客页面不安装任何预览消息监听
+  if (boot.preview) {
+    function reply(payload: Record<string, unknown>): void {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(payload, window.location.origin)
       }
-    } else if (data.type === 'blog-preview:validate') {
-      const html = typeof data.html === 'string' ? data.html : mountTemplate
-      const css = typeof data.css === 'string' ? data.css : ''
-      const result = validateTheme(html, css)
-      reply({
-        type: 'blog-preview:validated',
-        id: data.id,
-        ok: result.ok,
-        errors: result.errors,
-      })
-    } else if (data.type === 'blog-preview:diagnose') {
-      reply({
-        type: 'blog-preview:diagnosed',
-        id: data.id,
-        report: collectDiagnose(
-          typeof data.html === 'string' ? data.html : mountTemplate,
-          typeof data.css === 'string' ? data.css : '',
-        ),
-      })
     }
-  })
 
-  reply({ type: 'blog-preview:ready' })
+    window.addEventListener('message', (event) => {
+      if (event.origin !== window.location.origin) {
+        return
+      }
+      const data = event.data as Record<string, unknown> | null
+      if (!data || typeof data !== 'object') {
+        return
+      }
+      if (data.type === 'blog-preview:color-mode' && typeof data.mode === 'string') {
+        setColorMode(data.mode as 'light' | 'dark' | 'system')
+      } else if (data.type === 'blog-preview:scroll-to' && typeof data.selector === 'string') {
+        const target = document.querySelector(data.selector)
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      } else if (data.type === 'blog-preview:validate') {
+        const html = typeof data.html === 'string' ? data.html : mountTemplate
+        const css = typeof data.css === 'string' ? data.css : ''
+        const result = validateTheme(html, css)
+        reply({
+          type: 'blog-preview:validated',
+          id: data.id,
+          ok: result.ok,
+          errors: result.errors,
+        })
+      } else if (data.type === 'blog-preview:diagnose') {
+        reply({
+          type: 'blog-preview:diagnosed',
+          id: data.id,
+          report: collectDiagnose(
+            typeof data.html === 'string' ? data.html : mountTemplate,
+            typeof data.css === 'string' ? data.css : '',
+          ),
+        })
+      }
+    })
+
+    reply({ type: 'blog-preview:ready' })
+  }
 }
 
 /** 当前列表上下文：进入详情时携带，保证上下篇仍按同一列表计算。 */

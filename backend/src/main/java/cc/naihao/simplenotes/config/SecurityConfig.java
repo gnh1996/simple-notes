@@ -81,6 +81,8 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // 预览 iframe 与 admin 同源（admin 域 /__preview）：允许同源嵌入，禁止跨站嵌入
+                .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
                 .authorizeHttpRequests(auth -> auth
                         // SSE（SseEmitter）异步重派发：初始派发已做完整认证 + 方法级权限，
                         // 重入时 SecurityContext 为空（无状态 JWT 不传播），放行以免响应已提交后报 403 噪声

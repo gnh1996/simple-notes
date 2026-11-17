@@ -13,7 +13,7 @@ import { notifyError } from '@/utils/feedback'
 import AiChatDrawer from './components/AiChatDrawer.vue'
 import LargeTextEditor from './components/LargeTextEditor.vue'
 
-const BLOG_URL = (import.meta.env.VITE_BLOG_URL as string | undefined) ?? 'http://localhost:8080'
+const PREVIEW_ORIGIN = window.location.origin
 
 const { isDesktop } = useBreakpoint()
 const route = useRoute()
@@ -306,7 +306,7 @@ function buildPreviewUrl(): void {
       token: previewDraft.value.token,
     })
     if (useFixtures.value) params.set('fixtures', '1')
-    previewUrl.value = `${BLOG_URL}/?${params.toString()}`
+    previewUrl.value = `${PREVIEW_ORIGIN}/__preview?${params.toString()}`
     return
   }
   if (!previewVersion.value) {
@@ -320,7 +320,7 @@ function buildPreviewUrl(): void {
     token: previewToken.value,
   })
   if (useFixtures.value) params.set('fixtures', '1')
-  previewUrl.value = `${BLOG_URL}/?${params.toString()}`
+  previewUrl.value = `${PREVIEW_ORIGIN}/__preview?${params.toString()}`
 }
 
 const previewToken = ref('')
@@ -343,16 +343,8 @@ async function preview(version: any): Promise<void> {
   }
 }
 
-const BLOG_ORIGIN = (() => {
-  try {
-    return new URL(BLOG_URL).origin
-  } catch {
-    return window.location.origin
-  }
-})()
-
 function sendPreviewMessage(payload: Record<string, unknown>): void {
-  previewIframe.value?.contentWindow?.postMessage(payload, BLOG_ORIGIN)
+  previewIframe.value?.contentWindow?.postMessage(payload, PREVIEW_ORIGIN)
 }
 
 function sendPreviewValidate(): void {
@@ -377,7 +369,7 @@ function sendPreviewValidate(): void {
 }
 
 function onPreviewMessage(event: MessageEvent): void {
-  if (event.origin !== BLOG_ORIGIN) return
+  if (event.origin !== PREVIEW_ORIGIN) return
   const data = event.data as Record<string, unknown> | null
   if (!data || typeof data !== 'object') return
   if (data.type === 'blog-preview:ready') {

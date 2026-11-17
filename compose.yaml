@@ -28,7 +28,6 @@ services:
     image: ${APP_IMAGE:-simple-notes-app:local}
     environment:
       TZ: ${TZ:-Asia/Shanghai}
-      ADMIN_ORIGIN: ${ADMIN_ORIGIN:-http://localhost:8080}
       JWT_SECRET: ${JWT_SECRET:?请先运行 bash scripts/init-env.sh}
       ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
       # 外部数据库：在 .env 设置 DB_URL / DB_USERNAME / DB_PASSWORD

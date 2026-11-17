@@ -1,7 +1,6 @@
 package cc.naihao.simplenotes.web;
 
 import cc.naihao.simplenotes.common.ApiException;
-import cc.naihao.simplenotes.config.SiteProperties;
 import cc.naihao.simplenotes.domain.SiteThemeVersion;
 import cc.naihao.simplenotes.site.PreviewTokenService;
 import cc.naihao.simplenotes.site.SiteSettingService;
@@ -32,7 +31,6 @@ public class BlogBootstrapController {
     private final SiteSettingService settingService;
     private final ThemeService themeService;
     private final PreviewTokenService previewTokenService;
-    private final SiteProperties siteProperties;
 
     @GetMapping("/bootstrap")
     public ResponseEntity<BlogBootstrapResponse> bootstrap(
@@ -74,8 +72,7 @@ public class BlogBootstrapController {
                     .header("X-Robots-Tag", "noindex")
                     .header("Referrer-Policy", "no-referrer")
                     .body(new BlogBootstrapResponse(
-                            site, theme, ThemeService.RUNTIME_CONTRACT,
-                            siteProperties.getAdminOrigin(), true, settingVersion));
+                            site, theme, ThemeService.RUNTIME_CONTRACT, true, settingVersion));
         }
         if (etag.equals(ifNoneMatch)) {
             return ResponseEntity.status(304)
@@ -89,7 +86,6 @@ public class BlogBootstrapController {
                 .header("CDN-Cache-Control", "max-age=60, stale-while-revalidate=600")
                 .header("Referrer-Policy", "strict-origin-when-cross-origin")
                 .body(new BlogBootstrapResponse(
-                        site, theme, ThemeService.RUNTIME_CONTRACT,
-                        siteProperties.getAdminOrigin(), false, settingVersion));
+                        site, theme, ThemeService.RUNTIME_CONTRACT, false, settingVersion));
     }
 }

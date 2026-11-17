@@ -9,12 +9,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * Vite dev、预览与未来的桌面端复用。
  */
 @Schema(requiredProperties = {
-        "site", "runtimeContract", "adminOrigin", "preview", "settingVersion" })
+        "site", "runtimeContract", "preview", "settingVersion" })
 public record BlogBootstrapResponse(
         SiteResponse site,
         BlogThemePayload theme,
         int runtimeContract,
-        String adminOrigin,
         boolean preview,
         long settingVersion) {
 }

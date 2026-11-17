@@ -151,7 +151,8 @@ export interface BootThemeMeta {
 export interface Boot {
   site: Site
   themeMode: string
-  adminOrigin: string
+  /** 预览 iframe 挂在 admin 域的 /__preview 下时，vue-router 的 base 路径 */
+  basePath?: string
   contract: number
   theme?: BootThemeMeta | null
   preview?: boolean

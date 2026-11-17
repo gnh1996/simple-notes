@@ -4,13 +4,14 @@
 # 使用前替换：
 #   __ADMIN_HOST__      simple-notes.example.com
 #   __BLOG_HOST__       blog.example.com
-#   __BLOG_ORIGIN__     https://blog.example.com（CSP frame-src 用）
 #   __APP_UPSTREAM__    10.8.0.2:8081（WireGuard 对端 app）
-#   __CERT_FILE__       /root/cert/cloudflare/example.com.pem
-#   __KEY_FILE__        /root/cert/cloudflare/example.com.key
+#   __ADMIN_CERT_FILE__ /root/cert/le/simple-notes.example.com/fullchain.pem
+#   __ADMIN_KEY_FILE__  /root/cert/le/simple-notes.example.com/key.pem
+#   __BLOG_CERT_FILE__  /root/cert/le/blog.example.com/fullchain.pem
+#   __BLOG_KEY_FILE__   /root/cert/le/blog.example.com/key.pem
 #
 # 放入 /etc/nginx/conf.d/simple-notes.conf，然后 nginx -t && systemctl reload nginx。
-# 前提：cloudflare-realip.conf 已启用（$remote_addr = 真实访客 IP）；
+# 前提：橙云时启用 cloudflare-realip.conf（$remote_addr 才是真实访客 IP）；
 #       app 端口只对 VPN 开放，nginx 覆盖写入 X-Forwarded-For。
 
 upstream simple_notes_app {
@@ -34,8 +35,8 @@ server {
     listen 443 ssl http2;
     server_name __ADMIN_HOST__;
 
-    ssl_certificate     __CERT_FILE__;
-    ssl_certificate_key __KEY_FILE__;
+    ssl_certificate     __ADMIN_CERT_FILE__;
+    ssl_certificate_key __ADMIN_KEY_FILE__;
 
     root /var/www/simple-notes/admin;
     index index.html;
@@ -58,7 +59,7 @@ server {
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header X-Frame-Options "SAMEORIGIN" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' __BLOG_ORIGIN__; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
     }
 
     # 登录：nginx 层限流（应用侧另有用户名 + IP 锁定，靠 X-Forwarded-For 取真实 IP）
@@ -91,6 +92,32 @@ server {
         proxy_send_timeout 660s;
     }
 
+    # 主题预览：与 admin 同源；iframe 内再加载后端壳（router base=/__preview）
+    location ^~ /__preview {
+        proxy_pass http://simple_notes_app;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_read_timeout 660s;
+        proxy_send_timeout 660s;
+    }
+
+    # 预览壳的 runtime / chunks / assets（后端 jar 内 /blog/**）
+    location ^~ /blog/ {
+        proxy_pass http://simple_notes_app;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_read_timeout 660s;
+        proxy_send_timeout 660s;
+    }
+
     # SPA history fallback
     location / {
         try_files $uri $uri/ /index.html;
@@ -98,14 +125,14 @@ server {
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header X-Frame-Options "SAMEORIGIN" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' __BLOG_ORIGIN__; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
     }
 }
 
 # ---------------------------------------------------------------------------
 # blog：整站反代到 app（页面壳 / blog runtime / /api 都由 app 提供）
-# 注意：不要加 X-Frame-Options，博客壳需要被 admin 预览 iframe 嵌入；
-#       app 自己返回 frame-ancestors 'self' https://<admin-origin>。
+# 注意：主题预览已迁到 admin 同源 /__preview；博客不需要被跨域 iframe 嵌入，
+#       后端统一返回 frame-ancestors 'self' + X-Frame-Options SAMEORIGIN。
 # ---------------------------------------------------------------------------
 server {
     listen 80;
@@ -117,8 +144,8 @@ server {
     listen 443 ssl http2;
     server_name __BLOG_HOST__;
 
-    ssl_certificate     __CERT_FILE__;
-    ssl_certificate_key __KEY_FILE__;
+    ssl_certificate     __BLOG_CERT_FILE__;
+    ssl_certificate_key __BLOG_KEY_FILE__;
 
     client_max_body_size 25m;
 
@@ -130,9 +157,6 @@ server {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Connection "";
-        # 博客页允许被 admin 预览 iframe 嵌入：以 CSP frame-ancestors 为准，
-        # 去掉 Spring Security 默认的 X-Frame-Options: DENY（否则旧浏览器会拒绝）
-        proxy_hide_header X-Frame-Options;
         proxy_buffering off;
         proxy_request_buffering off;
         proxy_read_timeout 660s;
@@ -147,7 +171,6 @@ server {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Connection "";
-        proxy_hide_header X-Frame-Options;
         proxy_read_timeout 660s;
         proxy_send_timeout 660s;
     }

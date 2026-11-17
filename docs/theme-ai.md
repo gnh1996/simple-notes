@@ -18,7 +18,7 @@
 | 会话态 | `conversationId = "ai-theme:" + userId + ":" + (themeId|none) + ":" + sessionId`；`ChatMemory` 只存压缩后的摘要/计划/用户指令，**完整当前主题**存 `AiThemeSessionStore`（Caffeine，2h 无访问过期） |
 | 输出协议 | **有当前主题 / 前端 `baseHtml` / 勾选 starter 时，从第一轮就走补丁**（小 JSON `{summary, plan, ops[]}`）；只有“没有主题且没勾 starter”才完整生成 html/css。这样绝大多数请求不需要模型输出整篇主题 |
 | 校验修复 | 生成 → 解析/应用补丁 → `AiThemePrompt.validate`（体积 + 根节点预检 + `ThemeTemplateValidator`）→ 失败且轮数未用尽则 `repairing` + 修复轮；补丁修复只回传上一版补丁 + 错误，不重发整篇主题 |
-| 预览 | 临时草稿缓存（Caffeine，TTL 对齐 `preview-ttl`，不走 Flyway）：`POST /ai-drafts/{draftId}/preview-token` 签发，`GET /?previewDraft=&token=` 整页预览；未入库中间态不污染版本表 |
+| 预览 | 临时草稿缓存（Caffeine，TTL 对齐 `preview-ttl`，不走 Flyway）：`POST /ai-drafts/{draftId}/preview-token` 签发，admin 同源 `GET /__preview?previewDraft=&token=` 整页预览；未入库中间态不污染版本表 |
 | 定版 | 复用既有链路：填入编辑器 → `createVersion` → 预览 → 人工 `activate`；AI 永不自动应用；`contract` 随 `done` 回传，前端保存时使用 |
 | 工具 | 不引入 tool calling（§5）；截图回灌留待 P3 |
 | 限流 | 无配额；仅单用户单并发 + 服务端超时 + 前端可中断 |

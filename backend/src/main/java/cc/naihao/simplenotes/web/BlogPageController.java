@@ -42,7 +42,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 public class BlogPageController {
 
     /** 壳模板结构版本：模板 / 注入数据变化时递增，避免 ETag 命中旧壳。 */
-    private static final int SHELL_VERSION = 4;
+    private static final int SHELL_VERSION = 5;
 
     /**
      * 首屏加载层样式：必须内联在壳里（runtime.css 随 JS 到达，赶不上首帧）。
@@ -173,6 +173,8 @@ public class BlogPageController {
 
         String etag = "\"" + themeId + "-" + (draftHtml != null ? previewDraftId : String.valueOf(themeVersionNo)) + "-"
                 + settingService.currentVersion() + "-" + assetBase() + "-" + SHELL_VERSION + "\"";
+        // 预览 iframe 与 admin 同源（admin 域 /__preview）；router base 必须跟着路径走，客户端导航才不会跳出预览区
+        String basePath = request.getRequestURI().startsWith("/__preview") ? "/__preview" : "";
         String cacheControl = preview
                 ? "no-store"
                 : "public, max-age=0, s-maxage=60, stale-while-revalidate=600";
@@ -197,7 +199,7 @@ public class BlogPageController {
         response.getWriter().write(render(
                 html,
                 STYLE_BREAKOUT.matcher(css).replaceAll("<\\\\/style"),
-                bootJson(site, themeId, themeVersionNo, themeContract, preview),
+                bootJson(site, themeId, themeVersionNo, themeContract, preview, basePath),
                 site,
                 themeId,
                 themeContract,
@@ -294,11 +296,11 @@ public class BlogPageController {
     }
 
     private String bootJson(SiteResponse site, String themeId, int themeVersionNo, int themeContract,
-            boolean preview) {
+            boolean preview, String basePath) {
         Map<String, Object> boot = new LinkedHashMap<>();
         boot.put("site", site);
         boot.put("themeMode", site.themeMode());
-        boot.put("adminOrigin", siteProperties.getAdminOrigin());
+        boot.put("basePath", basePath);
         boot.put("contract", ThemeService.RUNTIME_CONTRACT);
         boot.put("preview", preview);
         Map<String, Object> theme = new LinkedHashMap<>();
@@ -324,7 +326,8 @@ public class BlogPageController {
                 + "img-src 'self' data:" + media + "; "
                 + "media-src 'self'" + media + "; "
                 + "connect-src 'self'" + extra + ws + "; "
-                + "frame-ancestors 'self' " + siteProperties.getAdminOrigin();
+                // 预览 iframe 与 admin 同源（admin 域 /__preview），不需要跨域白名单
+                + "frame-ancestors 'self'";
     }
 
     private String assetBase() {

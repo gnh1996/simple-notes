@@ -29,7 +29,7 @@ bash scripts/docker-build.sh all
 docker compose up -d --no-build
 ```
 
-端口被占用：改 `.env` 的 `SIMPLE_NOTES_PORT` 与 `ADMIN_ORIGIN`（两者要一致），再
+端口被占用：改 `.env` 的 `SIMPLE_NOTES_PORT`，再
 `docker compose up -d --no-build`。放到 `.env` 里也能保证后续备份/恢复沿用同一端口。
 `app` 的回环端口冲突时改 `APP_PORT`；远程 nginx 需要 `APP_BIND=0.0.0.0`（并配防火墙）。
 
@@ -122,8 +122,9 @@ docker compose up -d --no-deps app
 - SSE 需要 `proxy_buffering off` + `proxy_read_timeout 660s`；
 - 登录接口保留 `limit_req`（应用侧只信任 remoteAddr）。
 
-`app` 的 `ADMIN_ORIGIN` 必须设为最终访问源（如 `https://notes.example.com`），用于博客预览 iframe 的 CSP。
-admin 与博客建议同源（`/admin` + `/`）；若分域，admin 的 CSP 还需把博客 origin 加入 `frame-src`。
+主题预览 iframe 与 admin 同源（`/__preview`）；web / 裸机 nginx 必须把 `/__preview` 与 `/blog/`
+反代到 `app`，否则预览壳和 runtime 资源加载不到。admin 与博客建议同源（`/admin` + `/`）；
+若分域，admin 域也需要代理 `/__preview` 与 `/blog/`（不需要再配置跨域 origin）。
 
 ## 5. 备份与恢复
 

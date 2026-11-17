@@ -13,14 +13,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { getStoredToken, handleUnauthorized, themeApi } from '@/api'
 import { notifyError } from '@/utils/feedback'
 
-const BLOG_URL = (import.meta.env.VITE_BLOG_URL as string | undefined) ?? 'http://localhost:8080'
-const BLOG_ORIGIN = (() => {
-  try {
-    return new URL(BLOG_URL).origin
-  } catch {
-    return window.location.origin
-  }
-})()
+const PREVIEW_ORIGIN = window.location.origin
 
 /** 契约类型来自后端 OpenAPI（pnpm gen:api）；SSE done 载荷没有 OpenAPI 契约，见下方 AiArtifact。 */
 type AiChatRequest = Schema['AiChatRequest']
@@ -667,7 +660,11 @@ async function runDiagnose(message: ChatMessage): Promise<void> {
       fixtures: '1',
       t: Date.now().toString(),
     })
-    const report = await requestDiagnose(`${BLOG_URL}/?${params.toString()}`, artifact.html, artifact.css)
+    const report = await requestDiagnose(
+      `${PREVIEW_ORIGIN}/__preview?${params.toString()}`,
+      artifact.html,
+      artifact.css,
+    )
     diags[message.id] = { status: 'done', report }
   } catch (error) {
     diags[message.id] = {
@@ -696,7 +693,7 @@ function requestDiagnose(url: string, html: string, css: string): Promise<Diagno
 }
 
 function onDiagnoseMessage(event: MessageEvent): void {
-  if (event.origin !== BLOG_ORIGIN) return
+  if (event.origin !== PREVIEW_ORIGIN) return
   const data = event.data as Record<string, unknown> | null
   if (!data || typeof data !== 'object' || !diagPending) return
   if (data.type === 'blog-preview:ready') {
@@ -707,7 +704,7 @@ function onDiagnoseMessage(event: MessageEvent): void {
         html: diagPending.html,
         css: diagPending.css,
       },
-      BLOG_ORIGIN,
+      PREVIEW_ORIGIN,
     )
   } else if (data.type === 'blog-preview:diagnosed' && data.id === diagPending.id) {
     const pending = diagPending

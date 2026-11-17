@@ -45,6 +45,15 @@ export default defineConfig({
         target: apiProxyTarget,
         changeOrigin: true,
       },
+      // 主题预览：iframe 与 admin 同源，预览壳与 runtime 资源都走后端
+      '/__preview': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
+      '/blog': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
     },
   },
 })

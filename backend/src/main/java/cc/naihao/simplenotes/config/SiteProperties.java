@@ -13,9 +13,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @Setter
 public class SiteProperties {
 
-    /** 允许嵌入预览 iframe 的管理端源（用于 CSP frame-ancestors 与 postMessage 白名单） */
-    private String adminOrigin = "http://localhost:5173";
-
     /**
      * blog runtime 构建产物基址（docs/blog-runtime-theme.md §5.3）。
      *

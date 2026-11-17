@@ -1615,7 +1615,6 @@ export interface components {
             theme?: components["schemas"]["BlogThemePayload"];
             /** Format: int32 */
             runtimeContract: number;
-            adminOrigin: string;
             preview: boolean;
             /** Format: int64 */
             settingVersion: number;

@@ -11,7 +11,9 @@
   ▼
 香港服务器（nginx 1.22）
   ├─ simple-notes.<domain>   admin 静态：/var/www/simple-notes/admin
-  │    └─ /api/              proxy → 10.8.0.2:8081（WireGuard）
+  │    ├─ /api/              proxy → 10.8.0.2:8081（WireGuard）
+  │    ├─ /__preview         proxy → 10.8.0.2:8081（主题预览，与 admin 同源）
+  │    └─ /blog/             proxy → 10.8.0.2:8081（预览壳的 runtime / 资源）
   └─ blog.<domain>           整站 proxy → 10.8.0.2:8081（WireGuard）
                                     │
                           WireGuard（10.8.0.1 ↔ 10.8.0.2）
@@ -43,15 +45,19 @@
 | `<BLOG_HOST>` | 博客子域（如 `blog.example.com`） | `.local/deploy.md` |
 | `<VPN_HK_IP>` | 香港 WireGuard 地址（如 `10.8.0.1`） | `.local/deploy.md` |
 | `<VPN_APP_IP>` | 腾讯云 WireGuard 地址（如 `10.8.0.2`） | `.local/deploy.md` |
-| `<CERT_FILE>` / `<KEY_FILE>` | Cloudflare Origin 证书 / 私钥路径 | `.local/deploy.md` |
+| `<CERT_FILE>` / `<KEY_FILE>` | TLS 证书 / 私钥路径（灰云 LE 或橙云 Origin） | `.local/deploy.md` |
 | `<APP_IMAGE>` | `ghcr.io/<owner>/simple-notes-app:<version>` | `.local/deploy.md` |
 
 ## 3. 一次性初始化
 
-### 3.1 DNS 与 Cloudflare
+### 3.1 DNS 与 TLS
 
-1. 两个子域都加 A 记录指向 `<HK_HOST>`，**开启代理（橙云）**。
-2. SSL/TLS 模式保持 **Full (strict)**；源站证书使用 Cloudflare Origin 通配证书（覆盖 `*.<domain>`）。
+1. 两个子域都加 A 记录指向 `<HK_HOST>`。
+2. TLS 二选一：
+   - **灰云 + Let's Encrypt（当前自用）**：`acme.sh` 用 webroot `/var/www/html` 签发，nginx 使用
+     `/root/cert/le/<domain>/fullchain.pem` / `key.pem`；`acme.sh` cron 自动续期并 reload nginx。
+     80 端口 server 块必须保留 `/.well-known/acme-challenge/`。
+   - **橙云 + Cloudflare Origin**：开启代理（橙云），SSL/TLS 模式 Full (strict)，nginx 使用 Origin 证书。
 3. 不要在 Cloudflare 给 admin 配置会拦截 `/api` 的 Access 策略；如需保护管理端，另议。
 
 ### 3.2 VPN
@@ -107,7 +113,6 @@ chmod 600 .env
 
 ```dotenv
 # 必改
-ADMIN_ORIGIN=https://<ADMIN_HOST>
 APP_BIND=<VPN_APP_IP>          # 只让 VPN 访问 8081
 APP_PORT=8081
 APP_IMAGE=<APP_IMAGE>
@@ -170,7 +175,8 @@ ssh root@<HK_HOST> "find /var/www/simple-notes/admin -type d -exec chmod 755 {} 
 ssh root@<HK_HOST> "nginx -t && systemctl reload nginx"
 ```
 
-> 注意：admin 的 `frame-src` 必须包含 `https://<BLOG_HOST>`；app 的 `ADMIN_ORIGIN` 必须是 `https://<ADMIN_HOST>`，博客壳靠它放行预览 iframe。
+> 注意：主题预览 iframe 与 admin 同源（`/__preview`）；admin 的 nginx 需要把 `/__preview` 与 `/blog/`
+> 反代到 app，admin 页面 CSP 保持 `frame-src 'self'`。博客壳自己返回 `frame-ancestors 'self'`，不再需要管理端 origin。
 
 ## 4. 发布迭代（每次发版照此执行）
 
@@ -313,7 +319,7 @@ df -h /var/lib/docker /opt/simple-notes
 | 502 / 504（admin 或 blog） | `ping <VPN_APP_IP>`；腾讯云 `docker compose ps`；app 是否绑定在 `<VPN_APP_IP>:8081`；`docker compose logs app` |
 | 版本号不对 | admin 构建时的 `RELEASE_VERSION`；app 的 `APP_IMAGE`；`/api/version` |
 | 登录 429 | 应用按“用户名 + 客户端 IP”锁 60 秒；nginx `sn_login` 限流；确认 `X-Forwarded-For` 是真实 IP |
-| 预览 iframe 空白 | admin CSP 的 `frame-src` 是否含 `https://<BLOG_HOST>`；app 的 `ADMIN_ORIGIN` 是否为 `https://<ADMIN_HOST>` |
+| 预览 iframe 空白 | admin nginx 是否代理 `/__preview` 与 `/blog/`；admin CSP `frame-src` 是否为 `'self'`；app 是否返回 `frame-ancestors 'self'` |
 | 上传失败 | nginx `client_max_body_size 25m`；`./data/media` 权限；app 容器日志 |
 | 媒体 404 | `data/media` 挂载；数据库 `attachment.storage_mode`；`/api/media/{id}` 是否经反代 |
 | 博客静态资源 404 | `blog` 子域是否把所有路径反代到 app；不要只代理 `/blog/` |

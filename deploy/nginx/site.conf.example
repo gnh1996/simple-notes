@@ -3,7 +3,7 @@
 # 前提：
 #   - admin 已构建（VITE_ADMIN_BASE=/admin/ pnpm build:admin），产物放到 /var/www/simple-notes/admin
 #   - app 监听 127.0.0.1:8081（compose 默认只绑定回环；远程 app 改成 APP_BIND=0.0.0.0）
-#   - app 的 ADMIN_ORIGIN 设为本站点 origin，例如 https://notes.example.com
+#   - 主题预览 iframe 与 admin 同源（/__preview），不需要跨域 origin 配置
 #
 # 注意：blog 不是纯静态 SPA，/blog/** 和页面壳 /** 必须反代到 app，不能只靠 nginx。
 
@@ -82,6 +82,17 @@ server {
         proxy_request_buffering off;
         proxy_read_timeout 660s;
         proxy_send_timeout 660s;
+    }
+
+    # 主题预览（同源 /__preview；admin iframe 使用，内部再走后端壳）
+    location ^~ /__preview {
+        proxy_pass http://app;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_read_timeout 660s;
     }
 
     # blog runtime 与静态资源在 app jar 内

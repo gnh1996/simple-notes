@@ -112,7 +112,7 @@ theme.contract   = N
 
 ### 3.2 数据形状
 
-注入入口：`window.__BLOG_BOOT__ = { site, themeMode, adminOrigin, contract, preview, theme }`；`route` 不在壳里注入，由 runtime 读取 `location` 后构造；`colorMode`（实际生效的 light / dark）由 runtime 结合 localStorage 与系统偏好解析后暴露给模板。其余数据由 runtime 按路由取。
+注入入口：`window.__BLOG_BOOT__ = { site, themeMode, basePath, contract, preview, theme }`；`route` 不在壳里注入，由 runtime 读取 `location` 后构造；`basePath` 仅预览壳（admin 域 `/__preview`）用于 vue-router base；`colorMode`（实际生效的 light / dark）由 runtime 结合 localStorage 与系统偏好解析后暴露给模板。其余数据由 runtime 按路由取。
 
 | 键 | 类型 | 出现页面 | 说明 |
 | --- | --- | --- | --- |
@@ -440,7 +440,7 @@ catch-all 会抢占它（`RequestMappingHandlerMapping` 先于资源 handler）�
 GET /posts/hello
   → 匹配到公开路由 → 读取 site 配置 + ACTIVE 主题版本
   → 组装 HTML：
-       <script>window.__BLOG_BOOT__ = {site, themeMode, adminOrigin, contract, preview, theme:{id,versionNo,contract}}</script>
+       <script>window.__BLOG_BOOT__ = {site, themeMode, basePath, contract, preview, theme:{id,versionNo,contract}}</script>
        <style>[v-cloak]{display:none}</style>
        <style id="blog-boot-style">/* 首屏加载层，内联 */</style>
        <style id="blog-theme">/* 主题 CSS，内联 */</style>
@@ -474,7 +474,7 @@ GET /posts/hello
 | `unsafe-eval` | Vue 运行时模板编译必需；靠零主题 JS + 校验 + 分域兜底 |
 | 模板校验 | 保存时后端校验；**加载时 runtime 再校验一次**（库内旧数据 / 被篡改数据不得直接进编译器）；见 §8 |
 | 预览隔离 | 草稿仅通过短期签名 token 可见（30 分钟，HMAC）；页面 `no-store` + `no-referrer`，bootstrap 同样 `no-store` |
-| 嵌入控制 | `frame-ancestors 'self' https://admin.example.com`（由后端壳输出） |
+| 嵌入控制 | `frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN`；预览 iframe 与 admin 同源（admin 域 `/__preview`） |
 | 缓存 | 非预览壳 `s-maxage=60` + `stale-while-revalidate`；文章发布不失效壳，主题激活 / 配置保存 / 发版才变 |
 
 ### 5.3 构建与部署
@@ -483,8 +483,8 @@ GET /posts/hello
 - 构建顺序是唯一新增依赖：后端 `mvn test` / `compile` 不需要 dist；`mvn package` 必须在 `pnpm build:blog` 之后。缺失产物时 Maven 直接失败，不会打出空壳 jar。
 - 开发期：`mvn spring-boot:run` 默认启用 `dev` profile，`asset-base` 自动指向 Vite（5174），页面仍在 8080；生产 jar 不启用该 profile，固定 `/blog`。
 - 推荐同源；若在整站前面挂 CDN，按整站回源缓存即可，不需要单独的资产域或 CORS。
-- admin 为独立前端域，调同一 API（跨域，需 CORS 白名单）。
-- `VITE_BLOG_URL`（admin）= blog 公开地址（预览 iframe 指向后端壳）；后端配置 admin 域名用于 `frame-ancestors` 与 postMessage 白名单。
+- admin / blog 各自同源代理 `/api` 到后端；不需要 CORS。admin 域额外代理 `/__preview` 与 `/blog/` 供同源预览 iframe。
+- `VITE_BLOG_URL`（admin）= blog 公开地址，仅用于“查看博客”等跳转；主题预览 iframe 走 admin 同源 `/__preview`（admin nginx 代理 `/__preview`、`/blog/` 到 app），不需要跨域 origin 配置。
 
 ---
 
@@ -594,7 +594,7 @@ create unique index uk_site_page_slug on site_page (lower(slug)) where delete_fl
 ### 7.2 预览协议
 
 ```text
-iframe src = {BLOG_URL}/?previewTheme={versionId}&token={signedToken}
+iframe src = /__preview?previewTheme={versionId}&token={signedToken}   # admin 同源
 
 token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 ```
@@ -669,7 +669,7 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | `GET /`、`/posts/**`、`/tags/**`、`/archives`、`/search`、`/about`、`/p/**` | 返回组装后的壳（含 fallback；ETag + `s-maxage`，预览 `no-store`） |
 | `GET` 其他任意非保留路径（如新增前端路由） | 同样返回壳（`200 + 壳`，runtime 渲染 not-found）；保留前缀见 §4.5 |
 | `GET /blog/runtime.js`、`/blog/chunks/*`、`/blog/assets/*` | 后端从 jar 内 `static/blog/` 同源提供；入口 `no-cache`，哈希资源长缓存 |
-| `GET /api/blog/bootstrap` | 保留为调试 / agent / 未来桌面端的结构化读取入口：`{ site, theme, runtimeContract, adminOrigin, preview, settingVersion }`；**不再参与首屏启动**；支持 `previewTheme` + `token`，`no-store` |
+| `GET /api/blog/bootstrap` | 保留为调试 / agent / 未来桌面端的结构化读取入口：`{ site, theme, runtimeContract, preview, settingVersion }`；**不再参与首屏启动**；支持 `previewTheme` + `token`，`no-store` |
 | `GET /api/blog/posts` | 已有；`page` / `size` / `tagId` / `year` / `month` / `pinnedFirst` / `direction` / `sortBy`；`year` / `month` 跟随 `sortBy` 字段 |
 | `GET /api/blog/posts/{slug}` | 已有；额外接受 `pinnedFirst` / `direction` / `sortBy` / `tagId` / `year` / `month` / `q` 计算 `prevPost` / `nextPost` |
 | `GET /api/blog/tags`、`/api/blog/archives`、`/api/blog/search` | 已有；`/archives` 返回全量月份索引并支持 `sortBy` / `direction`，`/search` 支持完整排序参数 |

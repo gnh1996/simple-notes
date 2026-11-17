@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import cc.naihao.simplenotes.support.IntegrationTestBase;
@@ -43,7 +44,31 @@ class BlogShellRouteIntegrationTest extends IntegrationTestBase {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
                 .andExpect(content().string(containsString("window.__BLOG_BOOT__")))
                 .andExpect(content().string(containsString("data-blog-boot")))
-                .andExpect(content().string(containsString("data-blog-progress")));
+                .andExpect(content().string(containsString("data-blog-progress")))
+                // 管理端 origin 不再进入公开博客；预览已迁到 admin 同源 /__preview
+                .andExpect(content().string(not(containsString("adminOrigin"))))
+                .andExpect(header().string("X-Frame-Options", "SAMEORIGIN"))
+                .andExpect(header().string("Content-Security-Policy",
+                        not(containsString("frame-ancestors 'self' http"))));
+    }
+
+    @Test
+    @DisplayName("公开 bootstrap 不返回管理端 origin")
+    void publicBootstrapDoesNotExposeAdminOrigin() throws Exception {
+        mockMvc.perform(get("/api/blog/bootstrap"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(not(containsString("adminOrigin"))));
+    }
+
+    @Test
+    @DisplayName("admin 同源预览路由：router base=/__preview，且不暴露管理端 origin")
+    void previewRouteUsesAdminBasePath() throws Exception {
+        mockMvc.perform(get("/__preview"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("\"basePath\":\"/__preview\"")))
+                .andExpect(content().string(not(containsString("adminOrigin"))))
+                .andExpect(header().string("Content-Security-Policy",
+                        containsString("frame-ancestors 'self'")));
     }
 
     @Test
