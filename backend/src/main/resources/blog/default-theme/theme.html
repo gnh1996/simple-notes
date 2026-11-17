@@ -197,29 +197,23 @@
     </template>
   </main>
 
-  <footer class="site-foot" data-blog-footer>
+  <footer class="site-foot" data-blog-footer
+          v-if="site.footerText || site.social.some(item => item.url) || site.author.name || site.icp || site.policeRecord">
     <div class="foot-inner">
-      <p class="foot-mark">{{ site.name }}</p>
-      <div class="foot-grid"
-           v-if="site.footerText || site.author.name || site.social.some(item => item.url) || site.icp || site.policeRecord">
-        <div class="foot-col" v-if="site.footerText || site.author.name">
-          <p class="foot-label">About</p>
-          <p v-if="site.footerText" class="foot-text">{{ site.footerText }}</p>
-          <p v-if="site.author.name" class="foot-text">© {{ site.author.name }}</p>
-        </div>
-        <div class="foot-col" v-if="site.social.some(item => item.url)">
-          <p class="foot-label">Elsewhere</p>
+      <div class="foot-main" v-if="site.footerText || site.social.some(item => item.url)">
+        <p v-if="site.footerText" class="foot-text">{{ site.footerText }}</p>
+        <nav class="foot-links" v-if="site.social.some(item => item.url)" aria-label="Elsewhere">
           <template v-for="(s, index) in site.social" :key="(s.url || '') + '-' + index">
             <a v-if="s.url" :href="s.url" rel="noopener noreferrer"
                target="_blank">{{ s.label || s.type || s.url }}</a>
           </template>
-        </div>
-        <div class="foot-col" v-if="site.icp || site.policeRecord">
-          <p class="foot-label">Record</p>
-          <a v-if="site.icp" href="https://beian.miit.gov.cn/" rel="noopener noreferrer"
-             target="_blank">{{ site.icp }}</a>
-          <span v-if="site.policeRecord">{{ site.policeRecord }}</span>
-        </div>
+        </nav>
+      </div>
+      <div v-if="site.author.name || site.icp || site.policeRecord" class="foot-meta">
+        <span v-if="site.author.name">© {{ site.author.name }}</span>
+        <a v-if="site.icp" href="https://beian.miit.gov.cn/" rel="noopener noreferrer"
+           target="_blank">{{ site.icp }}</a>
+        <span v-if="site.policeRecord">{{ site.policeRecord }}</span>
       </div>
     </div>
   </footer>

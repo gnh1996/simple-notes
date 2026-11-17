@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.zip.CRC32;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
@@ -41,7 +42,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 @Slf4j
 public class BlogPageController {
 
-    /** 壳模板结构版本：模板 / 注入数据变化时递增，避免 ETag 命中旧壳。 */
+    /** 壳模板结构版本：壳本身（骨架 / 内联启动脚本）变化时递增；内置主题内容由内容摘要参与 ETag。 */
     private static final int SHELL_VERSION = 5;
 
     /**
@@ -117,6 +118,7 @@ public class BlogPageController {
 
     private volatile String defaultHtml;
     private volatile String defaultCss;
+    private volatile String builtinThemeRevision;
 
     @GetMapping({"/", SHELL_PATH, SHELL_PATH + "/**"})
     public void page(HttpServletRequest request, HttpServletResponse response) throws IOException {
@@ -171,7 +173,17 @@ public class BlogPageController {
             themeContract = theme == null ? ThemeService.RUNTIME_CONTRACT : theme.getContract();
         }
 
-        String etag = "\"" + themeId + "-" + (draftHtml != null ? previewDraftId : String.valueOf(themeVersionNo)) + "-"
+        String themeRevision;
+        if (draftHtml != null) {
+            themeRevision = previewDraftId;
+        } else if (theme == null) {
+            // 内置默认主题没有版本号：用内容摘要参与 ETag，改主题文件就能失效缓存
+            themeRevision = builtinThemeRevision();
+        } else {
+            themeRevision = String.valueOf(theme.getVersionNo());
+        }
+
+        String etag = "\"" + themeId + "-" + themeRevision + "-"
                 + settingService.currentVersion() + "-" + assetBase() + "-" + SHELL_VERSION + "\"";
         // 预览 iframe 与 admin 同源（admin 域 /__preview）；router base 必须跟着路径走，客户端导航才不会跳出预览区
         String basePath = request.getRequestURI().startsWith("/__preview") ? "/__preview" : "";
@@ -376,6 +388,17 @@ public class BlogPageController {
             defaultCss = readResource("blog/default-theme/theme.css");
         }
         return defaultCss;
+    }
+
+    /** 内置主题内容摘要：主题文件改动即参与 ETag 失效（默认主题不走版本号）。 */
+    private String builtinThemeRevision() {
+        if (builtinThemeRevision == null) {
+            CRC32 crc = new CRC32();
+            crc.update(defaultHtml().getBytes(StandardCharsets.UTF_8));
+            crc.update(defaultCss().getBytes(StandardCharsets.UTF_8));
+            builtinThemeRevision = Long.toHexString(crc.getValue());
+        }
+        return builtinThemeRevision;
     }
 
     private String readResource(String path) {
