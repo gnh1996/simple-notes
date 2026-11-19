@@ -403,7 +403,7 @@ backend/src/main/resources/blog/default-theme/{theme.html,theme.css}   ← pnpm 
 | `/posts/:slug` | 文章详情 | `post` + `prevPost` / `nextPost` |
 | `/tags` | 标签 | `tags` |
 | `/tags/:id` | 标签文章 | `tags` + `tag` + `posts` + `pager` |
-| `/archives` | 归档索引；`?year=&month=` 为月视图 | `archives` + 当前月 `posts` + `pager` |
+| `/archives` | 归档；未带 `year`/`month` 时自动跳到最新月份 | `archives` + 当前月 `posts` + `pager` |
 | `/search` | 搜索 | `keyword` + `posts` + `pager` |
 | `/about`、`/p/:slug` | 独立页面 | `page` |
 | 其他 | 404 | — |
@@ -413,8 +413,9 @@ backend/src/main/resources/blog/default-theme/{theme.html,theme.css}   ← pnpm 
 - 归档路由默认 `pinnedFirst=false`；其余列表默认 `true`。
 - `direction` 只作用于时间字段；`pinnedFirst=true` 时置顶始终在前，二者不互相翻转。
 - 不限制参数组合，但未知字段 / 方向返回 400。
-- **归档按月查看 + 月内分页**：未带 `year` / `month` 时只展示年月索引；带 `year` / `month` 时用 `/api/blog/posts?year=&month=&page=&size=` 取该月文章，`pager` 在月内翻页，左侧计数与列表天然一致。`year` / `month` 过滤跟随 `sortBy` 字段（`displayAt` 用 `coalesce(authoredAt, firstPublishedAt)`），不是固定 `firstPublishedAt`。
-- 未选月份时只请求 `/api/blog/archives`，`posts=[]`、`pager.total=0`、`state='empty'`，提示选择月份，**不请求** `/api/blog/posts`；选中月份无文章时同样为 `empty`。`go(page)` 会保留 `year` / `month` / 排序 query。
+- **归档按月查看 + 月内分页（v1.19 默认最新月）**：带 `year` / `month` 时用 `/api/blog/posts?year=&month=&page=&size=` 取该月文章，`pager` 在月内翻页，左侧计数与列表天然一致。`year` / `month` 过滤跟随 `sortBy` 字段（`displayAt` 用 `coalesce(authoredAt, firstPublishedAt)`），不是固定 `firstPublishedAt`。
+- **未带（或非法）`year` / `month` 时自动进入最新月份**：先请求 `/api/blog/archives`，取年月数值最大的一项（不是索引第一项——`direction=asc` 时第一项最旧），以 `router.replace` 守卫重定向到 `?year=…&month=…`，保留 `pinnedFirst` / `direction` / `sortBy`（丢弃 `page`），第二趟导航再取该月文章；首趟索引结果在重定向内复用（`archiveHandoff`），不重复请求。索引为空（全站没有已发布文章）时不重定向，`posts=[]`、`state='empty'`、提示“暂无归档”，且不请求 `/api/blog/posts`。
+- 用户显式指定的月份没有文章时不回退到最新月（避免 URL 与内容不一致），`state='empty'`、提示“该月暂无文章”；`go(page)` 会保留 `year` / `month` / 排序 query。
 - 进入详情时，runtime 把当前列表的 `pinnedFirst` / `direction` / `sortBy`（以及标签页的 `tagId`、归档筛选的 `year` / `month`、搜索页的 `q`）附加到 `/posts/:slug`；详情默认值与首页相同。
 - 搜索页的上下篇携带 `q`，使用与搜索列表相同的标题 / 正文匹配条件，保证停留在搜索结果内。
 - 新标签页 / 直接打开详情会丢上下文，按默认值计算上下篇。
@@ -825,3 +826,4 @@ token = HMAC-SHA256(versionId + "." + exp)，TTL 30 分钟，由后端签发
 | 2026-11-09 | v1.16 主题删除与默认回退 | 新增 `DELETE /api/admin/themes/{id}`（`admin:theme:delete`，V19）：仅非线上主题，软删除身份、版本保留、名称可复用；新增 `POST /api/admin/themes/default/activate`（`admin:theme:activate`）清空 `site_setting.theme.id`，作为回退内置默认主题与删除线上主题的前置操作；管理端补删除入口、默认主题入口、权限按钮；修复编辑旧版本的目标版本号、主题切换竞态；`ThemeSummary` 可空字段移出 requiredProperties |
 | 2026-11-09 | v1.17 主题管理主从布局 | 桌面端改为「左主题列表 + 右详情」，左侧固定独立滚动；内置默认主题成为列表第一项，删除移入主题项 `...` 菜单；选中项写入 `?theme=`；版本表精简为版本 / 状态（线上 / 上次应用）/ 时间 / 操作，契约列仅在不匹配时出现；窄屏列表与详情二选一、版本改卡片；AI 入口收敛到版本行「AI 迭代」，头部仅在继续会话 / 无版本时出现，抽屉基线改为标签展示 |
 | 2026-11-17 | v1.18 默认主题页脚与缓存 | 页脚去掉重复站名（页头常驻、首页 hero 已是站名），改为「文案 + 社交」与「版权 / 备案」两层，全字段为空时整个 `<footer>` 不渲染；**内置主题 ETag 改由内容摘要（CRC32）参与**，改主题文件即失效缓存，不再依赖手工递增 `SHELL_VERSION`（`SHELL_VERSION` 保持 5，只管壳结构）。首页 hero 维持全站衬线字族，不引入跨平台展示字体 |
+| 2026-11-18 | v1.19 归档默认最新月 | `/archives` 未带（或非法）`year` / `month` 时不再停留在空索引页：先取 `/api/blog/archives`，按年月数值最大项重定向到 `?year=…&month=…`（保留排序 query、丢弃 `page`），再取该月文章与分页；首趟索引结果在重定向内复用，不重复请求。无任何已发布文章时不重定向，保持“暂无归档”空态；显式月份无文章不回退。默认主题归档页文案同步为“按月份浏览已发布文章”；契约 / 路由 / 数据库零变更 |

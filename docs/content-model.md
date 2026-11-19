@@ -598,7 +598,7 @@ note.delete_flag = 0
 - 不限制参数组合：`pinnedFirst=true + direction=asc` 表示“置顶组在前，组内按时间正序”，按文档语义执行即可。
 - 值不做组合白名单，但**字段值必须校验**：未知 `sortBy` / `direction` 返回 400，不能把字符串直接拼进查询。
 - `sortBy=displayAt` 使用 `coalesce(authored_at, first_published_at)`；对未设置 `authored_at` 的文章与 `firstPublishedAt` 等价。
-- 归档采用**按月查看 + 月内分页**：`/api/blog/archives` 只出年月索引；未带 `year` / `month` 时不请求文章列表（页面 `state=empty`，提示选择月份）；带 `year` / `month` 时由 `/api/blog/posts` 取该月文章，`page` / `size` 在月内分页。`year` / `month` 过滤跟随 `sortBy` 字段，不是固定 `firstPublishedAt`。
+- 归档采用**按月查看 + 月内分页**：`/api/blog/archives` 只出年月索引；页面（v1.19）在未带 `year` / `month` 时先取索引并自动跳到最新月份（`router.replace` 到带月份 query 的 URL，全站无已发布文章时保持 `state=empty` 并提示“暂无归档”）；带 `year` / `month` 时由 `/api/blog/posts` 取该月文章，`page` / `size` 在月内分页。`year` / `month` 过滤跟随 `sortBy` 字段，不是固定 `firstPublishedAt`。
 - `direction` 同时决定年月索引顺序与月内文章顺序；左侧计数与月内 `total` 同源同字段。
 - 详情页的 `prevPost` / `nextPost` 按同一组参数计算；若当前文章不在筛选集合内（如手动改 `tagId` / `q`），忽略筛选并按所选排序计算相邻项。
 - 搜索页的上下篇携带 `q`，使用与 `/api/blog/search` 相同的标题 / 正文匹配条件，保证停留在搜索结果内。

@@ -224,10 +224,65 @@ function validPeriod(query: RouteLocationNormalized['query']): { year: number; m
   return { year, month }
 }
 
+/**
+ * 归档默认月份：取年月数值最大的一项。
+ * 不能直接用第一项——`direction=asc` 时索引按升序返回，第一项是最旧的月份。
+ */
+function latestPeriod(rows: Archive[]): { year: number; month: number } | null {
+  let latest: { year: number; month: number } | null = null
+  for (const row of rows) {
+    if (!Number.isInteger(row.year) || !Number.isInteger(row.month)) {
+      continue
+    }
+    if (!latest || row.year * 12 + row.month > latest.year * 12 + latest.month) {
+      latest = { year: row.year, month: row.month }
+    }
+  }
+  return latest
+}
+
+/** 归档重定向只保留排序上下文（`page` 等不属于月份索引的 query 丢弃）。 */
+function archivePeriodQuery(
+  query: RouteLocationNormalized['query'],
+  period: { year: number; month: number },
+): Record<string, string> {
+  const next: Record<string, string> = { year: String(period.year), month: String(period.month) }
+  for (const key of ['pinnedFirst', 'direction', 'sortBy'] as const) {
+    const value = queryString(query[key])
+    if (value) {
+      next[key] = value
+    }
+  }
+  return next
+}
+
+/** 参数化归档索引请求；重定向后的第二趟导航复用首趟结果，避免重复请求。 */
+let archiveHandoff: { key: string; rows: Archive[] } | null = null
+
+function archiveKey(sort: ListSort): string {
+  return `${sort.sortBy}:${sort.direction}`
+}
+
+async function loadArchiveRows(sort: ListSort, signal: AbortSignal): Promise<Archive[]> {
+  if (archiveHandoff && archiveHandoff.key === archiveKey(sort)) {
+    const rows = archiveHandoff.rows
+    archiveHandoff = null
+    return rows
+  }
+  const rows = await api<Archive[]>(
+    '/api/blog/archives',
+    { direction: sort.direction, sortBy: sort.sortBy },
+    { signal },
+  )
+  return rows || []
+}
+
 interface RouteData {
   state: BlogState
   message: string
   listSort: ListSort
+  /** 归档页未选月份时的规范化 query：守卫据此重定向到最新月份（不写入全局状态）。 */
+  canonicalQuery: Record<string, string> | null
   posts: PostSummary[]
   pager: Pager
   post: PostDetail | null
@@ -246,6 +301,7 @@ function emptyRouteData(): RouteData {
     state: 'loading',
     message: '',
     listSort: { pinnedFirst: true, direction: 'desc', sortBy: 'displayAt' },
+    canonicalQuery: null,
     posts: [],
     pager: emptyPager(),
     post: null,
@@ -327,8 +383,13 @@ function loadFixtureRoute(to: RouteLocationNormalized): RouteData {
       data.archives = fixtureArchives
       const period = validPeriod(to.query)
       if (!period) {
-        data.state = 'empty'
-        data.message = '请选择月份查看归档'
+        const latest = latestPeriod(fixtureArchives)
+        if (!latest) {
+          data.state = 'empty'
+          data.message = '暂无归档'
+          break
+        }
+        data.canonicalQuery = archivePeriodQuery(to.query, latest)
         break
       }
       const rows = fixtureSorted(sort).filter((item) => fixturePeriod(item, period))
@@ -482,19 +543,19 @@ async function loadRoute(to: RouteLocationNormalized, signal: AbortSignal): Prom
     case 'archives': {
       const sort = resolveListSort(query, false)
       data.listSort = sort
-      const archiveRows = await api<Archive[]>(
-        '/api/blog/archives',
-        { direction: sort.direction, sortBy: sort.sortBy },
-        { signal },
-      )
-      data.archives = archiveRows || []
+      const archiveRows = await loadArchiveRows(sort, signal)
+      data.archives = archiveRows
       const period = validPeriod(query)
       if (!period) {
-        // 未选月份：只渲染年月索引，不请求文章列表。
-        data.posts = []
-        data.pager = emptyPager()
-        data.state = 'empty'
-        data.message = '请选择月份查看归档'
+        const latest = latestPeriod(archiveRows)
+        if (!latest) {
+          // 全站没有已发布文章：保留索引空态，不跳转。
+          data.state = 'empty'
+          data.message = '暂无归档'
+          break
+        }
+        // 未选月份：交给守卫重定向到最新月份，真正取文章走下一趟导航。
+        data.canonicalQuery = archivePeriodQuery(query, latest)
         break
       }
       const result = await api<PageResult<PostSummary>>(
@@ -604,6 +665,14 @@ router.beforeResolve(async (to) => {
     if (sequence !== navigationSequence || controller.signal.aborted) {
       return false
     }
+    if (data.canonicalQuery) {
+      // 归档默认月份：原地重定向到带 year/month 的 URL，保证分享 / 刷新 / 分页上下文一致。
+      if (data.archives) {
+        archiveHandoff = { key: archiveKey(data.listSort), rows: data.archives }
+      }
+      pendingData = null
+      return { path: to.path, query: data.canonicalQuery, replace: true }
+    }
     pendingData = data
     return true
   } catch (error) {
@@ -617,6 +686,8 @@ router.beforeResolve(async (to) => {
 
 router.afterEach((to) => {
   currentPath.value = to.fullPath
+  // 只服务于归档重定向的下一趟导航；未被消费（导航被中断）就丢弃，避免跨会话复用旧索引。
+  archiveHandoff = null
   const data = pendingData
   pendingData = null
   if (data) {
