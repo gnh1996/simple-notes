@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { createEditorOptions, sanitizeHtml } from '@simple-notes/markdown'
+import { compactEditorToolbar, createEditorOptions, sanitizeHtml } from '@simple-notes/markdown'
 import { TableColumnResize } from '@simple-notes/markdown/table-resize'
 import 'vditor/dist/index.css'
 import Vditor from 'vditor'
@@ -166,6 +166,10 @@ function create(): void {
       uploadAccept: 'image/png,image/jpeg,image/gif,image/webp,image/avif',
       uploadMax: 20 * 1024 * 1024,
       uploadMultiple: true,
+      // 桌面端正文窄（1180 + 资料库时约 738px），用精简单行工具栏避免换行；
+      // 字数只在状态栏显示一次，编辑器不再挂计数器。
+      toolbar: compactEditorToolbar,
+      counter: false,
       onInput: (value) => {
         if (syncing) {
           return

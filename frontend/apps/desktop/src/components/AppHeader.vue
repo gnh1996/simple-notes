@@ -15,6 +15,8 @@ defineProps<{
   online: boolean
   sidebarOpen: boolean
   theme: ThemeMode
+  /** 正文列宽模式（§2.7.1）。 */
+  widthMode: 'limited' | 'full'
 }>()
 
 const emit = defineEmits<{
@@ -29,6 +31,7 @@ const emit = defineEmits<{
   sync: []
   retry: []
   'set-theme': [value: ThemeMode]
+  'set-width-mode': [value: 'limited' | 'full']
   'open-logs': []
   'copy-diagnostics': []
 }>()
@@ -37,6 +40,11 @@ const themeOptions: Array<{ value: ThemeMode; label: string }> = [
   { value: 'system', label: '跟随系统' },
   { value: 'light', label: '浅色' },
   { value: 'dark', label: '深色' },
+]
+
+const widthOptions: Array<{ value: 'limited' | 'full'; label: string }> = [
+  { value: 'limited', label: '限宽' },
+  { value: 'full', label: '全宽' },
 ]
 
 const newMenu = ref(false)
@@ -201,6 +209,19 @@ function run(action: () => void): void {
             :class="theme === option.value ? 'border-brand-400/70 bg-brand-500/10 text-brand-400' : 'border-app-border text-app-muted hover:text-app-fg'"
             type="button"
             @click="closeMenus(); emit('set-theme', option.value)"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+        <p class="px-1 pb-1 mt-2 text-[10px] text-app-muted">编辑区宽度</p>
+        <div class="flex gap-1 px-1">
+          <button
+            v-for="option in widthOptions"
+            :key="option.value"
+            class="flex-1 rounded border px-1 py-1 text-[11px]"
+            :class="widthMode === option.value ? 'border-brand-400/70 bg-brand-500/10 text-brand-400' : 'border-app-border text-app-muted hover:text-app-fg'"
+            type="button"
+            @click="closeMenus(); emit('set-width-mode', option.value)"
           >
             {{ option.label }}
           </button>

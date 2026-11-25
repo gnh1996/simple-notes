@@ -42,6 +42,39 @@ export const vditorMath = {
   engine: 'KaTeX',
 } as const
 
+/**
+ * 桌面端精简工具栏（`docs/desktop-layout.md` §2.7）。
+ *
+ * Vditor 默认工具栏在约 900px 以下会换行：桌面端 1180 窗口 + 440 资料库时正文只有 738px，
+ * 换行会白吃 35px 并出现「计数器掉到第二行」的错位。这里只保留写作高频项，
+ * 最窄约 480px 仍单行。record / outline / export / fullscreen / info / help 不保留
+ * 也不做等价入口，理由见 `docs/desktop-layout.md` §2.7.3（涉及外部设备 / 文件落盘 /
+ * 额外推挤面板的入口一律走受控的 `⋯` 菜单或专门设计，不放工具栏）。
+ * admin 仍使用 Vditor 默认全量工具栏，不引用本常量。
+ */
+export const compactEditorToolbar = [
+  'head',
+  'bold',
+  'italic',
+  'strike',
+  '|',
+  'link',
+  'list',
+  'ordered-list',
+  'check',
+  'quote',
+  '|',
+  'code',
+  'inline-code',
+  'table',
+  '|',
+  'upload',
+  '|',
+  'undo',
+  'redo',
+  'edit-mode',
+] as const
+
 /** 渲染前的 HTML 清洗；KaTeX / Mermaid 在清洗之后生成，不会被误删。 */
 export function sanitizeHtml(html: string): string {
   return DOMPurify.sanitize(html, {
@@ -69,6 +102,10 @@ export interface EditorSetup {
   uploadAccept?: string
   uploadMax?: number
   uploadMultiple?: boolean
+  /** 自定义工具栏项；不传则使用 Vditor 全量默认工具栏（admin）。 */
+  toolbar?: readonly string[]
+  /** 是否显示 Vditor 右下角计数器；默认显示，桌面端关闭（字数由状态栏承担）。 */
+  counter?: boolean
 }
 
 export function createEditorOptions(setup: EditorSetup): VditorEditorOptions {
@@ -83,7 +120,7 @@ export function createEditorOptions(setup: EditorSetup): VditorEditorOptions {
     theme: setup.theme === 'dark' ? 'dark' : 'classic',
     cache: { id: setup.cacheId, enable: false },
     toolbarConfig: { pin: true },
-    counter: { enable: true, type: 'text' },
+    counter: { enable: setup.counter ?? true, type: 'text' },
     preview: {
       delay: 200,
       hljs: {
@@ -99,6 +136,10 @@ export function createEditorOptions(setup: EditorSetup): VditorEditorOptions {
 
   if (setup.onInput) {
     options.input = setup.onInput
+  }
+
+  if (setup.toolbar) {
+    options.toolbar = [...setup.toolbar]
   }
 
   // 注意：不能把 upload 设为 undefined；Vditor 的 options merge 会因该键存在而初始化失败。

@@ -51,3 +51,8 @@ html.dark {
 .vditor-ir__preview code {
   background-image: none;
 }
+
+/* 专注模式：隐藏编辑器工具栏，正文吃满窗口高度（docs/desktop-layout.md §2.7.2） */
+.sn-focus .vditor-toolbar {
+  display: none;
+}

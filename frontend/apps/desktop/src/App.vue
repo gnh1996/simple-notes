@@ -60,6 +60,7 @@ type DocumentAction =
   | 'force-save'
   | 'diff'
   | 'open-admin'
+  | 'focus'
   | 'resolve-local'
   | 'resolve-remote'
   | 'resolve-delete-local'
@@ -113,6 +114,13 @@ const sidebarWidth = ref(440)
 const quickOpen = ref(false)
 const loginOpen = ref(false)
 const loadingRestore = ref(true)
+/** 正文列宽模式：限宽 960（默认）/ 全宽，持久化到 ui_state（§2.7.1）。 */
+const editorWidthMode = ref<'limited' | 'full'>('limited')
+/** 专注模式：隐藏顶栏 / 标签栏 / 状态栏 / 文档头 / 工具栏（§2.7.2，不持久化）。 */
+const focusMode = ref(false)
+/** 进入专注模式时的短暂提示。 */
+const focusHint = ref(false)
+let focusTimer: number | undefined
 
 const importOpen = ref(false)
 const importTitle = ref('')
@@ -1493,6 +1501,9 @@ function onDocumentAction(action: DocumentAction): void {
     case 'open-admin':
       void openAdmin(tab)
       break
+    case 'focus':
+      enterFocus()
+      break
     case 'resolve-local':
       void resolveConflict('local')
       break
@@ -1919,6 +1930,14 @@ async function loadUIState(): Promise<void> {
   } catch {
     // UI 状态读取失败不影响主流程
   }
+  try {
+    const mode = await SystemService.GetUIState('editor_width_mode')
+    if (mode === 'full') {
+      editorWidthMode.value = 'full'
+    }
+  } catch {
+    // 同上
+  }
 }
 
 function persistPayload(): PersistedTabs {
@@ -1953,8 +1972,46 @@ async function persistTabsNow(): Promise<void> {
   try {
     await SystemService.SetUIState('open_tabs', JSON.stringify(persistPayload()))
     await SystemService.SetUIState('sidebar_width', String(sidebarWidth.value))
+    await SystemService.SetUIState('editor_width_mode', editorWidthMode.value)
   } catch {
     // 本地 UI 状态写入失败不阻塞编辑
+  }
+}
+
+function setEditorWidthMode(mode: 'limited' | 'full'): void {
+  editorWidthMode.value = mode
+  void SystemService.SetUIState('editor_width_mode', mode).catch(() => {})
+}
+
+function enterFocus(): void {
+  if (focusMode.value || !activeTab.value) {
+    return
+  }
+  focusMode.value = true
+  // 专注模式只留正文：资料库一并收起，退出时不自动展开。
+  sidebarOpen.value = false
+  quickOpen.value = false
+  focusHint.value = true
+  window.clearTimeout(focusTimer)
+  focusTimer = window.setTimeout(() => {
+    focusHint.value = false
+  }, 2500)
+}
+
+function exitFocus(): void {
+  if (!focusMode.value) {
+    return
+  }
+  focusMode.value = false
+  focusHint.value = false
+  window.clearTimeout(focusTimer)
+}
+
+function toggleFocus(): void {
+  if (focusMode.value) {
+    exitFocus()
+  } else {
+    enterFocus()
   }
 }
 
@@ -2054,6 +2111,12 @@ async function logout(): Promise<void> {
 }
 
 function toggleSidebar(): void {
+  // 专注模式里没有顶栏 / 标签栏，先退出专注再展开资料库。
+  if (focusMode.value) {
+    exitFocus()
+    sidebarOpen.value = true
+    return
+  }
   sidebarOpen.value = !sidebarOpen.value
 }
 
@@ -2415,6 +2478,11 @@ function onKeydown(event: KeyboardEvent): void {
       quickOpen.value = false
       return
     }
+    if (focusMode.value) {
+      // 专注模式下 Esc 退出；应用级浮层已经先关掉了（§2.7.2）。
+      exitFocus()
+      return
+    }
     if (!isDesktop.value && sidebarOpen.value) {
       sidebarOpen.value = false
     }
@@ -2460,6 +2528,11 @@ function onKeydown(event: KeyboardEvent): void {
   if (key === 'l' && event.shiftKey) {
     event.preventDefault()
     toggleSidebar()
+    return
+  }
+  if (key === 'f' && event.shiftKey) {
+    event.preventDefault()
+    toggleFocus()
     return
   }
   if (key === 'k') {
@@ -2536,6 +2609,16 @@ watch(unsaved, (value) => {
   LocalFileService.SetUnsaved(value).catch(() => {})
 })
 
+// 标签全部关闭 → 回到起始页，专注模式没有意义，自动退出。
+watch(
+  () => tabs.value.length,
+  (count) => {
+    if (!count) {
+      exitFocus()
+    }
+  },
+)
+
 watch(windowTitle, (value) => {
   window.clearTimeout(titleTimer)
   titleTimer = window.setTimeout(() => {
@@ -2567,6 +2650,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('offline', updateOnline)
   window.clearTimeout(searchTimer)
   window.clearTimeout(titleTimer)
+  window.clearTimeout(focusTimer)
   window.clearTimeout(messageTimer)
   for (const timer of saveTimers.values()) {
     window.clearTimeout(timer)
@@ -2591,6 +2675,7 @@ function updateOnline(): void {
 <template>
   <div class="flex h-full flex-col bg-app-bg text-app-fg" data-file-drop-target="true">
     <AppHeader
+      v-if="!focusMode"
       :session="session"
       :status="status"
       :server-version="serverVersion"
@@ -2599,6 +2684,7 @@ function updateOnline(): void {
       :online="online"
       :sidebar-open="sidebarOpen"
       :theme="themeMode"
+      :width-mode="editorWidthMode"
       @toggle-sidebar="toggleSidebar"
       @quick-open="quickOpen = true"
       @new-local="newNote('local')"
@@ -2610,6 +2696,7 @@ function updateOnline(): void {
       @sync="refreshIndex(true)"
       @retry="retryOutbox"
       @set-theme="setThemeMode"
+      @set-width-mode="setEditorWidthMode"
       @open-logs="openLogs"
       @copy-diagnostics="copyDiagnostics"
     />
@@ -2667,7 +2754,7 @@ function updateOnline(): void {
 
       <main class="flex min-w-0 flex-1 flex-col">
         <TabBar
-          v-if="tabs.length"
+          v-if="!focusMode && tabs.length"
           :tabs="tabs"
           :active-key="activeKey"
           @select="activateTab"
@@ -2696,6 +2783,8 @@ function updateOnline(): void {
           :theme="editorTheme"
           :folder-options="folderOptions"
           :session="session"
+          :focus="focusMode"
+          :width-mode="editorWidthMode"
           @update:title="updateTabTitle(activeTab, $event)"
           @update:content="updateTabContent(activeTab, $event)"
           @update:folder="updateTabFolder(activeTab, $event)"
@@ -2706,6 +2795,7 @@ function updateOnline(): void {
     </div>
 
     <StatusBar
+      v-if="!focusMode"
       :tab="activeTab"
       :session="session"
       :online="online"
@@ -2717,6 +2807,15 @@ function updateOnline(): void {
       :sync-error="syncError"
       @show-error="showErrorDetails"
     />
+
+    <div
+      v-if="focusMode && focusHint"
+      class="pointer-events-none fixed inset-x-0 top-3 z-40 flex justify-center"
+    >
+      <span class="rounded-full border border-app-border bg-app-panel/95 px-3 py-1 text-[11px] text-app-muted shadow-lg">
+        专注模式 · Esc 退出
+      </span>
+    </div>
 
     <QuickOpen
       :open="quickOpen"
