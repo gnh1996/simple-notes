@@ -98,7 +98,7 @@ const SOURCES: Record<TabSource, { label: string; title: string; icon: string; t
   },
 }
 
-type IndicatorKind = 'conflict' | 'alert' | 'warn' | 'spin' | 'dot' | 'hollow' | 'check'
+type IndicatorKind = 'conflict' | 'alert' | 'warn' | 'spin' | 'dot' | 'hollow' | 'saved'
 
 interface TabState {
   kind: IndicatorKind
@@ -120,8 +120,9 @@ function unsavedLabel(tab: DocumentTab): string {
 }
 
 /**
- * 右侧状态：实心点 = 有未保存内容，绿勾 = 已保存，转圈 = 保存中，
- * 红色 = 冲突 / 失败，空心圈 = 尚未加载（懒加载的文件标签）。
+ * 右侧状态只标记「异常 / 进行中」，已保存是默认态，不画图标（避免整排绿勾噪音）；
+ * 实心橙点 = 有未保存内容，转圈 = 保存中 / 载入中，红色 = 冲突 / 失败，
+ * 空心圈 = 尚未加载（懒加载的文件标签）。已保存的确认由状态栏文案承担。
  * 形状本身可读，不依赖颜色。
  */
 function stateOf(tab: DocumentTab): TabState {
@@ -139,7 +140,7 @@ function stateOf(tab: DocumentTab): TabState {
       return { kind: 'spin', title: '正在保存…' }
     case 'offline':
       return tab.source === 'local'
-        ? { kind: 'check', title: '已保存到本地' }
+        ? { kind: 'saved', title: '已保存到本地' }
         : { kind: 'dot', title: '离线待同步' }
     case 'modified':
       return { kind: 'warn', title: '文件已被其他程序修改' }
@@ -153,7 +154,7 @@ function stateOf(tab: DocumentTab): TabState {
   if (!tab.loaded) {
     return { kind: 'hollow', title: '尚未载入，激活后读取' }
   }
-  return { kind: 'check', title: savedLabel(tab) }
+  return { kind: 'saved', title: savedLabel(tab) }
 }
 
 function titleOf(tab: DocumentTab): string {
@@ -226,7 +227,7 @@ function onWheel(event: WheelEvent): void {
 
         <span class="min-w-0 flex-1 truncate">{{ row.title }}</span>
 
-        <!-- 保存状态：实心点=未保存 绿勾=已保存 转圈=保存中 红色=冲突/失败 空心=未载入 -->
+        <!-- 保存状态：橙点=未保存 转圈=保存中 红色=冲突/失败 空心=未载入；已保存不画图标 -->
         <span
           class="flex h-3.5 w-3.5 shrink-0 items-center justify-center"
           role="img"
@@ -261,22 +262,8 @@ function onWheel(event: WheelEvent): void {
               stroke-dashoffset="28"
             />
           </svg>
-          <span v-else-if="row.state.kind === 'dot'" class="h-2 w-2 rounded-full bg-amber-400" />
+          <span v-else-if="row.state.kind === 'dot'" class="h-2.5 w-2.5 rounded-full bg-amber-400" />
           <span v-else-if="row.state.kind === 'hollow'" class="h-2 w-2 rounded-full border border-app-muted/50" />
-          <svg
-            v-else-if="row.state.kind === 'check'"
-            class="h-3 w-3 transition-colors"
-            :class="row.tab.key === activeKey ? 'text-emerald-500' : 'text-emerald-500/60 group-hover:text-emerald-500'"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="3"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
         </span>
 
         <button
