@@ -332,7 +332,7 @@ frontend/scripts/fixtures/theme/
 | --- | --- | --- |
 | 本文 | 规范、规则 ID、变更协议、决策理由 | 手写（规则表可半生成） |
 | `docs/theme-contract.generated.md` | 组件 / 类型 / 路由 / 变量 / 指令 / 表达式白名单 | ✅ 由 `sync:contract --emit` 生成 |
-| `docs/theme-contract-rationale.md` | 为什么收窄 / 放开、被否决的方案 | 手写，不参与校验 |
+| 决策理由 | 为什么收窄 / 放开、被否决的方案 | 不单独开文档：写在本文 §0 / §11，避免多一份要人工同步的“真相” |
 
 ### 8.2 自检规则（瘦身版）
 
@@ -472,3 +472,21 @@ frontend/scripts/fixtures/theme/
 | 2026-11-10 | P1-A 实现：canonical skeleton（fixture + JSON + 完整模式注入）、13 个组件 `example` 并纳入扫描、错误信息补修复建议；P1-B/P1-C 待做 |
 | 2026-11-10 | P1-B 实现：`$event` 在事件表达式里放开（删除形状白名单）、内置组件不再拦截、表达式全局增加 `Intl`；fixture 与提示词同步 |
 | 2026-11-10 | P1-C 实现：生成 `docs/theme-contract.generated.md` 并在 `check:contract` 校验新鲜度；规则 ID 去重 + `cases.json` 覆盖检查 |
+| 2026-11-19 | 文档归档：`docs/theme-contract-v2.md` 冻结，§1.2 的历史漂移教训摘录为本文附录 A（非规范性，仅防重犯） |
+
+---
+
+## 附录 A：历史漂移教训（from `theme-contract-v2.md` §1.2，已修复归档）
+
+> 来源：2A 实施前代码里真实发生的不一致（2026-11-08，已全部修复）。保留在此是为了不再重犯；`theme-contract-v2.md` 已冻结，不再更新。
+
+| 漂移 | 后果 | 修复 |
+| --- | --- | --- |
+| `--blog-mono` vs `--blog-font-mono`（`AiThemePrompt` 用前者，契约与默认主题用后者） | 模型被要求覆盖不存在的变量 | 统一为契约变量，后端只读 JSON |
+| `ArchiveGroup[]` 无对应 TS 类型 | 类型投影无法生成 | 补类型定义 |
+| `RouteLocation` 非实际类型（实际 `RouteLocationNormalizedLoaded`） | 提示词字段不准 | 修正 shape |
+| `ListSort` 已定义却用内联形状 | 类型投影重复易漂移 | 复用已定义类型 |
+| 仅 `blog-post-card` 有 slot | 其他组件无法 headless | 12 组件补 `root` slot（`blog-markdown` 例外） |
+| 校验器不检查 props / slot / 路由 | “通过校验”不等于“能用” | 校验器只读 JSON，补全检查 |
+
+教训：单一来源只写 `contract.ts + types.ts + runtime.ts`，`theme-contract.json` 为唯一投影，后端（Validator / AiPrompt / Catalog）禁止手写镜像。

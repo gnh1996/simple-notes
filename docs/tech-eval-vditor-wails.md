@@ -1,6 +1,6 @@
 # 评估：Markdown 编辑器换 Vditor + 桌面端改 Wails v3
 
-> **状态：Wails v3 已采纳并落地骨架；admin / blog / desktop 均已切换 Vditor + Lute（方言 v2；desktop 2026-10-31 迁移完成）**
+> **状态：Wails v3 已采纳并落地骨架；admin / blog / desktop 均已切换 Vditor + Lute（方言 v2；desktop 2026-10-31 迁移完成）。论证存档，不再更新（2026-11-19）：结论快照以 `docs/tech-stack.md` 为准，本文保留 POC 数据与组合矩阵供追溯。**
 > 范围：评估与落地记录；桌面端功能设计另行推进。
 > 关联：`docs/tech-stack.md`、`docs/markdown-dialect.md`、`docs/markdown-dialect-fixture.md`、`docs/blog-runtime-theme.md`、`frontend/AGENTS.md`、`desktop/README.md`
 

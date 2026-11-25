@@ -1,6 +1,6 @@
 # 内容模型设计（随手记 + 博客）
 
-> **状态：v1.4.3 · 2026-10-31（Web 端已实现；v1.4 增加创作时间与公开列表排序上下文；v1.4.1 补充附件存储设计指针；v1.4.2 附件存储实现；v1.4.3 按实现对齐 API / 权限 / 媒体与博客运行时描述）**
+> **状态：v1.4.4 · 2026-11-19（Web 端已实现；v1.4 增加创作时间与公开列表排序上下文；v1.4.1 补充附件存储设计指针；v1.4.2 附件存储实现；v1.4.3 按实现对齐 API / 权限 / 媒体与博客运行时描述；v1.4.4 文档瘦身：权限码归并为 4 组完整码表并与 `Perms` 对账、附件 / 方言细节改为指针）**
 > 范围：随手记与博客文章的统一内容模型、发布快照、数据表草案、权限码、API 契约与 Web 端范围
 > 关联：`docs/auth-rbac.md`（权限体系）、`docs/markdown-dialect.md`（Markdown 方言）、`docs/tech-stack.md`（技术选型）
 > 非目标：评论、桌面端同步、SEO / SSR、多作者、定时发布、分类 / 系列、笔记分享 —— 见 §13
@@ -200,13 +200,8 @@ POST / UNPUBLISHED（后台保留，公开不可见）
 | `alt_text` | 封面等场景的默认 alt，可空 |
 | 审计七件套 | 标准软删除（`delete_flag`），无独立 `status` 列 |
 
-- 正文图片使用**可访问 URL**：DIRECT 模式下 OSS 为 `/oss/{key}`、本地 / DB 为 `/api/media/{id}`；不直接写 R2 endpoint / bucket。`/api/media/{id}` 保留为稳定兜底端点（OSS 会 302 到 `/oss/{key}`）。
-- 封面通过 `cover_attachment_id` 引用。
-- 删除附件前检查是否被文章封面或已发布快照引用；正文内引用 v1 不做完整反向解析，孤儿清理放 P1。
-- 上传限制（支持任意文件后）：单文件 20 MB；魔数校验；**禁止 SVG**（XSS 风险）；图片 inline，其他文件强制 `Content-Disposition: attachment`；图片重新编码仍待定。详见 `docs/attachment-storage.md` §8。
-- 公开访问与草稿 / 任意文件的隔离：当前采用**私有 R2 bucket + 媒体域 Nginx `auth_request` 预签名代理**（方案 B）；媒体域仍是匿名入口，知道 URL 即可访问，敏感附件不应放在公开媒体库。详见 `docs/attachment-storage.md` §7.3 / §10。
-- 实现进度：LOCAL / R2 / DATABASE 三介质已实现（`V11` / `V12`）；R2 采用私有 bucket + Nginx `auth_request` 预签名代理；`storage_key` 与 `/api/media/{id}` 稳定端点契约不变。
-- 三介质扩展（LOCAL / OSS / DATABASE）设计见 `docs/attachment-storage.md`：`attachment.storage_mode` 按行记录实际介质，全局设置只影响新上传；DIRECT 模式下 OSS 返回 `/oss/{key}`，经媒体域 Nginx 访问私有 R2（Nginx `auth_request` 取后端短期预签名），本地 / DB 返回 `/api/media/{id}`，稳定端点保留为兜底。
+- 正文图片使用可访问 URL（DIRECT / 稳定端点兜底）、封面 `cover_attachment_id`、删除前检查封面 / 快照引用且不做正文反向解析（孤儿清理放 P1）：**语义与链路以 `docs/attachment-storage.md` 为准**（§4 表结构、§7.1–§7.2 访问路径与代理、§9.3 删除、§10 安全、§8 上传校验），本文不重复。
+- 实现进度：LOCAL / R2 / DATABASE 三介质已实现（`V11`；存储权限节点 `V12`）。
 
 ### 3.6 评论（后续，不在 V2 建表）
 
@@ -627,34 +622,16 @@ note.delete_flag = 0
 
 ## 7. 权限与菜单
 
-沿用 `docs/auth-rbac.md`：权限码 = 后端注解、前端按钮 / 页面注册表、`sys_menu` 授权数据的唯一纽带。
+> **目录唯一来源：迁移脚本（`V3` / `V4` / `V12`）+ `docs/auth-rbac.md`；代码引用 `Perms` 常量，启动对账检查常量 / 注解 / `sys_menu` 三方一致，`pnpm check:docs` 对账本节码集合与 `Perms.java`。** 本节只给内容域的码与语义，不复述 `sys_menu` 行（父节点、`sort` 以迁移为准）。
 
-### 7.1 权限码
+| 权限码 | 说明 |
+| --- | --- |
+| `admin:note`、`admin:note:create`、`admin:note:update`、`admin:note:delete` | 随手记页面（含读接口）/ 新建 / 编辑（含文件夹）/ 删除（含回收站、恢复） |
+| `admin:post`、`admin:post:create`、`admin:post:update`、`admin:post:publish`、`admin:post:unpublish`、`admin:post:delete` | 博客管理页面 / 新建（含笔记转博客）/ 编辑草稿 / 发布与更新发布 / 下架 / 删除 |
+| `admin:tag`、`admin:tag:create`、`admin:tag:update`、`admin:tag:delete`、`admin:tag:assign` | 标签管理页面 / 创建 / 改名 / 删除（有使用量需 `force`）/ 分配与移除 |
+| `admin:media`、`admin:media:upload`、`admin:media:delete`、`admin:media:storage` | 媒体库页面 / 上传 / 删除 / 切换新上传存储介质 |
 
-| 权限码 | 类型 | 说明 |
-| --- | --- | --- |
-| `admin:note` | MENU | 随手记页面 + 读接口 |
-| `admin:note:create` | ACTION | 新建笔记 |
-| `admin:note:update` | ACTION | 编辑笔记 / 文件夹 |
-| `admin:note:delete` | ACTION | 删除 / 回收站 / 恢复 |
-| `admin:post` | MENU | 博客管理页面 + 读接口 |
-| `admin:post:create` | ACTION | 新建文章 / 笔记转博客 |
-| `admin:post:update` | ACTION | 编辑草稿 |
-| `admin:post:publish` | ACTION | 首次发布 / 更新发布 |
-| `admin:post:unpublish` | ACTION | 下架 |
-| `admin:post:delete` | ACTION | 删除 / 回收站 / 恢复 |
-| `admin:tag` | MENU | 标签管理页面 + 读接口 |
-| `admin:tag:create` | ACTION | 创建标签 |
-| `admin:tag:update` | ACTION | 改名标签 |
-| `admin:tag:delete` | ACTION | 删除标签（有使用量需 force） |
-| `admin:tag:assign` | ACTION | 给内容分配 / 移除标签 |
-| `admin:media` | MENU | 媒体库页面 + 读接口 |
-| `admin:media:upload` | ACTION | 上传 |
-| `admin:media:delete` | ACTION | 删除 |
-| `admin:media:storage` | ACTION | 切换新上传存储介质 |
-
-说明：
-
+- 每组第一个不带后缀的码是 MENU（页面 + 读接口），其余是 ACTION。
 - `promote` 使用 `admin:post:create`：结果是一篇博客草稿，而不是“修改笔记类型”。
 - 记事本没有发布权限码；`admin:post:publish` 只出现在文章接口。
 - 公开博客不需要权限码；未来评论使用 `blog:comment:*`。
@@ -662,37 +639,9 @@ note.delete_flag = 0
 - `admin:media` 的读权限由菜单码承担；上传 / 删除 / 切换存储介质用 ACTION。
 - 编辑器联想 `GET /api/admin/tags/options` 允许 `admin:note` 或 `admin:post` 任一访问；标签管理页与写操作使用 `admin:tag:*`。
 - 标签改名 / 删除是全局分类操作；删除有使用量时前端二次确认并带 `force=true`。
-- 站点设置 / 主题管理的权限码（`admin:site:*`、`admin:theme:*`）见 `docs/blog-runtime-theme.md` §9.1，不在本节内容域清单中重复。
-
-### 7.2 菜单迁移
-
-在 `sys_menu` 中新增（`V3__add_content_permissions.sql` / `V4__add_tag_permissions.sql` / `V12__add_storage_permission.sql`，id 用 `gen_random_uuid()`，父节点按 code 子查询）：
-
-| code | type | name | parent | sort |
-| --- | --- | --- | --- | --- |
-| `admin:note` | MENU | 随手记 | `entry:admin` | 40 |
-| `admin:note:create` | ACTION | 新建笔记 | `admin:note` | 1 |
-| `admin:note:update` | ACTION | 编辑笔记 | `admin:note` | 2 |
-| `admin:note:delete` | ACTION | 删除笔记 | `admin:note` | 3 |
-| `admin:post` | MENU | 博客管理 | `entry:admin` | 50 |
-| `admin:post:create` | ACTION | 新建文章 | `admin:post` | 1 |
-| `admin:post:update` | ACTION | 编辑草稿 | `admin:post` | 2 |
-| `admin:post:publish` | ACTION | 发布 / 更新发布 | `admin:post` | 3 |
-| `admin:post:unpublish` | ACTION | 下架 | `admin:post` | 4 |
-| `admin:post:delete` | ACTION | 删除文章 | `admin:post` | 5 |
-| `admin:tag` | MENU | 标签管理 | `entry:admin` | 55 |
-| `admin:tag:create` | ACTION | 创建标签 | `admin:tag` | 1 |
-| `admin:tag:update` | ACTION | 改名标签 | `admin:tag` | 2 |
-| `admin:tag:delete` | ACTION | 删除标签 | `admin:tag` | 3 |
-| `admin:tag:assign` | ACTION | 分配标签 | `admin:tag` | 4 |
-| `admin:media` | MENU | 媒体库 | `entry:admin` | 60 |
-| `admin:media:upload` | ACTION | 上传媒体 | `admin:media` | 1 |
-| `admin:media:delete` | ACTION | 删除媒体 | `admin:media` | 2 |
-| `admin:media:storage` | ACTION | 切换存储介质 | `admin:media` | 3 |
-
-- `Perms` 增加对应常量；启动对账会检查常量、注解和 `sys_menu` 行一致。
-- 页面注册表新增 `admin:note` → `/notes`、`admin:post` → `/posts`、`admin:tag` → `/tags`、`admin:media` → `/media`。
-- 不新增 `admin:content` 目录；v1 直接作为一级菜单，后续内容模块增多再在菜单管理中调整。
+- 站点设置 / 主题管理的权限码（`admin:site:*`、`admin:theme:*`）见 `docs/blog-runtime-theme.md` §9.1。
+- 页面注册表：`admin:note` → `/notes`、`admin:post` → `/posts`、`admin:tag` → `/tags`、`admin:media` → `/media`。
+- 不新增 `admin:content` 目录：v1 直接作为一级菜单，内容模块增多后再在菜单管理里调整。
 
 ---
 
@@ -811,13 +760,13 @@ note.delete_flag = 0
 
 ## 10. Markdown、媒体与安全
 
-- 笔记与文章使用同一套 Markdown 方言（`docs/markdown-dialect.md`），不为博客单独扩展语法。
+> 方言规范以 `docs/markdown-dialect.md` 为准，验收样本见 `docs/markdown-dialect-fixture.md`；存储链路与上传校验以 `docs/attachment-storage.md` 为准。本节只保留内容模型特有约定。
+
+- 笔记与文章使用同一套 Markdown 方言，不为博客单独扩展语法。
 - 元数据全部走数据库字段，不使用 front matter。
-- 后端只存原文，不渲染；公开渲染端在 `innerHTML` 前用 `sanitizeHtml`（DOMPurify）清洗；方言 v2 允许安全行内 HTML。
-- 入库清洗策略（2026-10-25 收口）：**不做后端入库清洗**，清洗发生在所有前端渲染入口；若未来需要严格拒绝裸 HTML，再按 Markdown-aware 方案重新评估。
-- 正文图片使用可访问 URL（DIRECT：OSS `/oss/{key}`、本地 / DB `/api/media/{id}`），不写 R2 endpoint / bucket；封面使用 `cover_attachment_id`。
-- 上传校验：单文件 20 MB、魔数检测、禁止 SVG；非图片文件强制下载；文件名不参与存储路径。任意文件策略见 `docs/attachment-storage.md` §8。
-- 媒体域仍是匿名入口：知道 URL 即可访问；当前采用**私有 R2 + 媒体域 Nginx 预签名代理**，但敏感文件不要放入公开媒体库。
+- 后端只存原文，不渲染不清洗；清洗发生在所有前端渲染入口。
+- 正文图片使用可访问 URL，不写 R2 endpoint / bucket；封面使用 `cover_attachment_id`。
+- 媒体域是匿名入口，敏感文件不要放入公开媒体库。
 
 ---
 
@@ -940,3 +889,4 @@ note.delete_flag = 0
 | 2026-10-31 | v1.4.1 附件存储设计 | 引用 `docs/attachment-storage.md`：任意文件、20 MB、行级 `storage_mode`、DIRECT 模式（OSS `/oss/{key}` 经媒体域 Nginx 访问 R2，公开 / 私有 bucket 两种；本地 / DB `/api/media/{id}`）；稳定端点保留兜底；内容模型与现有 API 不变 |
 | 2026-10-31 | v1.4.2 附件存储实现 | `V11` / `V12`；`admin:media:storage`；媒体库任意文件、封面仅图片、编辑器按 MIME 插入图片 / 链接；私有 R2 + Nginx `auth_request` 方案 B |
 | 2026-10-31 | v1.4.3 文档对齐 | 附件表补 `storage_mode` / 软删除；标签与媒体列表补分页参数；公开博客补 `/site` `/pages`；admin 信息架构补站点设置 / 主题管理；控制器名、Lute 渲染归属、V11 / V12 与媒体隐私描述按实现更新 |
+| 2026-11-19 | v1.4.4 文档瘦身 | §3.5 / §10 的附件链路细节改为指向 `docs/attachment-storage.md`（表结构、访问路径、删除、上传校验）；§7 权限码由 19 行全表压缩为 4 组按模块归并的完整码表（与 `Perms.java` 由 `check:docs` 对账），`sys_menu` 行以迁移为准；保留「不新增 `admin:content` 目录」与页面注册表约定 |

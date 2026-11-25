@@ -1,6 +1,6 @@
 # 主题契约 v2 设计草案（2A：增量 headless）
 
-> **状态：阶段 1 已实现（2026-11-08）**：契约投影、生成物、后端校验/提示词消费、12 个组件 `root` slot、headless fixture 已落地。**规范性规则已收敛到 `docs/theme-contract.md`**；本文保留 2A 的历史设计记录，规则冲突时以 `docs/theme-contract.md` 为准。
+> **已冻结归档（2026-11-19，不再更新）**：阶段 1 已实现（2026-11-08：契约投影、生成物、后端校验 / 提示词消费、12 个组件 `root` slot、headless fixture）；规范性规则已收敛到 `docs/theme-contract.md`（冲突时以其为准），§1.2 的漂移教训已摘录到其附录 A。本文仅保留 2A 的历史设计记录。
 > **关系**：本文是 `docs/blog-runtime-theme.md` §3 的**增量**，不是替代；规范内容并入 `docs/theme-contract.md`。
 > **单一来源**：`frontend/apps/blog/src/contract.ts`（配合 `types.ts` / `runtime.ts`）。
 > **目标**：让主题可以完全接管 HTML + CSS（headless），同时不破坏已有 v1 主题；让 AI 拿到完整、可执行的契约，而不是手写摘要。

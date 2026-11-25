@@ -15,7 +15,7 @@
 | --- | --- |
 | 模型接入 | Spring AI 2.0 自动装配（`spring-ai-starter-model-openai`，`spring.ai.model.chat=openai`）；`ChatClient`（`AiConfig`）为唯一入口，连接信息只有 `spring.ai.openai.*` 一份来源（`AI_*` 桥接），缺 key 时 `AiEnvironmentPostProcessor` 排除 OpenAI + Builder 装配，启动不受影响 |
 | 配置 | `simple-notes.ai.*` 只保留编排参数（`AI_TIMEOUT / AI_MAX_ROUNDS / AI_MAX_HISTORY_TURNS / AI_MAX_TOKENS`）；其余 OpenAI 模型类型显式 `none` |
-| 会话态 | `conversationId = "ai-theme:" + userId + ":" + (themeId|none) + ":" + sessionId`；`ChatMemory` 只存压缩后的摘要/计划/用户指令，**完整当前主题**存 `AiThemeSessionStore`（Caffeine，2h 无访问过期） |
+| 会话态 | `conversationId = "ai-theme:" + userId + ":" + (themeId\|none) + ":" + sessionId`；`ChatMemory` 只存压缩后的摘要/计划/用户指令，**完整当前主题**存 `AiThemeSessionStore`（Caffeine，2h 无访问过期） |
 | 输出协议 | **有当前主题 / 前端 `baseHtml` / 勾选 starter 时，从第一轮就走补丁**（小 JSON `{summary, plan, ops[]}`）；只有“没有主题且没勾 starter”才完整生成 html/css。这样绝大多数请求不需要模型输出整篇主题 |
 | 校验修复 | 生成 → 解析/应用补丁 → `AiThemePrompt.validate`（体积 + 根节点预检 + `ThemeTemplateValidator`）→ 失败且轮数未用尽则 `repairing` + 修复轮；补丁修复只回传上一版补丁 + 错误，不重发整篇主题 |
 | 预览 | 临时草稿缓存（Caffeine，TTL 对齐 `preview-ttl`，不走 Flyway）：`POST /ai-drafts/{draftId}/preview-token` 签发，admin 同源 `GET /__preview?previewDraft=&token=` 整页预览；未入库中间态不污染版本表 |
@@ -122,7 +122,7 @@ DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX
 
 ### 2.3 服务端提示词（`AiThemePrompt`）
 
-* **契约投影**：组件 / props / slots / slot scope / 类型 / 路由 / URL / CSS 变量 / 指令全部来自 `theme-contract.json`（`pnpm sync:contract` 生成，`ThemeContract.promptSection()` 拼装）；本类只保留“约束”文案，不再手写清单（规范见 `docs/theme-contract.md`，历史设计见 `docs/theme-contract-v2.md`）。
+* **契约投影**：组件 / props / slots / slot scope / 类型 / 路由 / URL / CSS 变量 / 指令全部来自 `theme-contract.json`（`pnpm sync:contract` 生成，`ThemeContract.promptSection()` 拼装）；本类只保留“约束”文案，不再手写清单（规范见 `docs/theme-contract.md`，历史设计 `docs/theme-contract-v2.md` 已冻结）。
 * **完整模式**（`fullSystemPrompt`）：只在“没有当前主题 / 没有 base / 没勾 starter”时使用；先输出 `<plan>`，再输出恰好一个 ````html` 与 ````css`。system prompt 会注入 canonical skeleton（`theme-contract.json.skeleton`），不是 starter 全文。
 * **补丁模式**（`patchSystemPrompt`）：有当前主题（含 starter 起点）时使用；只输出单个 JSON `{summary, plan, ops}`；当前主题放 `<reference-html>` / `<reference-css>`，每轮只注入一次。
 * 补丁操作（`ThemePatch.ThemeOp`）：

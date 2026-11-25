@@ -1,6 +1,6 @@
 # 附件存储设计（本地 / R2 / 数据库）
 
-> **状态：v1.2 · 2026-10-31（已实现：LOCAL / R2 / DATABASE 三介质、私有 R2 + Nginx auth_request 方案 B、任意文件、20MB、运行时切换、媒体库分页 / 文件名搜索；编译 / 前端 typecheck / 单测通过，Testcontainers 集成测试待 Docker 环境；v1.2 为文档对齐实现）**
+> **状态：v1.2.1 · 2026-11-19（已实现：LOCAL / R2 / DATABASE 三介质、私有 R2 + Nginx auth_request 方案 B、任意文件、20MB、运行时切换、媒体库分页 / 文件名搜索；编译 / 前端 typecheck / 单测通过，Testcontainers 集成测试待 Docker 环境；v1.2 为文档对齐实现，v1.2.1 §14.2 补「图片是否重新编码」待定项）**
 > 范围：附件元数据与二进制的分离、三种存储介质的抽象与切换、任意文件策略、DIRECT 访问路径、独立媒体域、公开 / 私有 R2 访问链路、滥用防护、迁移与校验
 > 关联：`docs/content-model.md`（附件表与媒体接口）、`docs/tech-stack.md`（R2 选型与机密配置）、`backend/AGENTS.md`（数据模型 / 迁移 / 权限约定）
 > 非目标：浏览器直传、历史文件跨介质自动搬迁、图片派生、附件回收站、桌面端离线附件队列
@@ -886,6 +886,7 @@ startup/
 4. **数据库膨胀**：20 MB × 文件数的备份体积是否可接受？是否需要监控 / 配额？
 5. **删除缓存**：Nginx 缓存 TTL / 主动 purge 策略；DIRECT 模式下旧直链会一直可用，直到对象删除 + 缓存过期。
 6. **退役 R2 的策略**：DIRECT 下历史直链绑定媒体域 `/oss/`；如果未来要退役 R2，需要保留只读 bucket + `/oss/` 路由，或统一迁回稳定端点。
+7. **图片是否重新编码**：当前按原样存储，只做魔数与大小校验；是否统一转码 / 压缩（去 EXIF、限制像素尺寸）待定，需先评估 CPU 与画质成本。
 
 ---
 
@@ -944,3 +945,4 @@ startup/
 | 2026-10-31 | v1.0 | 实现 LOCAL / R2 / DATABASE 三介质、流式 SPI、任意文件策略、20MB DATABASE、运行时切换、Nginx auth_request 方案 B、内部签名接口、管理端媒体库 / 存储设置；补 Nginx 示例与测试 |
 | 2026-10-31 | v1.1 | 媒体库列表改为分页：`GET /api/admin/media` 增加 `page` / `size` / `keyword`（文件名），返回 `PageResponse<AttachmentResponse>`；修复全量返回 + 全量渲染原图的性能问题 |
 | 2026-10-31 | v1.2 | 文档对齐实现：`storage.mode` 未进入 `SiteSettingCatalog`（仅 KV + 专用接口）；切换接口只接收 `mode`、无 `version`；存储管理接口标为已实现；凭据与防刷段落明确当前私有 bucket 方案 |
+| 2026-11-19 | v1.2.1 | §14.2 补回「图片是否重新编码」待定项（原先只写在 `docs/content-model.md` §3.5，随该节瘦身迁入本文） |

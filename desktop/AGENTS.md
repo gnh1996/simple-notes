@@ -12,7 +12,7 @@ Go 1.26+ + Wails v3（WebView）桌面端；前端是 `frontend/apps/desktop`（
 
 ## 硬约束（来自选型，改动需走变更决策）
 
-- **WebView 内存预算**：内存主要由 WebView2 / WebKitGTK 进程树决定（Windows 验收：列表 WS ≈364MB / 私有 ≈225MB；打开编辑器 ≈424MB / ≈274MB；`--disable-gpu` 私有 ≈154 / ≈198MB）。新增常驻 UI、依赖或后台能力前先评估内存；优化项（`--disable-gpu`、编辑器懒加载、裁剪 WebView 功能）需记录实测数据
+- **WebView 内存预算**：内存主要由 WebView2 / WebKitGTK 进程树决定，基线数据以 `README.md`「内存与性能」为**唯一来源**（本文不拷贝数字）。新增常驻 UI、依赖或后台能力前先按基线评估；优化项（`--disable-gpu`、编辑器懒加载、裁剪 WebView 功能）的实测数据写回 README
 - **WebView 不直连后端**：所有 API 请求走 Go `api.Do` binding；Go 注入 Bearer，令牌只存 SQLite，不进入 JS / localStorage
 - **大载荷不走 IPC**：附件 / 图片用 Go 侧文件路径或流式接口；binding 只传 JSON
 - **三平台**：Windows / Linux（GTK4 + WebKitGTK 6.0，Ubuntu 24.04 基线）/ macOS 11+；无交叉编译，各自构建
@@ -28,9 +28,9 @@ Go 1.26+ + Wails v3（WebView）桌面端；前端是 `frontend/apps/desktop`（
 - **桌面端接口只走 `/api/desktop/**`**（会话端 `DESKTOP`，权限码 `desktop:note` / `desktop:post`）；`DESKTOP` 会话不能调用 `/api/admin/**`（`SessionJwtFilter` 校验）
 - **同步按 `docs/desktop-sync.md`**：manifest 只写索引，不拉正文；打开时按 `base_version` 拉详情并算 hash；推送用 `version` CAS，409 转冲突
 - **本地文件按 `docs/desktop-local-file.md`**：临时编辑不写 `note_local`；纳入管理走 `notes.ImportFile`；本地 / 云端文件夹是两棵**独立树**（`parent_id`，最深 5 级，同父级唯一、跨层级可同名），不做名称 / 路径映射；本地文件夹写 `folder_local(scope_id='local')`，不入 outbox、不参与同步；纳入云端时只写用户选中的云端文件夹 id；有子文件夹时禁止删除
-- **多标签按 `docs/desktop-layout.md` §3（v1.2 已实现，Windows）**：文件 / 本地 / 服务端笔记统一标签栏；单 Vditor 实例，切标签清空撤销栈；标签上限 12；文件标签只存路径、激活时读盘，不存正文；`ui_state` 只存标签顺序 / 侧栏宽度
+- **多标签按 `docs/desktop-layout.md` §3（v1.2 已实现，Windows）**：文件 / 本地 / 云端笔记统一标签栏；单 Vditor 实例，切标签清空撤销栈；标签上限 12；文件标签只存路径、激活时读盘，不存正文；`ui_state` 只存标签顺序 / 侧栏宽度
 - **右键菜单（v2.0）**：窗口启用 `DefaultContextMenuDisabled`，前端统一接管 `contextmenu`（开发构建也不漏出 WebView2 默认菜单）；文件夹 / 列表 / 标签 / 文本编辑菜单统一用 `apps/desktop/src/components/ContextMenu.vue`，文本粘贴经 `@wailsio/runtime` 的 `Clipboard`，不要为单个入口另写定位与遮罩
-- **图片按 `docs/desktop-media.md`（v1 已实现）**：文件写 `<stem>.assets` 相对路径；本地笔记写 `local-media/<id>` + `media/local/`；服务端笔记上传 `/api/desktop/media` 后写 `/api/media/<id>`；二进制只走 Wails 同源 `/__media/import`，禁止 base64 / JSON IPC；`/api/media/**`、`/oss/**` 由 Go 只读代理
+- **图片按 `docs/desktop-media.md`（已实现）**：文件写 `<stem>.assets` 相对路径；本地笔记写 `local-media/<id>` + `media/local/`；云端笔记上传 `/api/desktop/media` 后写 `/api/media/<id>`；二进制只走 Wails 同源 `/__media/import`，禁止 base64 / JSON IPC；`/api/media/**`、`/oss/**` 由 Go 只读代理
 - **发布 / 下架只在 admin**：桌面端只展示 `publishStatus` / `hasUnpublishedChanges` 并提供 `System.OpenAdmin` 深链，不新增桌面发布接口
 - JSON 用 Go 标准库；不引入需要 CGO 的库（SQLite 已选纯 Go 驱动）
 
