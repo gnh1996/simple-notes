@@ -94,6 +94,12 @@ export type CreateThemeRequest = Schema['CreateThemeRequest']
 export type CreateThemeVersionRequest = Schema['CreateThemeVersionRequest']
 export type PreviewTokenResponse = Schema['PreviewTokenResponse']
 
+// ---- AI 辅助（docs/ai.md） ----
+
+export type AiStatusResponse = Schema['AiStatusResponse']
+export type PostSummaryRequest = Schema['PostSummaryRequest']
+export type PostSummaryResponse = Schema['PostSummaryResponse']
+
 export interface UserListQuery {
   page?: number
   size?: number
@@ -273,6 +279,15 @@ export function createPostApi(client: ApiClient) {
   }
 }
 
+/** AI 辅助（`/api/admin/ai`，docs/ai.md）：状态 + 文章摘要（单轮无状态） */
+export function createAiApi(client: ApiClient) {
+  return {
+    status: () => client.get<AiStatusResponse>('/admin/ai/status'),
+    summarizePost: (body: PostSummaryRequest) =>
+      client.post<PostSummaryResponse>('/admin/ai/post-summary', body),
+  }
+}
+
 /** 回收站（笔记 / 文章分开，权限码独立） */
 export function createTrashApi(client: ApiClient) {
   return {
@@ -417,6 +432,7 @@ export function createSimpleNotesApi(client: ApiClient) {
     blog: createBlogApi(client),
     site: createSiteApi(client),
     themes: createThemeApi(client),
+    ai: createAiApi(client),
   }
 }
 

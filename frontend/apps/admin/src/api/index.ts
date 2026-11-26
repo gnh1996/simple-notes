@@ -110,5 +110,6 @@ export const {
   blog: blogApi,
   site: siteApi,
   themes: themeApi,
+  ai: aiApi,
 } = api
 export { ApiError }

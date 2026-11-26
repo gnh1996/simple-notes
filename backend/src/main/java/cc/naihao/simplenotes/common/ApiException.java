@@ -63,4 +63,14 @@ public class ApiException extends RuntimeException {
     public static ApiException serviceUnavailable(String message) {
         return new ApiException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCodes.STORAGE_UNAVAILABLE, message);
     }
+
+    /** AI 未配置：前端据此把入口置灰（docs/ai.md §5） */
+    public static ApiException aiUnavailable(String message) {
+        return new ApiException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCodes.AI_UNAVAILABLE, message);
+    }
+
+    /** AI 调用失败：网关错误 / 超时 / 空输出（docs/ai.md §5） */
+    public static ApiException aiFailed(String message) {
+        return new ApiException(HttpStatus.BAD_GATEWAY, ErrorCodes.AI_FAILED, message);
+    }
 }

@@ -89,6 +89,8 @@ POST / UNPUBLISHED（后台保留，公开不可见）
 | `title` | `varchar(200)` NOT NULL | 标题 |
 | `content` | `text` NOT NULL | Markdown 原文，后端不渲染 |
 | `summary` | `varchar(500)` NULL | 博客摘要；发布时必填，记事本必须为 NULL |
+
+摘要来源可以是人工、编辑器规则提取或 AI 生成；AI 是可选能力，失败不影响保存与发布（见 `docs/ai.md` §4）。
 | `owner_id` | `varchar(36)` NOT NULL | FK `sys_user`；作者 / 所有者 |
 | `folder_id` | `varchar(36)` NULL | FK `note_folder`；仅 `NOTE` 使用，转文章时清空 |
 | `pinned` | `smallint` NOT NULL DEFAULT 0 | 置顶；公开首页的置顶属于运营字段，立即生效 |
@@ -437,7 +439,7 @@ note.delete_flag = 0
 
 **P1 / P2（未做，不作承诺）**
 
-评论；版本历史 UI 与回滚；定时发布；标签合并 / 别名；导入导出；RSS / sitemap / JSON-LD；slug 历史与 301；孤儿附件清理；`pg_trgm`；多作者与审核流；订阅、统计、i18n、AI 摘要。
+评论；版本历史 UI 与回滚；定时发布；标签合并 / 别名；导入导出；RSS / sitemap / JSON-LD；slug 历史与 301；孤儿附件清理；`pg_trgm`；多作者与审核流；订阅、统计、i18n。
 
 ## 9. Web 信息架构
 

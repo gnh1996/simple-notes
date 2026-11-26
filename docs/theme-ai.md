@@ -46,6 +46,7 @@ spring.ai.openai:
 ```
 
 值来源模板见 `application-local.yml.example`（`AI_*`）。密钥只走环境变量 / 本地值文件，不入库、不落日志（`AiThemeService.friendly/mask` 脱敏）。
+同一份连接配置也用于文章 AI 摘要（`docs/ai.md` §1）：不要为摘要另建 key / base-url / model，否则“是否配置”会出现两套判断。
 `AI_MAX_TOKENS` 默认 `0` = 不发送 `max_tokens`，使用端点默认。DeepSeek `deepseek-flash`：thinking 模式默认 64K（reasoning 计入），非 thinking 模式默认 8K；需要更高/更低上限时显式设置（如 `65536`）。
 `AI_THINKING`（`enabled` / `disabled` / 空=不发送）和 `AI_REASONING_EFFORT`（`none` / `low` / `high` / `max`，空=不发送）用于 DeepSeek / Qwen 等 thinking 开关；主题生成通常关闭 thinking 更快更省。
 推理模型（`deepseek-flash` / `deepseek-reasoner` / Qwen thinking / OpenAI o 系列等）的 reasoning token 也计入输出预算；若 `AI_THINKING=disabled` 且 `AI_MAX_TOKENS=0`，DeepSeek 非 thinking 默认只有 8K，整篇主题建议显式调大。

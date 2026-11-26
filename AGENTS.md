@@ -16,6 +16,7 @@
 | `docs/theme-contract.md` | 主题契约规范（规范性文档，P0 + P1 已实现）：能力面 + 表达式面、skeleton / example、fixture、威胁模型、变更协议 |
 | `docs/theme-contract.generated.md` | 主题契约生成物：组件 / 类型 / 路由 / 变量 / 指令 / 表达式清单；禁止手改 |
 | `docs/theme-ai.md` | 主题 AI 对话（补丁协议、契约投影、校验修复；已实现） |
+| `docs/ai.md` | AI 能力（文章摘要：可选性、单轮无状态调用、输入保护、输出裁剪、失败语义；已实现） |
 | `docs/desktop-sync.md` | 桌面端同步设计（M0–M4 已实现）：本地优先 + 懒加载 manifest、`version` 修订号与本地 hash、整篇冲突 + diff、离线新建、账号隔离 |
 | `docs/desktop-local-schema.md` | 桌面端本地库结构演进（SQLite schema 迁移，S1 / S2 已实现、S3 协议握手待触发）：`user_version` 版本轴、有序迁移与老库桥接、备份与降级检测、与后端 API 契约版本的关系 |
 | `docs/desktop-local-file.md` | 桌面端本地 Markdown（临时编辑 / 多标签 / 文件夹树已实现，Windows）：打开文件=临时编辑、免登录本地笔记、最近打开、纳入管理、导出 Markdown；多标签 / 独立未保存 / 标签恢复；本地与云端文件夹两棵独立树；术语统一为「云端」 |

@@ -6,7 +6,7 @@ import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { mediaApi, postApi, tagApi } from '@/api'
+import { aiApi, mediaApi, postApi, tagApi } from '@/api'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
 import { useTheme } from '@/composables/useTheme'
 import { publicPostUrl, summarizeMarkdown, tagNames } from '@/utils/content'
@@ -22,6 +22,8 @@ const isNew = computed(() => postId.value === 'new')
 const loading = ref(false)
 const saving = ref(false)
 const publishing = ref(false)
+const summarizing = ref(false)
+const aiEnabled = ref(false)
 const loaded = ref(false)
 const dirty = ref(false)
 const lastSavedAt = ref<string | null>(null)
@@ -179,7 +181,7 @@ watch(
 )
 
 function fillSummary(): void {
-  const next = summarizeMarkdown(form.content, 160)
+  const next = summarizeMarkdown(form.content, 100, form.title)
   if (!next) {
     ElMessage.info('正文暂无可提取的纯文本')
     return
@@ -187,6 +189,61 @@ function fillSummary(): void {
   if (next !== form.summary) {
     form.summary = next
     dirty.value = true
+  }
+}
+
+/** 首屏读取 AI 可用性：未配置时按钮置灰，不影响编辑器其余功能（docs/ai.md §2.1） */
+async function loadAiStatus(): Promise<void> {
+  try {
+    aiEnabled.value = (await aiApi.status()).enabled
+  } catch {
+    aiEnabled.value = false
+  }
+}
+
+/** AI 总结：单轮无状态调用，结果只回填摘要框（docs/ai.md §2.2） */
+async function aiSummary(): Promise<void> {
+  if (summarizing.value) return
+  if (!form.title.trim()) {
+    ElMessage.warning('请先填写标题')
+    return
+  }
+  if (!form.content.trim()) {
+    ElMessage.warning('正文为空，无法生成摘要')
+    return
+  }
+  if (form.summary.trim()) {
+    try {
+      await ElMessageBox.confirm('AI 生成会替换当前摘要，是否继续？', 'AI 总结', {
+        type: 'warning',
+        confirmButtonText: '替换',
+        cancelButtonText: '取消',
+      })
+    } catch {
+      return
+    }
+  }
+  summarizing.value = true
+  try {
+    const result = await aiApi.summarizePost({
+      title: form.title.trim(),
+      content: form.content,
+    })
+    const summary = result.summary.trim()
+    if (!summary) {
+      ElMessage.info('AI 未返回可用摘要')
+      return
+    }
+    form.summary = summary
+    ElMessage.success('已生成摘要，发布前请校对')
+  } catch (error) {
+    if ((error as { code?: string }).code === 'AI_UNAVAILABLE') {
+      aiEnabled.value = false
+      return
+    }
+    notifyError(error, 'AI 总结失败')
+  } finally {
+    summarizing.value = false
   }
 }
 
@@ -318,7 +375,10 @@ function handleUploadError(error: unknown): void {
   notifyError(error, '文件上传失败')
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  void loadAiStatus()
+})
 
 onBeforeUnmount(() => {
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
@@ -417,9 +477,26 @@ onBeforeUnmount(() => {
               show-word-limit
               placeholder="列表与社交分享使用；发布前必填"
             />
-            <el-button link type="primary" class="mt-1" @click="setSummaryFromContent">
-              从正文生成
-            </el-button>
+            <div class="mt-1 flex items-center gap-3">
+              <el-button link type="primary" @click="setSummaryFromContent">从正文生成</el-button>
+              <el-tooltip
+                :disabled="aiEnabled"
+                content="AI 未配置（AI_BASE_URL / AI_API_KEY / AI_MODEL）"
+                placement="top"
+              >
+                <span>
+                  <el-button
+                    link
+                    type="primary"
+                    :loading="summarizing"
+                    :disabled="!aiEnabled || !form.title.trim() || !form.content.trim()"
+                    @click="aiSummary"
+                  >
+                    AI 总结
+                  </el-button>
+                </span>
+              </el-tooltip>
+            </div>
           </el-form-item>
 
           <el-form-item label="slug">

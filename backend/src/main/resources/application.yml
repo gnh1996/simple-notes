@@ -108,6 +108,7 @@ simple-notes:
   # 主题 AI 对话编排参数（docs/theme-ai.md）；连接信息只有 spring.ai.openai.* 一份来源
   ai:
     timeout: "${AI_TIMEOUT:300s}"
+    summary-timeout: "${AI_SUMMARY_TIMEOUT:45s}"
     max-rounds: "${AI_MAX_ROUNDS:2}"
     max-history-turns: "${AI_MAX_HISTORY_TURNS:10}"
     max-tokens: "${AI_MAX_TOKENS:0}"

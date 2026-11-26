@@ -484,6 +484,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/themes/default/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["activateDefault"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/themes/ai-drafts/{draftId}/preview-token": {
         parameters: {
             query?: never;
@@ -718,6 +734,22 @@ export interface paths {
         get: operations["list_7"];
         put?: never;
         post: operations["upload_1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/ai/post-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSummary"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1076,6 +1108,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/ai/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["status_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/themes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_6"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/tags/{id}/contents/{contentId}": {
         parameters: {
             query?: never;
@@ -1102,7 +1166,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["delete_6"];
+        delete: operations["delete_7"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1493,6 +1557,13 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        PostSummaryRequest: {
+            title: string;
+            content: string;
+        };
+        PostSummaryResponse: {
+            summary: string;
+        };
         VersionResponse: {
             /** @description 产品发布版本：Git tag 去掉 v（如 0.2.0）；本地构建为 0.0.0-dev */
             version: string;
@@ -1784,6 +1855,9 @@ export interface components {
             page: number;
             /** Format: int32 */
             size: number;
+        };
+        AiStatusResponse: {
+            enabled: boolean;
         };
     };
     responses: never;
@@ -2945,6 +3019,24 @@ export interface operations {
             };
         };
     };
+    activateDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     draftPreviewToken: {
         parameters: {
             query?: never;
@@ -3484,6 +3576,30 @@ export interface operations {
             };
         };
     };
+    postSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostSummaryRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["PostSummaryResponse"];
+                };
+            };
+        };
+    };
     getVersion: {
         parameters: {
             query?: never;
@@ -3984,6 +4100,46 @@ export interface operations {
             };
         };
     };
+    status_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AiStatusResponse"];
+                };
+            };
+        };
+    };
+    delete_6: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     remove: {
         parameters: {
             query?: never;
@@ -4005,7 +4161,7 @@ export interface operations {
             };
         };
     };
-    delete_6: {
+    delete_7: {
         parameters: {
             query?: never;
             header?: never;

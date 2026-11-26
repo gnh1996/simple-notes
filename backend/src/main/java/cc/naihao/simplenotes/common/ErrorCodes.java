@@ -39,6 +39,10 @@ public final class ErrorCodes {
     public static final String PUBLISH_VALIDATION_FAILED = "PUBLISH_VALIDATION_FAILED";
     /** 存储介质暂不可用（503）：R2 未配置 / 网络 / 权限错误 */
     public static final String STORAGE_UNAVAILABLE = "STORAGE_UNAVAILABLE";
+    /** AI 未配置（503）：连接信息缺失，功能整体不可用（docs/ai.md §5） */
+    public static final String AI_UNAVAILABLE = "AI_UNAVAILABLE";
+    /** AI 调用失败（502）：网关错误 / 超时 / 空输出（docs/ai.md §5） */
+    public static final String AI_FAILED = "AI_FAILED";
     /** 未预期的服务端错误（500） */
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
 

@@ -20,6 +20,9 @@ public class AiProperties {
     /** 单轮流式总限时（环境变量 AI_TIMEOUT）：慢模型输出整套主题要几分钟，默认 300s */
     private Duration timeout = Duration.ofSeconds(300);
 
+    /** 摘要单次调用超时（环境变量 AI_SUMMARY_TIMEOUT）：输出只有百余字，默认 45s（docs/ai.md §1） */
+    private Duration summaryTimeout = Duration.ofSeconds(45);
+
     /** 生成 + 自动修总轮数上限（环境变量 AI_MAX_ROUNDS，首轮生成 + 最多 maxRounds-1 轮修复） */
     private int maxRounds = 2;
 
