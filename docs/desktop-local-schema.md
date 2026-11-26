@@ -527,45 +527,10 @@ GET /api/desktop/meta        （认证后，权限 desktop:note）
 
 届时也优先新增 `/api/desktop/v2/**`，而不是全局 `/api/v2/**`——后者不匹配任何 `ClientType.pathPrefix()`，`fromPath` 会返回 `null`，等于绕过「会话端一致性」校验（`SessionJwtFilter`），需要额外补规则。
 
-## 9. 测试策略
-
-| 用例 | 方式 | 断言 |
-| --- | --- | --- |
-| 注册表校验 | 单测 | 编号连续、无重复、`file` 存在、`file`/`fn` 二选一 |
-| 空库 → 最新 | 单测（临时文件） | `user_version == latest`，所有表存在 |
-| 老库 → 最新 | 单测：用 `migrate_test.go` 的 `legacySchema` 复现旧结构 + 写入一条 note，再 `OpenAt` | 3 个补列存在、note 数据未丢、`user_version == latest` |
-| 重复迁移 | 单测：连续 `migrate()` 两次 | 第二次无操作、不报错 |
-| 降级拒绝 | 单测：手工设 `user_version = latest+1` | 返回 `ErrSchemaTooNew`，不修改库 |
-| 失败回滚 | 单测：注入一条必失败的迁移 | `user_version` 停在上一版，前一条数据仍在 |
-| 备份生成 | 单测：`current < latest` | `.bak.v<from>` 存在且可独立打开 |
-| 升级后业务回归 | 手工 | 登录、列表、打开、保存、冲突、离线新建全链路 |
-
-历史 schema 用 **SQL 脚本复现**而不是提交二进制库文件：老 DDL 很短、可 review、可 diff。等正式发版后，再补一份真实老版本的二进制 fixture 做最终兜底。
-
-## 10. 里程碑
-
-| 阶段 | 内容 | 状态 |
-| --- | --- | --- |
-| S1 | 执行器 + `0001` / `0002` + 注册表校验 + 单测 + 文档 §4 对齐 | ✅ 2026-11-01 |
-| S2 | 备份、降级检测、失败阻塞 UI、`ErrServerTooOld` 映射 | ✅ 2026-11-01 |
-| S3 | 协议握手（`/api/desktop/meta` + `X-Desktop-Protocol`） | 待触发（§8.6） |
-
-S1 完成后，`ensureColumn` 的隐式行为被收进 `0002`，后续所有变更都走「追加编号」，不再有例外。
-
-## 11. 已知限制
+## 9. 已知限制
 
 - 不支持 down 迁移；回退只能靠 `.bak` 备份 + 旧版本应用；
 - 重建大表时启动会变慢（当前数据量为文本笔记，可忽略；若未来引入全文索引需重新评估）；
 - 备份只保留最近一份，连续升级两次后无法回到更早版本；
 - 不支持多实例同时启动迁移（单实例假设；若未来支持多窗口进程，需要加文件锁）；
 - 迁移失败后的恢复依赖用户手动操作备份文件，暂不提供自动恢复（避免掩盖 bug 与静默丢数据）。
-
-## 12. 变更记录
-
-| 日期 | 版本 | 说明 |
-| --- | --- | --- |
-| 2026-11-01 | v1 草案 | 初稿：`user_version` 版本轴 + 有序迁移（SQL / Go 函数）+ 每条一事务 + 老库 `0001`/`0002` 桥接 + 迁移前备份 + 降级 fail-fast；与服务端版本解耦，协议协商延后并给出触发条件 |
-| 2026-11-01 | v1.1 | 落地 S1 + S2：`store/migrate.go` + `migrations/0001_init.sql` + `0002` 补列；`OpenAt` 启动迁移；备份（全新安装跳过）、降级 fail-fast、启动错误弹窗 + `desktop-error.log`；`api.GetEndpoint` 把 manifest 的 404/405 映射为 `ErrServerTooOld`；`desktop-sync.md` §4 与代码对齐 |
-| 2026-11-02 | v1.2 | 追加 `0003_local_media.sql`：`local_attachment` 本地图片元数据表；二进制在 `media/local/`，不参与同步（`docs/desktop-media.md`） |
-| 2026-11-03 | v1.3 | 追加 `0004_local_folder_names.sql`：`folder_local(scope_id, lower(name)) WHERE scope_id='local'` 部分唯一索引，支撑本地自建文件夹并保证不重名（`docs/desktop-local-file.md` §2.5） |
-| 2026-11-03 | v1.4 | 追加 `0005_folder_tree.sql`：`folder_local.parent_id` + 按父级唯一索引；`local-files` 笔记改写为未分类（v2.0 文件夹树） |

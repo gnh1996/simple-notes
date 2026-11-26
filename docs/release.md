@@ -13,7 +13,7 @@
 | --- | --- | --- | --- |
 | **产品发布版本** | Git tag（构建时自动注入各产物） | 回答"这是哪次发布"；产物命名、发布说明、排障 | 关于 / 诊断信息 |
 | API 契约版本 | OpenAPI `info.version`（常量 `v1`，`OpenApiConfig.CONTRACT_VERSION`） | 生成客户端类型、判断契约代际 | `/api/version` 的 `contract` |
-| 桌面协议版本 | 触发后实施（`X-Desktop-Protocol` + `/api/desktop/meta`，见 local-schema §8.7） | 服务端与桌面端兼容性强制 | 仅错误 / 诊断 |
+| 桌面协议版本 | 触发后实施（`X-Desktop-Protocol` + `/api/desktop/meta`，见 `docs/desktop-local-schema.md` §8.7） | 服务端与桌面端兼容性强制 | 仅错误 / 诊断 |
 | 桌面本地 schema | `PRAGMA user_version` | 本地迁移 | 仅诊断 |
 | 内容修订号 | `note.version` | 同步 CAS / 冲突 | 业务界面已有 |
 

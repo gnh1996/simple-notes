@@ -19,7 +19,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  *   <li>写入顺序：<b>先读全局版本、再查库</b>，避免与 bump 竞态写出"新版本号 + 旧内容"。</li>
  * </ul>
  *
- * <p>单实例部署前提（多实例仅剩 TTL 兜底，见 docs/auth-rbac.md §12）。
+ * <p>单实例部署前提（多实例仅剩 TTL 兜底，见 docs/auth-rbac.md §10）。
  */
 @Component
 public class AuthzCache {

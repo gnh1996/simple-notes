@@ -17,8 +17,6 @@
 admin / blog / 桌面端共用同一份 Lute 配置（`frontend/packages/markdown/src/index.ts` 的 `vditorMarkdown`）；
 **配置只允许有一份**，任何一端另写都会被视为方言漂移。
 
----
-
 ## 1. 基线：CommonMark + GFM
 
 以下语法无条件支持，admin / blog / 桌面端必须一致：
@@ -162,15 +160,3 @@ admin / blog / 桌面端共用同一份 Lute 配置（`frontend/packages/markdow
 | 纯文本（无高亮） | `text` |
 
 说明：别名（如 `js`、`sh`、`cs`）渲染结果不承诺；`vue` 由自托管 hljs 别名保证。
-
-## 附录 B：版本记录
-
-| 版本 | 日期 | 变更 |
-| --- | --- | --- |
-| v1（草案） | 2026-10-17 | 初稿：代码博客 + 记事本最小集；Alerts 列入白名单；数学/脚注等列为禁区 |
-| v1（草案） | 2026-10-18 | 博客前台复用 `MdPreview`；Alerts 对齐方式明确 |
-| v1（草案） | 2026-10-24 | 博客前台改为 runtime 内置 `markdown-it` |
-| v1（草案） | 2026-10-25 | blog runtime 改为构建产物，共享 `markdownDialect` |
-| v1（草案） | 2026-10-25 | 桌面端改为 Wails，复用 admin 编辑器 |
-| **v2** | **2026-10-25** | **admin / blog 切换 Vditor + Lute；允许数学、emoji、脚注、上下标、mark、安全行内 HTML；新增 DOMPurify 清洗与 hljs `vue` 别名；桌面端待迁移** |
-| **v2.1** | **2026-10-31** | **桌面端迁移到 Vditor 4.0.1 + Lute（资源自托管、粘贴清洗、主题切换），三端同源；待补三端 fixture 渲染记录** |
