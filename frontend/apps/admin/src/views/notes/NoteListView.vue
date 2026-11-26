@@ -6,7 +6,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { noteApi, noteFolderApi } from '@/api'
-import { buildFolderPaths } from '@/utils/folders'
+import { buildFolderPaths, buildFolderTree } from '@/utils/folders'
 import { formatDateTime, notifyError } from '@/utils/feedback'
 
 const router = useRouter()
@@ -32,6 +32,10 @@ const query = reactive({
 })
 
 const folderPaths = computed(() => buildFolderPaths(folders.value))
+/** 侧栏折叠的文件夹（内存态，刷新页面即恢复全展开）。 */
+const collapsedFolderIds = ref<Set<string>>(new Set())
+/** 侧栏树：平铺列表按父级展开，同时带缩进层级与折叠信息。 */
+const folderTree = computed(() => buildFolderTree(folders.value, collapsedFolderIds.value))
 
 async function load(): Promise<void> {
   loading.value = true
@@ -55,9 +59,46 @@ async function load(): Promise<void> {
 async function loadFolders(): Promise<void> {
   try {
     folders.value = (await noteFolderApi.list()) ?? []
+    pruneCollapsedFolders()
   } catch (error) {
     notifyError(error, '文件夹加载失败')
   }
+}
+
+/** 清理已不存在的折叠记录（删除 / 刷新后），避免集合无限增长。 */
+function pruneCollapsedFolders(): void {
+  const ids = new Set(folders.value.map((folder) => folder.id))
+  const next = new Set([...collapsedFolderIds.value].filter((id) => ids.has(id)))
+  if (next.size !== collapsedFolderIds.value.size) {
+    collapsedFolderIds.value = next
+  }
+}
+
+function setFolderExpanded(folderId: string, expanded: boolean): void {
+  const next = new Set(collapsedFolderIds.value)
+  if (expanded) {
+    next.delete(folderId)
+  } else {
+    next.add(folderId)
+  }
+  collapsedFolderIds.value = next
+}
+
+function toggleFolder(folderId: string): void {
+  setFolderExpanded(folderId, collapsedFolderIds.value.has(folderId))
+}
+
+/** 展开目标文件夹的全部祖先：从下拉框选中深层文件夹时，侧栏仍能看到高亮项。 */
+function expandAncestors(folderId: string): void {
+  const byId = new Map(folders.value.map((folder) => [folder.id, folder]))
+  const next = new Set(collapsedFolderIds.value)
+  let parentId = byId.get(folderId)?.parentId ?? ''
+  let guard = 0
+  while (parentId && guard++ <= folders.value.length) {
+    next.delete(parentId)
+    parentId = byId.get(parentId)?.parentId ?? ''
+  }
+  collapsedFolderIds.value = next
 }
 
 /** 侧栏统计只统计全部笔记；失败时保留上一次的值，不打断列表。 */
@@ -94,6 +135,9 @@ function search(): void {
 
 function selectFolder(folderId?: string): void {
   query.folderId = folderId ?? ''
+  if (folderId && folderId !== UNCATEGORIZED_FOLDER) {
+    expandAncestors(folderId)
+  }
   search()
 }
 
@@ -160,6 +204,9 @@ async function createFolder(parentId = ''): Promise<void> {
       confirmButtonText: '创建',
     })
     await noteFolderApi.create({ name: value.trim(), parentId: parentId || undefined })
+    if (parentId) {
+      setFolderExpanded(parentId, true)
+    }
     ElMessage.success('文件夹已创建')
     await loadFolders()
   } catch (error) {
@@ -263,32 +310,48 @@ function handlePageChange(page: number): void {
           </div>
         </template>
         <button
-          class="mb-1 flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors"
+          class="mb-1 flex w-full items-center justify-between rounded-md py-2 pl-5 pr-7 text-left text-sm transition-colors"
           :class="query.folderId === '' ? 'bg-[var(--el-color-primary-light-9)] text-[var(--el-color-primary)]' : 'hover:bg-[var(--el-fill-color-light)]'"
           @click="selectFolder()"
         >
-          <span>全部笔记</span>
-          <span class="text-xs text-[var(--el-text-color-secondary)]">{{ allTotal }}</span>
+          <span class="truncate">全部笔记</span>
+          <span class="shrink-0 text-xs text-[var(--el-text-color-secondary)]">{{ allTotal }}</span>
         </button>
         <button
-          class="mb-1 flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors"
+          class="mb-1 flex w-full items-center justify-between rounded-md py-2 pl-5 pr-7 text-left text-sm transition-colors"
           :class="query.folderId === UNCATEGORIZED_FOLDER ? 'bg-[var(--el-color-primary-light-9)] text-[var(--el-color-primary)]' : 'hover:bg-[var(--el-fill-color-light)]'"
           @click="selectFolder(UNCATEGORIZED_FOLDER)"
         >
-          <span>未分类</span>
-          <span class="text-xs text-[var(--el-text-color-secondary)]">{{ uncategorizedTotal }}</span>
+          <span class="truncate">未分类</span>
+          <span class="shrink-0 text-xs text-[var(--el-text-color-secondary)]">{{ uncategorizedTotal }}</span>
         </button>
         <div
-          v-for="folder in folders"
+          v-for="folder in folderTree"
           :key="folder.id"
-          class="group mb-1 flex items-center gap-1 rounded-md px-1 transition-colors"
+          class="group relative mb-1 flex items-center gap-1 rounded-md pr-7 transition-colors"
+          :style="{ paddingLeft: `${(folder.depth - 1) * 10 + 20}px` }"
           :class="query.folderId === folder.id ? 'bg-[var(--el-color-primary-light-9)]' : 'hover:bg-[var(--el-fill-color-light)]'"
         >
-          <button class="min-w-0 flex-1 truncate px-2 py-2 text-left text-sm" @click="selectFolder(folder.id)">
-            {{ folderPaths.get(folder.id) || folder.name }}
+          <!-- 三角绝对定位在固定留白里，不参与文字排版：同一层级有无三角，文字起点都一致。 -->
+          <button
+            v-if="folder.hasChildren"
+            class="absolute top-1/2 w-4 -translate-y-1/2 text-center text-xs leading-none text-[var(--el-text-color-secondary)] hover:text-[var(--el-color-primary)]"
+            :style="{ left: `${(folder.depth - 1) * 10 + 2}px` }"
+            :title="collapsedFolderIds.has(folder.id) ? '展开' : '收起'"
+            :aria-expanded="!collapsedFolderIds.has(folder.id)"
+            @click.stop="toggleFolder(folder.id)"
+          >
+            {{ collapsedFolderIds.has(folder.id) ? '▸' : '▾' }}
+          </button>
+          <button
+            class="min-w-0 flex-1 truncate py-2 text-left text-sm"
+            :title="folder.path"
+            @click="selectFolder(folder.id)"
+          >
+            {{ folder.name }}
           </button>
           <span class="shrink-0 text-xs text-[var(--el-text-color-secondary)]">{{ folder.noteCount }}</span>
-          <el-dropdown trigger="click">
+          <el-dropdown trigger="click" class="absolute right-1 top-1/2 -translate-y-1/2">
             <el-button link :icon="MoreFilled" size="small" />
             <template #dropdown>
               <el-dropdown-menu>
@@ -299,7 +362,7 @@ function handlePageChange(page: number): void {
             </template>
           </el-dropdown>
         </div>
-        <el-empty v-if="folders.length === 0" description="暂无文件夹" :image-size="60" />
+        <el-empty v-if="folderTree.length === 0" description="暂无文件夹" :image-size="60" />
       </el-card>
 
       <el-card shadow="never">
