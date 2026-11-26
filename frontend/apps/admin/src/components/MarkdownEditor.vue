@@ -148,8 +148,10 @@ defineExpose({
 </template>
 
 <style scoped>
+/* 高度由父级决定（编辑页：xl 由 flex 撑满内容区，窄屏固定 60vh）：
+   这里不再兜底 min-height，否则窗口变矮时编辑器会溢出卡片。 */
 .sn-markdown-editor {
-  min-height: 360px;
+  min-height: 0;
 }
 
 .sn-markdown-editor.vditor {

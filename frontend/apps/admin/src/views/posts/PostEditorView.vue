@@ -329,8 +329,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-loading="loading" class="space-y-4">
-    <el-card shadow="never" body-class="py-3">
+  <div v-loading="loading" class="flex flex-col gap-4 xl:h-full xl:min-h-0">
+    <el-card shadow="never" class="shrink-0" body-class="py-3">
       <div class="flex flex-wrap items-center gap-2">
         <el-button :icon="ArrowLeft" circle title="返回" @click="router.push('/posts')" />
         <el-input v-model="form.title" placeholder="文章标题" class="min-w-40 flex-1 text-base" />
@@ -384,20 +384,29 @@ onBeforeUnmount(() => {
       />
     </el-card>
 
-    <div class="grid gap-4 xl:grid-cols-[1fr_300px]">
-      <el-card shadow="never" body-class="p-0">
+    <div class="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[1fr_300px]">
+      <el-card
+        shadow="never"
+        class="flex min-w-0 flex-col xl:min-h-0"
+        body-class="flex h-[60vh] flex-col p-0 xl:h-auto xl:min-h-0 xl:flex-1"
+      >
         <MarkdownEditor
           v-model="form.content"
           :theme="editorTheme"
           :cache-id="`post-${postId}`"
-          :height="'calc(100vh - 300px)'"
+          height="100%"
           :upload="uploadImages"
           :on-upload-error="handleUploadError"
           placeholder="开始写文章…"
         />
       </el-card>
 
-      <el-card shadow="never" header="发布信息">
+      <el-card
+        shadow="never"
+        header="发布信息"
+        class="flex flex-col xl:min-h-0"
+        body-class="min-h-0 xl:flex-1 xl:overflow-y-auto"
+      >
         <el-form label-position="top">
           <el-form-item label="摘要">
             <el-input

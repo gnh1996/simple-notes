@@ -221,8 +221,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-loading="loading" class="space-y-4">
-    <el-card shadow="never" body-class="py-3">
+  <div v-loading="loading" class="flex flex-col gap-4 xl:h-full xl:min-h-0">
+    <el-card shadow="never" class="shrink-0" body-class="py-3">
       <div class="flex flex-wrap items-center gap-2">
         <el-button :icon="ArrowLeft" circle title="返回" @click="router.push('/notes')" />
         <el-input
@@ -247,20 +247,29 @@ onBeforeUnmount(() => {
       </div>
     </el-card>
 
-    <div class="grid gap-4 xl:grid-cols-[1fr_280px]">
-      <el-card shadow="never" body-class="p-0">
+    <div class="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[1fr_280px]">
+      <el-card
+        shadow="never"
+        class="flex min-w-0 flex-col xl:min-h-0"
+        body-class="flex h-[60vh] flex-col p-0 xl:h-auto xl:min-h-0 xl:flex-1"
+      >
         <MarkdownEditor
           v-model="form.content"
           :theme="editorTheme"
           :cache-id="`note-${noteId}`"
-          :height="'calc(100vh - 280px)'"
+          height="100%"
           :upload="uploadImages"
           :on-upload-error="handleUploadError"
           placeholder="开始记录…"
         />
       </el-card>
 
-      <el-card shadow="never" header="笔记信息">
+      <el-card
+        shadow="never"
+        header="笔记信息"
+        class="flex flex-col xl:min-h-0"
+        body-class="min-h-0 xl:flex-1 xl:overflow-y-auto"
+      >
         <el-form label-position="top">
           <el-form-item label="文件夹">
             <el-select v-model="form.folderId" placeholder="未分类" clearable class="w-full">
