@@ -3,11 +3,9 @@
 > **状态：v0.6（2026-11-10，P0 + P1 已实现）**。表达式面、fixture、canonical skeleton、组件 `example`、错误修复提示、`$event` / 内置组件放宽、`Intl`、生成文档与规则覆盖检查均已落地；P2 按真实证据再做。
 > **定位：规范性文档（normative）**。本文定义“什么算合法主题”“什么算契约变更”“改契约必须同步什么”。
 > **机器源**：`frontend/apps/blog/src/contract.ts`（配合 `types.ts` / `runtime.ts`）。本文与机器源冲突时视为缺陷，按 §9 修正。
-> **关系**：`docs/blog-runtime-theme.md` §3 描述契约的语义与设计；本文描述规范性规则、错误码、fixture 与变更协议；`docs/theme-contract-v2.md` 是 2A 的历史设计记录，规范内容以本文为准。
+> **关系**：`docs/blog-runtime-theme.md` §3 描述契约的语义与设计；本文描述规范性规则、错误码、fixture 与变更协议，规范内容以本文为准。
 > **目标**：让契约文档能约束后续迭代，而不是停留在“参考说明”。
 > **非目标**：不把本文写成实现细节；不承诺模板表达式是安全沙箱；不约束审美、信息架构与无障碍体验。
-
----
 
 ## 0. 怎么使用本文
 
@@ -17,8 +15,6 @@
 4. **变更必须过 §9 四件套**：改能力、改语法、改校验策略，都要同时更新契约、fixture、规范表与测试。
 5. **默认主题不是规范**：`packages/theme-starter` 只是示例与兜底；照抄能过不代表契约完备。
 6. **优先级**：生成成功率 > 维护成本 > 一致性 > 安全护栏。校验不是安全沙箱；不要为了“看起来安全”增加生成摩擦（见 §11 威胁模型）。
-
----
 
 ## 1. 术语
 
@@ -30,8 +26,6 @@
 | 规则（rule） | 一条可判定的约束，有稳定 ID、错误码与 fixture |
 | fixture | 一段最小主题片段，声明“应当通过”或“应当失败并返回指定错误码” |
 | L0 / L1 / L2 | 变更等级，见 §3 |
-
----
 
 ## 2. 单一来源与投影链
 
@@ -57,8 +51,6 @@ runtime.ts / theme.ts ────────────┘  validateTheme（�
 - `pnpm check:contract`（已并入 `pnpm typecheck`）检查生成物是否过期；CI 必须跑。
 - 计划新增 `pnpm check:docs`：检查本文的生成段 / 手写规则表是否与 JSON 一致；不引入第二份手写清单。
 
----
-
 ## 3. 契约版本与变更等级
 
 ```text
@@ -80,8 +72,6 @@ theme.contract   = N
 - 禁止 `$event`：如果旧主题用过 → 收窄 → L0。
 - 修 `v-for` 解构误判：旧主题从“非法”变“合法” → 扩宽 → L1。
 - 把 slot 作用域从 union 收紧到“按组件精确校验”：可能让旧主题变非法 → 先审计，按 L0 处理。
-
----
 
 ## 4. 能力面规则
 
@@ -133,8 +123,6 @@ theme.contract   = N
 | `TC-CSS-002` | 禁止 `@import` | ✅ | `THEME_CSS_IMPORT` |
 | `TC-CSS-003` | `url()` 仅允许 `/api/media/` 与 `data:` | ✅ | `THEME_CSS_URL` |
 | `TC-CSS-004` | `theme.overrides` 只允许 `CONTRACT_CSS_VARS` 且值为安全 token | ✅ | `THEME_OVERRIDE_UNKNOWN` / `THEME_OVERRIDE_VALUE` |
-
----
 
 ## 5. 表达式面（Expression Surface）
 
@@ -246,8 +234,6 @@ P0 曾只放行 `<Transition>` / `<TransitionGroup>` 并拒绝 `Teleport` 等；
 - 静态校验无法判断交互是否正确；运行时自检 `blog-preview:diagnose` 仍是必要补充。
 - 不承诺任意 Vue 语法；只承诺本文列出的子集。
 
----
-
 ## 6. 错误码目录
 
 错误码需同时出现在三处，且与规则 ID 一一对应：
@@ -274,8 +260,6 @@ P0 曾只放行 `<Transition>` / `<TransitionGroup>` 并拒绝 `Teleport` 等；
 | `THEME_CONTRACT_INCOMPATIBLE` | §3 | 升级主题契约或回退默认主题 |
 
 > 当前 P0 已让三处扫描器的**消息文案**一致，并建立 fixture 同口径；结构化的 `code` 字段属于 P2，等有机器消费者 / 多语言 / 错误统计时再做。
-
----
 
 ## 7. Fixture 规范
 
@@ -322,8 +306,6 @@ frontend/scripts/fixtures/theme/
 
 状态：✅ P0 已落地（`frontend/scripts/fixtures/theme/cases.json`）。
 
----
-
 ## 8. 文档投影与自检（P1-C 已实现）
 
 ### 8.1 文档分层
@@ -346,8 +328,6 @@ frontend/scripts/fixtures/theme/
 > 不做“扫描文档全文的组件名 / CSS 变量”这种全量比对：历史说明、示例、迁移记录多，误报成本高于收益。
 > 生成段不要包含默认主题全文，避免 starter 偏置。
 
----
-
 ## 9. 变更协议（Definition of Done）
 
 任何主题能力 / 语法 / 校验策略变更，必须完成：
@@ -367,8 +347,6 @@ frontend/scripts/fixtures/theme/
 - 把正则实现写进规范（规范只写可观察行为）；
 - 新增能力但不投影给 AI，然后抱怨生成通过率低。
 
----
-
 ## 10. AI 投影要求
 
 | 要求 | 说明 |
@@ -380,8 +358,6 @@ frontend/scripts/fixtures/theme/
 | 最小骨架 | 完整模式注入 canonical skeleton（不是 starter 全文），与补丁模式同口径 |
 | 修复提示 | 错误信息带规则 ID + 文档锚点 + 替代写法（尤其 `$event`） |
 | 评测 | 保留“从零生成 fixture”的通过率基线，作为契约有效性的回归指标 |
-
----
 
 ## 11. 威胁模型、非目标与已知边界
 
@@ -401,8 +377,6 @@ frontend/scripts/fixtures/theme/
 - **不承诺完整 Vue**：只承诺本文列出的子集；Vue 新语法默认不支持，除非按 §9 追加。
 - **不把“通过校验”当安全证明**：校验只覆盖本文列出的规则，不覆盖内部人滥用或部署配置问题。
 
----
-
 ## 12. 待决策项
 
 | 编号 | 议题 | 结论 |
@@ -416,69 +390,9 @@ frontend/scripts/fixtures/theme/
 | D7 | 模板字面量 `${}` 扫描 | ❌ 不做，保持宽松（收紧只增摩擦，无安全收益） |
 | D8 | AST 校验 / 模板沙箱 | ❌ 不做（威胁模型不成立；不是真隔离，成本高） |
 
----
+## 附录 A：历史漂移教训（2A 实施前，已修复归档）
 
-## 13. 实施顺序
-
-### P0：先对齐规范与校验（✅ 已实现）
-
-1. `contract.ts` 增加 `CONTRACT_EXPRESSION`（globals / eventLocals / 修饰符 / 原生事件；当时的 `builtinComponents` 白名单已在 P1-B 移除）。
-2. `sync:contract` 写入 JSON；`ThemeContract` 读取并投影到 `promptSection()`。
-3. 三处扫描器改为只读同一份表达式登记；补 `$event` / globals / 解构 / slot 默认值。
-4. 修 `TC-COMP-004`（引号内 `>` 截断）、`TC-COMP-003`（组件原生事件）。
-5. 建 `fixtures/theme/cases.json` + pass/fail；JS 与 Java 测试共用。
-6. 结构错 / fixture 消息文案统一（稳定错误码留 P2）。
-
-### P1：生成质量优先（进行中）
-
-按收益排序：
-
-1. **生成质量包（✅ 已实现）**
-   - canonical skeleton：`scripts/fixtures/theme/skeleton.html` + `skeleton.css`，随 `--emit` 进入 `theme-contract.json`，完整模式注入（不是 starter 全文）；
-   - 核心组件 `example`：13 个组件已填，`check:contract` 与 Java 测试会把 example 包进 `#app` 后扫描；
-   - 错误信息带修复建议：未知标识符 / 事件 / prop / slot / 全局 / 内置组件。
-2. **契约降摩擦包（✅ 已实现）**
-   - `$event` 已放宽为事件表达式普通局部变量（移除形状白名单，§5.4）；
-   - 内置组件已移除拒绝逻辑，按 Vue 行为（§5.7）；
-   - 表达式全局已增加 `Intl`；`RegExp` / `Map` / `Set` 按真实使用再加（§5.3）。
-3. **文档维护包（瘦身，✅ 已实现）**
-   - 生成 `docs/theme-contract.generated.md`，`check:contract` 检查新鲜度；
-   - `cases.json` 规则 ID ↔ 规范表覆盖 + 规则 ID 去重。
-4. **评测（待做）**
-   - 用同一组 from-scratch 任务对比 P1 前后通过率，作为继续投入的依据。
-
-### P2：有真实证据再做
-
-1. 未知 props、`v-bind="obj"` / `v-on="{...}"` 对象语法。
-2. slot 作用域按组件精确化（收紧按 L0）。
-3. 结构化错误码 `code`（等机器消费者 / 多语言 / 错误统计）。
-4. URL 前缀、事件修饰符校验（先只文档化）。
-
-### 明确不做
-
-1. **AST 成员访问白名单 / 模板沙箱**：威胁模型不成立，成本高，且不是真隔离。
-2. **模板字面量 `${}` 内部扫描**：当前偏宽松，收紧只增 L0 迁移和生成摩擦。
-3. **任何“为安全而牺牲生成”的规则**。如果未来真的需要“不可信主题”，应换隔离 iframe / 独立域 / 服务端预渲染 / 白名单 DSL，而不是继续加正则或 AST。
-
----
-
-## 14. 变更记录
-
-| 日期 | 变更 |
-| --- | --- |
-| 2026-11-09 | 初稿：规范性规则表、表达式面、错误码、fixture 规范、变更协议；记录 D1–D8 待决策项 |
-| 2026-11-09 | P0 实现：`CONTRACT_EXPRESSION`（globals / `$event` 窄形状 / 修饰符 / 原生事件 / 内置组件）；三处扫描器同口径；解构 / slot 默认值 / `>` 截断修复；`cases.json` + JS/Java 共用；提示词投影数据 routes / writable / selfFetch |
-| 2026-11-10 | 按威胁模型重排 P1/P2：新增 §11.1（管理员 / AI 受信任，不做 AST / 沙箱）；P1 改为生成质量优先（skeleton / example / 错误提示 / 降低 `$event` 与内置组件摩擦 / 瘦身文档）；D7 模板字面量扫描与 D8 AST 明确不做；错误码、未知 props、slot 精确化移到 P2 |
-| 2026-11-10 | P1-A 实现：canonical skeleton（fixture + JSON + 完整模式注入）、13 个组件 `example` 并纳入扫描、错误信息补修复建议；P1-B/P1-C 待做 |
-| 2026-11-10 | P1-B 实现：`$event` 在事件表达式里放开（删除形状白名单）、内置组件不再拦截、表达式全局增加 `Intl`；fixture 与提示词同步 |
-| 2026-11-10 | P1-C 实现：生成 `docs/theme-contract.generated.md` 并在 `check:contract` 校验新鲜度；规则 ID 去重 + `cases.json` 覆盖检查 |
-| 2026-11-19 | 文档归档：`docs/theme-contract-v2.md` 冻结，§1.2 的历史漂移教训摘录为本文附录 A（非规范性，仅防重犯） |
-
----
-
-## 附录 A：历史漂移教训（from `theme-contract-v2.md` §1.2，已修复归档）
-
-> 来源：2A 实施前代码里真实发生的不一致（2026-11-08，已全部修复）。保留在此是为了不再重犯；`theme-contract-v2.md` 已冻结，不再更新。
+> 来源：2A 实施前代码里真实发生的不一致（2026-11-08，已全部修复）。保留在此是为了不再重犯。
 
 | 漂移 | 后果 | 修复 |
 | --- | --- | --- |

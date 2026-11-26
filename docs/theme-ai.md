@@ -1,13 +1,8 @@
 # 主题 AI 对话（Theme AI Chat）
 
-> **状态：v2.2 · 2026-11-09（已实现）：v2.1 的接入 / 线程 / 记忆 / 补丁链路不变；新增「按已保存版本选择 AI 基线」与草稿 TTL 后仍可存版**
+> **状态：已实现（v2.2）**：首轮完整 + 后续补丁；当前主题存服务端，ChatMemory 只存摘要；按已保存版本选择 AI 基线，草稿 TTL 后仍可存版。
 > 范围：admin 端对话式主题定制；关联 `docs/blog-runtime-theme.md`（§3 契约 / §7 管理端 / §8 校验）、`docs/tech-stack.md`（Spring AI 选型）。
 > 非目标：tool calling、RAG / 向量库、多 provider 路由、无头浏览器截图回灌（P3）。
-> 版本回顾：
-> - v1：手工装配 `OpenAiChatModel.builder()`，正则取 html/css fenced 块，前端持有 history，`new Thread` + 固定 SSE 超时。
-> - v2：Spring AI 自动装配 + `ChatClient` + 后端 ChatMemory + 整篇主题 JSON（`ThemeDraft`）+ provider-native `outputSchema`。
-> - v2.1：保留 v2 的接入/线程/记忆基础，**把“整篇主题 JSON”改成“首轮完整 + 后续补丁”**；当前主题单独存服务端，ChatMemory 只存摘要，避免 JSON 转义、输出截断与上下文膨胀。
-> - v2.2：管理端版本行支持「AI 迭代」，以指定已保存版本为基线开新会话并展示基线；头部只在继续会话 / 无版本时出现；草稿 TTL 到期后仍可存版；切换主题 / 删除主题时中断旧流式会话，避免 `sessionId` 串台。
 
 ## 0. 决策摘要
 
@@ -23,8 +18,6 @@
 | 工具 | 不引入 tool calling（§5）；截图回灌留待 P3 |
 | 限流 | 无配额；仅单用户单并发 + 服务端超时 + 前端可中断 |
 | 调试 | 服务端按轮次输出结构化日志；前端显示 `mode / finishReason / truncated / outputChars / errorKind`（§8） |
-
----
 
 ## 1. 配置
 
@@ -59,8 +52,6 @@ spring.ai.openai:
 DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX_TOKENS: 65536`（快、无 reasoning 预算竞争）；需要更强推理时改回 `AI_THINKING: ""` / `AI_MAX_TOKENS: 0`（thinking 默认 64K）。
 
 **OpenCode Go 兼容**：base URL 用 `https://opencode.ai/inference/go/openai/v1`，模型用 `deepseek-v4.1-flash`；该端点强制要求 `x-opencode-session`（缺失直接 400）。`AiThemeService` 会把 `conversationId` 的稳定哈希放进该头，其他 OpenAI-compatible 端点会忽略；如同时使用官方 DeepSeek，无需改回。OpenCode Go 的 DeepSeek 模型还需要在 Console → Settings → Privacy → Regions 把区域设为 `Global`。
-
----
 
 ## 2. 对话协议
 
@@ -122,7 +113,7 @@ DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX
 
 ### 2.3 服务端提示词（`AiThemePrompt`）
 
-* **契约投影**：组件 / props / slots / slot scope / 类型 / 路由 / URL / CSS 变量 / 指令全部来自 `theme-contract.json`（`pnpm sync:contract` 生成，`ThemeContract.promptSection()` 拼装）；本类只保留“约束”文案，不再手写清单（规范见 `docs/theme-contract.md`，历史设计 `docs/theme-contract-v2.md` 已冻结）。
+* **契约投影**：组件 / props / slots / slot scope / 类型 / 路由 / URL / CSS 变量 / 指令全部来自 `theme-contract.json`（`pnpm sync:contract` 生成，`ThemeContract.promptSection()` 拼装）；本类只保留“约束”文案，不再手写清单（规范见 `docs/theme-contract.md`）。
 * **完整模式**（`fullSystemPrompt`）：只在“没有当前主题 / 没有 base / 没勾 starter”时使用；先输出 `<plan>`，再输出恰好一个 ````html` 与 ````css`。system prompt 会注入 canonical skeleton（`theme-contract.json.skeleton`），不是 starter 全文。
 * **补丁模式**（`patchSystemPrompt`）：有当前主题（含 starter 起点）时使用；只输出单个 JSON `{summary, plan, ops}`；当前主题放 `<reference-html>` / `<reference-css>`，每轮只注入一次。
 * 补丁操作（`ThemePatch.ThemeOp`）：
@@ -141,8 +132,6 @@ DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX
   - `temperature` 从 0.7 降到 0.3。
 * 补丁模式下若用户要求彻底重写整篇主题且改动很大，允许模型直接输出完整 ````html` / ````css`（fenced），不要塞进 JSON 字符串；`extractPatch` 失败后会由完整主题解析兜底，按整体替换处理。
 
----
-
 ## 3. 产物解析与校验
 
 * `AiThemePrompt.extractFull`：从完整输出取**最后**一个 ```html 与 ```css；兼容旧模型仍输出 `{"html": "...", "css": "..."}` 的 JSON。
@@ -152,8 +141,6 @@ DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX
 * 只有 `errors` 为空时才更新 `AiThemeSessionStore` 与 `AiDraftCache`；失败轮不污染当前主题。
 
 纯函数测试：`AiThemePromptTest`（完整/补丁/记忆压缩/默认主题回归）+ `AiThemePatchApplierTest`（各 op、唯一片段、非法变量、应用后校验）+ `CaffeineChatMemoryRepositoryTest`（大消息压缩/会话隔离）。
-
----
 
 ## 4. 草稿预览与定版
 
@@ -165,54 +152,22 @@ DeepSeek `deepseek-flash` 主题生成推荐：`AI_THINKING: disabled` + `AI_MAX
   runtime 回 `blog-preview:diagnosed{report}`——静态校验 + 活 DOM 信号（挂载、横向溢出、未解析插值、契约变量计算值、window error/rejection）。
   用户点「把渲染问题发给 AI」时按当前 `mode` 拼成完整修复或补丁修复指令；不自动回灌、不烧 token。无截图（P3 不变）。
 
----
-
 ## 5. 框架与状态选型
 
-* 自动装配：`spring.ai.model.chat=openai`；连接信息只有 `spring.ai.openai.*` 一份来源（`AI_*` 桥接，无 dummy 占位）。
-  缺 key 时 `AiEnvironmentPostProcessor` 把 `OpenAiChatAutoConfiguration` + `ChatClientAutoConfiguration` 整个排除——
-  后者必须一起排：它的 `chatClientBuilder` 是 prototype 强依赖 `ChatModel`，留在候选里一旦被 `AiConfig` 索取就启动即崩
-  （`AiAutoConfigTest.skipsWithoutKey` 锁定）。其余 OpenAI 模型类型在 `application.yml` 显式 `none`。
-  是否可用看 `ChatClient` bean 在不在（`ObjectProvider.getIfAvailable()`），接口层 400。
-* 唯一入口 `AiConfig` 走自动装配注册（`AutoConfiguration.imports` + `@AutoConfigureAfter`）+ `defaultAdvisors(记忆)`。
-  手工 `OpenAiChatModel.builder()` 三坑（v1 `AiClientBuildTest`）随删除而消失；`SimpleLoggerAdvisor` 已移除（会把整篇主题写进日志）。
-* 后端 Memory：`ChatMemory`（`MessageWindowChatMemory`）+ 自研 `CaffeineChatMemoryRepository`（2h 访问过期 / 上限 1000）。
-  v2.1 在 `saveAll` 前压缩大消息：整篇 HTML/CSS 只留摘要/计划/用户指令，当前主题由 `AiThemeSessionStore` 单独保存。
-* 不用 LangChain4j：单兼容端 + prompt 封闭域，多 provider 抽象用不上（v1 结论保留）。
-* 不用 tool calling：封闭域 prompt + 后端校验/补丁循环已覆盖；tool 流式分片与本 SSE 协议叠加排错翻倍；兼容端小模型 tool 支持参差。P3 截图回灌时再加只读 tool。
-* 不用 provider-native 结构化输出：v2 的 `outputSchema` 只能保证 JSON 形状，不能保证整篇主题内容不截断；v2.1 的完整模式走 fenced html/css，
-  补丁模式走小 JSON + 手工解析；彻底重写时允许直接 fenced 完整主题，避免把整篇 CSS 塞进 JSON 字符串。`max_tokens` 由 `AI_MAX_TOKENS` 控制（默认 0 = 端点默认），`finishReason=length` 时 `done.truncated=true`。
-* SSE 线程：虚拟线程池（`newThreadPerTaskExecutor`，Java 25）替代 `new Thread`；`SseEmitter` 超时 = `timeout × maxRounds + 30s`；
-  前端中断 → emitter 回调 → `Future.cancel(true)` 中断虚拟线程（仍属“写失败/回调发现”，不是独立取消接口）。
-
----
+* `spring.ai.model.chat=openai` 自动装配；连接信息只有 `spring.ai.openai.*` 一份来源（`AI_*` 桥接）。缺 key 时 `AiEnvironmentPostProcessor` 同时排除 `OpenAiChatAutoConfiguration` 与 `ChatClientAutoConfiguration`（后者强依赖 `ChatModel`），启动不受影响，接口层 400；其余 OpenAI 模型类型显式 `none`。
+* `AiConfig` 是唯一入口（`AutoConfiguration.imports` + `defaultAdvisors(记忆)`）；`SimpleLoggerAdvisor` 不启用（会把整篇主题写进日志）。
+* 记忆：`MessageWindowChatMemory` + `CaffeineChatMemoryRepository`（2h 访问过期 / 上限 1000）；保存前压缩大消息，整篇 HTML/CSS 只留摘要 / 计划 / 用户指令，当前主题由 `AiThemeSessionStore` 单独保存。
+* 不引入 LangChain4j（单兼容端 + 封闭域 prompt）；不引入 tool calling（后端校验 / 补丁循环已覆盖，P3 截图回灌时再加只读 tool）；不用 provider-native `outputSchema`（只保证 JSON 形状，不防截断）。
+* SSE 用虚拟线程池（Java 25）替代 `new Thread`；`SseEmitter` 超时 = `timeout × maxRounds + 30s`；前端中断经 emitter 回调 `Future.cancel(true)`。
 
 ## 6. 已知缺口与后续
 
-1. ~~`AiThemePrompt.CONTRACT_RULES` 是契约的手工摘要~~：已由 `theme-contract.json` 投影解决（规范见 `docs/theme-contract.md`）；`ThemeTemplateValidator` / `AiThemePrompt` / `SiteSettingCatalog` 均只读生成物，`pnpm typecheck` 会校验生成物无漂移。
-2. **表达式面已进入契约（P0）**：`CONTRACT_EXPRESSION` 投影了表达式全局、`$event`、原生事件与修饰符；`v-for` 解构 / slot 默认值已支持。P1 已注入 canonical skeleton 与组件 example、给错误信息补修复建议、放宽 `$event` / 内置组件并加入 `Intl`。
-3. `done.html/css` 全量下发（≤320KB），弱网下 SSE 单帧大；后续可只下发 `draftId` + 分片拉取。
-4. 会话记忆在后端（`MessageWindowChatMemory` 默认 20 条 + Caffeine 2h 过期），长会话仍可能丢早期版式决策；后续可做“首轮目标 + 最近补丁”快照压缩。
-5. 补丁能力边界：`replaceHtml` / `replaceCss` 仍是完整文件，适合整体换风格但不适合超大主题；`replace` 要求唯一片段，模型可能因片段不唯一失败；
-   `setCssVar` 替换首个同名定义（通常是 `:root`），深色模式专用变量需模型用 `appendCss` 指定 `[data-color-mode]` 选择器。后续可加结构化 DOM section / 变量 scope。
-6. P3：无头浏览器三档视口截图回喂（届时加只读 `capturePreview` tool）。A 档确定性文本报告已落地（§4），截图仍不做：弱模型多模态参差 + token 贵 + flaky。
-7. 编辑器卡顿（2026-11-07 Chrome trace 实测）：`el-input textarea` 全受控，65KB 下每键 100-400ms；
-   改为 `LargeTextEditor.vue`（非受控 textarea + 复用 `el-textarea__inner` 样式 + 250ms debounce + 保存前 `flush()`），
-   中位数 120ms→37ms；剩余为原生大文本框重排成本，不再投入优化。
-   2026-11-08 追查 CSS tab 拖滚动条整窗冻死：与输入链路无关（scroll 风暴 0.7ms/200 次、强制布局 0.2ms/50 次、
-   无 longtask、debounce 回写不重置 scrollTop、最长行仅 85 字符、无祖先 filter/transform）——卡在合成侧。
-   硬指标：本机 WebGL MAX_TEXTURE_SIZE=16384，整块内容层 30615px（dpr 1.25 下约 38269 物理像素）远超单纹理上限。
-   先按 300 行分页验证假设成立（冻死消失），随后换成正解：CodeMirror 6 视口虚拟化（只渲染可视区数十行 DOM，
-   全文仍单文档、无分页概念），MIT 协议、按需引入 state/view/commands/lang-css/lang-html/language/theme-one-dark，
-   走 catalog。HTML/CSS 分 `lang` 配高亮，明暗主题跟 `useTheme().isDark`（亮色贴 el-textarea 观感、暗色 oneDark）。
-   编辑器弹窗补 `destroy-on-close`（关闭即销毁 2 个 CM 实例；文本状态在父级 `editor` 对象里不受影响，重开秒建）。
-7. 抽屉体验（2026-11-08）：滚动改为条件吸底（用户上滑不再强制 `scrollTo`，+「回到底部」按钮）；plan 渲染为步骤时间线；
-   说明文字走轻量散文渲染（先转义后套自有标签，无外部 HTML 进入）；补丁模式流式 JSON 原文不展示，只显示“正在生成编辑指令…”与最终 summary。
-8. 会话生命周期：前端「新对话」重新生成 `sessionId`；切换主题时清空当前对话（`themeId` 参与后端会话 key），避免旧主题上下文串台。
-   切换主题 / 删除主题时若仍在流式生成，先中断再重置会话，禁止带着旧 `sessionId` 改用新 `themeId`。
-9. 基线可追溯：AI 抽屉显示当前基线版本；「AI 迭代」从指定版本起新会话；已保存的新版本成为该会话后续轮次的当前主题，不再回退到旧基线。
-
----
+1. `done.html/css` 全量下发（≤320KB），弱网下单帧偏大；后续可只下发 `draftId` + 分片拉取。
+2. 长会话仍可能丢早期版式决策；后续可做「首轮目标 + 最近补丁」快照压缩。
+3. 补丁边界：`replaceHtml` / `replaceCss` 是完整文件，`replace` 要求片段唯一；深色专用变量需模型用 `appendCss` 指定 `[data-color-mode]` 选择器。后续可加结构化 DOM section / 变量 scope。
+4. P3：无头浏览器截图回灌（届时加只读 `capturePreview` tool）；A 档确定性文本报告已落地（§4）。
+5. HTML / CSS 编辑器用 CodeMirror 6 视口虚拟化（大文本受控 `textarea` 会卡到 100–400ms/键，且整块内容层超出 WebGL 单纹理上限）；弹窗 `destroy-on-close`。
+6. 会话生命周期：前端「新对话」重建 `sessionId`；切换 / 删除主题时先中断流式生成再重置会话，禁止旧 `sessionId` 配新 `themeId`；AI 抽屉显示当前基线版本，「AI 迭代」从指定版本起新会话，保存的新版本成为后续轮次的当前主题。
 
 ## 7. 超时分层（v2.1）
 
@@ -233,8 +188,6 @@ okhttp 是整呼叫超时（connect/read/总时长一并算，流式读靠它）
 * `outputChars == 0` 且 `reasoningChars > 0`：模型把输出预算全用在 reasoning，正文没开始。换非推理模型 / 关闭 thinking，或提高输出上限。
 * `outputChars > 0` 但仍截断：正文在完成前被截断。提高 `AI_MAX_TOKENS`、缩小本轮改动范围，或换输出上限更大的模型。
 * 前端 `done` 卡片显示 `输出被截断 (LENGTH)` 与 `reasoning N 字符`；后端日志同时给出 `AI_MAX_TOKENS` 与 usage。
-
----
 
 ## 8. 调试日志
 

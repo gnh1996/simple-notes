@@ -1,6 +1,6 @@
 // Package api 是桌面端到后端的唯一 HTTP 通道。
 //
-// 设计要点（docs/tech-eval-vditor-wails.md §3.3）：
+// 设计要点（docs/tech-stack.md 桌面端选型、docs/desktop-sync.md）：
 //   - WebView 不直接 fetch 后端：避免自定义 scheme 的 CORS，也让 JWT 不进入 JS；
 //   - 前端仍使用 OpenAPI 生成的 TS 类型（packages/api），这里只做通用转发；
 //   - 不做 DTO 映射，响应体原样返回 JSON 字符串，由前端按生成类型解析。

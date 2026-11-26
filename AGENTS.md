@@ -6,7 +6,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
-| `docs/tech-stack.md` | 技术选型总览（2026-10-18 冻结）与残余待定项 |
+| `docs/tech-stack.md` | 技术选型总览（冻结结论表 + 未定项） |
 | `docs/auth-rbac.md` | 认证与权限设计（RBAC：三端入口 / admin 菜单 / 按钮与接口权限；JWT 会话；已定稿） |
 | `docs/content-model.md` | 内容模型设计（随手记 / 博客单表、发布快照、标签管理、权限与 API；Web 端已实现） |
 | `docs/attachment-storage.md` | 附件存储设计（本地 / R2 / 数据库三介质；任意文件、20MB、行级存储模式、DIRECT 外链、媒体域、私有 R2 + Nginx 预签名代理；已实现） |
@@ -15,7 +15,6 @@
 | `docs/blog-runtime-theme.md` | 博客运行时与主题化设计（已实现）：运行时/主题职责、契约表、主题版本与预览、站点配置与独立页面 |
 | `docs/theme-contract.md` | 主题契约规范（规范性文档，P0 + P1 已实现）：能力面 + 表达式面、skeleton / example、fixture、威胁模型、变更协议 |
 | `docs/theme-contract.generated.md` | 主题契约生成物：组件 / 类型 / 路由 / 变量 / 指令 / 表达式清单；禁止手改 |
-| `docs/theme-contract-v2.md` | 主题契约 v2 历史设计（已冻结归档，不再更新；规范以 `theme-contract.md` 为准，漂移教训见 `theme-contract.md` 附录 A） |
 | `docs/theme-ai.md` | 主题 AI 对话（补丁协议、契约投影、校验修复；已实现） |
 | `docs/desktop-sync.md` | 桌面端同步设计（M0–M4 已实现）：本地优先 + 懒加载 manifest、`version` 修订号与本地 hash、整篇冲突 + diff、离线新建、账号隔离 |
 | `docs/desktop-local-schema.md` | 桌面端本地库结构演进（SQLite schema 迁移，S1 / S2 已实现、S3 协议握手待触发）：`user_version` 版本轴、有序迁移与老库桥接、备份与降级检测、与后端 API 契约版本的关系 |
@@ -23,7 +22,6 @@
 | `docs/desktop-media.md` | 桌面端图片（已实现，Windows）：文件 / 本地 / 云端三种插图、`<stem>.assets`、本地媒体库、`/__media` 导入与预览、媒体上传 `/api/desktop/media`、导出 / 同步改写 |
 | `docs/desktop-layout.md` | 桌面端布局与文档工作台（已实现，Windows）：默认全宽编辑 + 可收起推挤式资料库、统一文档多标签、`Ctrl+K` 快速打开、启动恢复与本地优先 |
 | `docs/desktop-diagnostics.md` | 桌面端错误处理与运行日志（已实现）：错误分层、网络失败降级、详情弹层、结构化日志 / 轮转 / 脱敏、诊断入口 |
-| `docs/tech-eval-vditor-wails.md` | 可行性评估论证存档（不再更新；结论快照以 `tech-stack.md` 为准）：Wails v3 已采纳；三端 Vditor + Lute（v2） |
 | `docs/deployment.md` | 部署（Docker 一键 / 拆分）：单镜像组成、数据目录、备份恢复、外部数据库、TLS 与边界 |
 | `docs/deployment-selfhosted.md` | 自用双机部署（香港 nginx 静态 + 反代 / 腾讯云 app+db / WireGuard）：首次初始化、发布迭代、备份回滚与资源预算 |
 | `docs/release.md` | 发版与版本确定：git tag 唯一来源、构建注入、发版流程与校验 |

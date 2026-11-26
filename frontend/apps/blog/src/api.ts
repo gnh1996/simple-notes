@@ -1,4 +1,4 @@
-/** 公开 API 封装：runtime 不依赖生成客户端（docs/blog-runtime-theme.md §12）。 */
+/** 公开 API 封装：runtime 不依赖生成客户端（docs/blog-runtime-theme.md §9）。 */
 
 export class ApiError extends Error {
   readonly status: number

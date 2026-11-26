@@ -13,7 +13,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 主题契约的运行时投影（docs/theme-contract.md 规范 / docs/theme-contract-v2.md 2A 设计）。
+ * 主题契约的运行时投影（规范见 docs/theme-contract.md）。
  *
  * <p>唯一来源是前端 {@code apps/blog/src/contract.ts} + {@code types.ts} + {@code runtime.ts}；
  * {@code pnpm sync:contract} 生成 {@code classpath:theme/theme-contract.json}，本类只读该文件。

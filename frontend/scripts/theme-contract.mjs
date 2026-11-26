@@ -965,7 +965,7 @@ if (extraThemeIndex >= 0) {
   }
 }
 
-// canonical skeleton：完整模式注入的最小合法起点（docs/theme-contract.md §13 P1）
+// canonical skeleton：完整模式注入的最小合法起点（docs/theme-contract.md §4 P1）
 const skeletonHtmlFile = path.join(fixtureRoot, 'skeleton.html')
 const skeletonCssFile = path.join(fixtureRoot, 'skeleton.css')
 const normalizeSkeleton = (text) => text.replace(/\r\n/g, '\n').trim()
