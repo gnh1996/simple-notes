@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { mediaApi, noteApi, noteFolderApi, tagApi } from '@/api'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
 import { useTheme } from '@/composables/useTheme'
+import { useTabsStore } from '@/stores/tabs'
 import { tagNames } from '@/utils/content'
 import { buildFolderPaths } from '@/utils/folders'
 import { formatDateTime, notifyError } from '@/utils/feedback'
@@ -15,6 +16,7 @@ import { formatDateTime, notifyError } from '@/utils/feedback'
 const route = useRoute()
 const router = useRouter()
 const { isDark } = useTheme()
+const tabsStore = useTabsStore()
 const editorTheme = computed(() => (isDark.value ? 'dark' : 'light'))
 const noteId = computed(() => String(route.params.id ?? 'new'))
 const isNew = computed(() => noteId.value === 'new')
@@ -50,6 +52,47 @@ const statusText = computed(() => {
   if (dirty.value) return '未保存'
   return lastSavedAt.value ? `已保存 ${lastSavedAt.value}` : '已保存'
 })
+
+function tabTitle(title: string): string {
+  const name = title.trim()
+  return name ? `笔记 · ${name}` : String(route.meta.title ?? '编辑笔记')
+}
+
+/** 页签标题跟随文档标题，避免多个「编辑笔记」页签无法区分 */
+function syncTabTitle(): void {
+  tabsStore.setTitle(route.path, tabTitle(form.title))
+}
+
+let unregisterGuard: (() => void) | undefined
+
+/** 关闭页签前：新建内容二次确认，已有内容先落盘，失败则取消关闭 */
+async function guardClose(): Promise<boolean> {
+  if (!loaded.value) return true
+  if (isNew.value) {
+    if (!dirty.value) return true
+    try {
+      await ElMessageBox.confirm('新建的笔记尚未保存，关闭页签后内容会丢失。', '未保存的笔记', {
+        type: 'warning',
+        confirmButtonText: '丢弃并关闭',
+        cancelButtonText: '继续编辑',
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
+  if (!dirty.value) return true
+  const saved = await save(true)
+  if (!saved) ElMessage.warning('保存失败，已取消关闭')
+  return Boolean(saved)
+}
+
+function registerGuard(): void {
+  unregisterGuard?.()
+  unregisterGuard = undefined
+  if (route.name !== 'NoteEditor') return
+  unregisterGuard = tabsStore.registerCloseGuard(route.path, guardClose)
+}
 
 async function load(): Promise<void> {
   loading.value = true
@@ -96,6 +139,7 @@ function applyNote(note: NoteDetail): void {
   form.version = note.version
   lastSavedAt.value = formatDateTime(note.updateTime || note.createTime)
   dirty.value = false
+  syncTabTitle()
   void nextTick(() => {
     suppressWatch = false
   })
@@ -121,9 +165,32 @@ watch(
   scheduleAutoSave,
 )
 
-async function save(silent = false): Promise<NoteDetail | null> {
-  if (autoSaveTimer) clearTimeout(autoSaveTimer)
-  if (saving.value) return null
+// 新建保存后 URL 从 /notes/new 变为 /notes/:id（组件复用）：重新挂拦截器并同步标题
+watch(
+  () => route.path,
+  (path, previous) => {
+    if (path === previous || route.name !== 'NoteEditor') return
+    registerGuard()
+    syncTabTitle()
+  },
+)
+
+let pendingSave: Promise<NoteDetail | null> | null = null
+
+function save(silent = false): Promise<NoteDetail | null> {
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer)
+    autoSaveTimer = undefined
+  }
+  // 已有保存请求在飞：复用同一个 Promise，关闭页签时才能等到真正的保存结果
+  if (pendingSave) return pendingSave
+  pendingSave = doSave(silent).finally(() => {
+    pendingSave = null
+  })
+  return pendingSave
+}
+
+async function doSave(silent: boolean): Promise<NoteDetail | null> {
   if (!form.title.trim()) {
     if (!silent) ElMessage.warning('请填写标题')
     return null
@@ -155,7 +222,9 @@ async function save(silent = false): Promise<NoteDetail | null> {
 
     applyNote(note)
     if (isNew.value) {
+      const previousPath = route.path
       await router.replace(`/notes/${note.id}`)
+      tabsStore.replacePath(previousPath, route.path, tabTitle(note.title))
     }
     if (!silent) ElMessage.success('已保存')
     return note
@@ -210,9 +279,13 @@ function handleUploadError(error: unknown): void {
   notifyError(error, '文件上传失败')
 }
 
-onMounted(load)
+onMounted(() => {
+  registerGuard()
+  void load()
+})
 
 onBeforeUnmount(() => {
+  unregisterGuard?.()
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   if (dirty.value && !isNew.value) {
     void save(true)
