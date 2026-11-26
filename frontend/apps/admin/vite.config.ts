@@ -37,6 +37,21 @@ export default defineConfig({
     // 避免 workspace 软链布局下出现多份 Vue 实例
     dedupe: ['vue'],
   },
+  optimizeDeps: {
+    // 懒加载路由里的第三方依赖（CodeMirror / Vditor）不在启动扫描范围内：
+    // 首次打开页面才触发预构建，期间的请求会拿到 504 Outdated Optimize Dep，
+    // 动态 import 失败后表现为“点菜单无响应”。这里显式预构建。
+    include: [
+      'vditor',
+      '@codemirror/commands',
+      '@codemirror/lang-css',
+      '@codemirror/lang-html',
+      '@codemirror/language',
+      '@codemirror/state',
+      '@codemirror/theme-one-dark',
+      '@codemirror/view',
+    ],
+  },
   server: {
     port: 5173,
     // 开发期把 /api 转发到 Spring Boot（默认 8080）

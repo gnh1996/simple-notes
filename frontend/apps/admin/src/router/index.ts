@@ -83,6 +83,27 @@ export const router = createRouter({
 })
 
 /**
+ * 动态 import 失败会让路由停在原地、点击菜单看起来毫无反应：
+ * 开发期依赖重优化（504 Outdated Optimize Dep）、发版后旧 chunk 404 都会命中。
+ * 此时整页刷新一次换取新入口；10 秒内再次失败不再刷新，避免循环。
+ */
+const CHUNK_RELOAD_AT = 'admin:chunk-reload-at'
+
+router.onError((error) => {
+  const message = error instanceof Error ? error.message : String(error)
+  const chunkFailed =
+    /failed to fetch dynamically imported module|importing a module script failed|loading chunk/i.test(
+      message,
+    )
+  if (!chunkFailed) return
+  const now = Date.now()
+  const last = Number(sessionStorage.getItem(CHUNK_RELOAD_AT) ?? 0)
+  if (now - last < 10_000) return
+  sessionStorage.setItem(CHUNK_RELOAD_AT, String(now))
+  window.location.reload()
+})
+
+/**
  * 服务端菜单树 → 动态路由（docs/auth-rbac.md §6.2）：
  *
  * - 注册表命中 → 注册页面路由（路径 / 组件来自注册表；名称 / 排序 / 层级以服务端为准）；
